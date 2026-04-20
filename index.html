@@ -80,6 +80,7 @@ const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // TEST IMMEDIATELY
 console.log("Supabase client ready");
+  db.auth.getSession().then(console.log)
 
 window.db = db;
 
