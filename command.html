@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Command Center</title>
+
+  <script type="module">
+    import { db } from "./assets/app.js";
+
+    async function load() {
+      const { data } = await db
+        .from('people_priority_engine')
+        .select('*')
+        .order('computed_priority_score', { ascending: false })
+        .limit(10);
+
+      document.getElementById("list").innerHTML =
+        (data || []).map(p => `
+          <div class="card">
+            <b>${p.name}</b><br>
+            Score: ${Math.round(p.computed_priority_score)}
+          </div>
+        `).join('');
+    }
+
+    window.onload = load;
+  </script>
+
+  <style>
+    body { margin:0; font-family:Arial; background:#0f172a; color:white; }
+    header { padding:15px; background:#111827; }
+    .card {
+      background:#111827;
+      padding:10px;
+      margin:10px;
+      border-radius:8px;
+      border:1px solid #1f2937;
+    }
+  </style>
+</head>
+
+<body>
+
+<header>
+  🔥 Command Center
+  <button onclick="location.href='index.html'" style="float:right;">Home</button>
+</header>
+
+<div id="list"></div>
+
+</body>
+</html>
