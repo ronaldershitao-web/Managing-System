@@ -19,6 +19,10 @@
     <button onclick="login()" class="bg-blue-500 text-white px-4 py-2 rounded">
       Login
     </button>
+
+    <button onclick="logout()" class="ml-2 bg-gray-400 text-white px-4 py-2 rounded">
+      Logout
+    </button>
   </div>
 
   <!-- DASHBOARD -->
@@ -41,6 +45,12 @@
 
   </div>
 
+  <!-- NOTES (FIX YOU WERE MISSING THIS) -->
+  <div class="mt-6 bg-white p-4 rounded-xl shadow">
+    <h3 class="font-bold mb-2">Recent Pastoral Notes</h3>
+    <ul id="notesList" class="text-sm"></ul>
+  </div>
+
   <!-- ADD PERSON -->
   <div class="mt-6 bg-white p-4 rounded-xl shadow">
 
@@ -56,6 +66,7 @@
   </div>
 
 <script>
+
 /* =========================
    SUPABASE INIT
 ========================= */
@@ -65,10 +76,15 @@ const supabase = window.supabase.createClient(
 );
 
 /* =========================
+   AUTH STATE
+========================= */
+let currentUser = null;
+
+/* =========================
    LOGIN
 ========================= */
 async function login() {
-  const { error } = await supabase.auth.signInWithPassword({
+  const { data, error } = await supabase.auth.signInWithPassword({
     email: email.value,
     password: password.value
   });
@@ -78,9 +94,24 @@ async function login() {
     return;
   }
 
+  currentUser = data.user;
+
   alert("Logged in");
 
   await loadDashboard();
+}
+
+/* =========================
+   LOGOUT
+========================= */
+async function logout() {
+  await supabase.auth.signOut();
+  currentUser = null;
+
+  inactiveList.innerHTML = "";
+  openCasesList.innerHTML = "";
+  followupList.innerHTML = "";
+  notesList.innerHTML = "";
 }
 
 /* =========================
@@ -148,10 +179,24 @@ async function loadDashboard() {
       followupList.innerHTML += `<li>${f.case_type}</li>`;
     });
   }
+
+  // PASTORAL NOTES (FIX YOU WERE MISSING)
+  const { data: notes, error: err4 } = await supabase
+    .from("pastoral_notes")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  notesList.innerHTML = "";
+
+  if (!err4 && notes) {
+    notes.forEach(n => {
+      notesList.innerHTML += `<li>${n.note}</li>`;
+    });
+  }
 }
 
 /* =========================
-   REALTIME UPDATES
+   REALTIME (FIXED + COMPLETE)
 ========================= */
 supabase
   .channel('dashboard-realtime')
@@ -159,21 +204,28 @@ supabase
     event: '*',
     schema: 'public',
     table: 'pastoral_cases'
-  }, () => {
-    loadDashboard();
-  })
+  }, () => loadDashboard())
+
+  .on('postgres_changes', {
+    event: '*',
+    schema: 'public',
+    table: 'pastoral_notes'
+  }, () => loadDashboard())
+
   .subscribe();
 
 /* =========================
-   AUTO LOAD ON START
+   AUTO LOAD SESSION
 ========================= */
 window.addEventListener("load", async () => {
   const { data } = await supabase.auth.getSession();
 
   if (data.session) {
+    currentUser = data.session.user;
     await loadDashboard();
   }
 });
+
 </script>
 
 </body>
