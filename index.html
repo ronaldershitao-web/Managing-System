@@ -79,10 +79,16 @@ const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // LOAD PEOPLE
 // -------------------
 async function loadPeople() {
-  let { data } = await db.from('people')
+  let { data, error } = await db.from('people')
     .select('*')
     .order('priority_score', { ascending: false })
     .limit(5);
+
+  if (error || !data) {
+    console.log("People load error:", error);
+    document.getElementById("people").innerHTML = "No data / permission issue";
+    return;
+  }
 
   document.getElementById("people").innerHTML =
     data.map(p => `
@@ -92,16 +98,21 @@ async function loadPeople() {
       </div>
     `).join('');
 }
-
 // -------------------
 // LOAD TASKS
 // -------------------
 async function loadTasks() {
-  let { data } = await db.from('tasks')
+  let { data, error } = await db.from('tasks')
     .select('*')
     .eq('status','pending')
     .order('priority_score', { ascending: false })
     .limit(10);
+
+  if (error || !data) {
+    console.log("Task load error:", error);
+    document.getElementById("tasks").innerHTML = "No data / permission issue";
+    return;
+  }
 
   document.getElementById("tasks").innerHTML =
     data.map(t => `
