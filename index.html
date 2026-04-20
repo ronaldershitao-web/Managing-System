@@ -69,53 +69,58 @@
 
 </div>
 
-<script>
+<script type="module">
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+
 const SUPABASE_URL = "https://qnxiuojefowyzeanfhdz.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFueGl1b2plZm93eXplYW5maGR6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMjY0NjEsImV4cCI6MjA5MTkwMjQ2MX0.JoSrVaT4KewYWoESPkjG5_W65nKdLYdcX7BZeaYK_FM";
 
-const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const db = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // -------------------
 // LOAD PEOPLE
 // -------------------
 async function loadPeople() {
-  let { data, error } = await db.from('people')
+  const { data, error } = await db
+    .from('people')
     .select('*')
     .order('priority_score', { ascending: false })
     .limit(5);
 
-  if (error || !data) {
-    console.log("People load error:", error);
-    document.getElementById("people").innerHTML = "No data / permission issue";
+  if (error) {
+    console.log("People error:", error);
+    document.getElementById("people").innerHTML = error.message;
     return;
   }
 
   document.getElementById("people").innerHTML =
-    data.map(p => `
+    (data || []).map(p => `
       <div class="task">
         <b>${p.name}</b><br>
         Stage: ${p.relationship_stage} | Status: ${p.engagement_status}
       </div>
     `).join('');
 }
+
 // -------------------
 // LOAD TASKS
 // -------------------
 async function loadTasks() {
-  let { data, error } = await db.from('tasks')
+  const { data, error } = await db
+    .from('tasks')
     .select('*')
     .eq('status','pending')
     .order('priority_score', { ascending: false })
     .limit(10);
 
-  if (error || !data) {
-    console.log("Task load error:", error);
-    document.getElementById("tasks").innerHTML = "No data / permission issue";
+  if (error) {
+    console.log("Task error:", error);
+    document.getElementById("tasks").innerHTML = error.message;
     return;
   }
 
   document.getElementById("tasks").innerHTML =
-    data.map(t => `
+    (data || []).map(t => `
       <div class="task">
         <b>${t.title}</b><br>
         Priority: ${t.priority_score}
@@ -126,6 +131,5 @@ async function loadTasks() {
 loadPeople();
 loadTasks();
 </script>
-
 </body>
 </html>
