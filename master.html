@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Master Data</title>
+
+  <script type="module">
+    import { db } from "./assets/app.js";
+
+    async function load() {
+      const { data } = await db
+        .from('people')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      document.getElementById("list").innerHTML =
+        (data || []).map(p => `
+          <div class="card">
+            <b>${p.name}</b><br>
+            Stage: ${p.relationship_stage ?? 1}
+          </div>
+        `).join('');
+    }
+
+    window.onload = load;
+  </script>
+
+  <style>
+    body { margin:0; font-family:Arial; background:#0f172a; color:white; }
+    header { padding:15px; background:#111827; }
+    .card {
+      background:#111827;
+      padding:10px;
+      margin:10px;
+      border-radius:8px;
+      border:1px solid #1f2937;
+    }
+  </style>
+</head>
+
+<body>
+
+<header>
+  👤 Master Data
+  <button onclick="location.href='index.html'" style="float:right;">Home</button>
+</header>
+
+<div id="list"></div>
+
+</body>
+</html>
