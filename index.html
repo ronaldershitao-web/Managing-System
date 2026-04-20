@@ -12,10 +12,13 @@
   <h1 class="text-2xl font-bold mb-4">Ministry Dashboard</h1>
 
   <!-- LOGIN -->
-  <div class="mb-6">
+  <div class="mb-6 bg-white p-4 rounded-xl shadow">
+    <h2 class="font-bold mb-2">Login</h2>
     <input id="email" placeholder="Email" class="border p-2 mr-2">
     <input id="password" type="password" placeholder="Password" class="border p-2 mr-2">
-    <button onclick="login()" class="bg-blue-500 text-white px-4 py-2 rounded">Login</button>
+    <button onclick="login()" class="bg-blue-500 text-white px-4 py-2 rounded">
+      Login
+    </button>
   </div>
 
   <!-- DASHBOARD -->
@@ -23,84 +26,155 @@
 
     <div class="p-4 bg-white rounded-xl shadow">
       <h3 class="font-bold mb-2">Inactive Members</h3>
-      <ul id="inactiveList"></ul>
+      <ul id="inactiveList" class="text-sm"></ul>
     </div>
 
     <div class="p-4 bg-white rounded-xl shadow">
       <h3 class="font-bold mb-2">Open Cases</h3>
-      <ul id="openCasesList"></ul>
+      <ul id="openCasesList" class="text-sm"></ul>
     </div>
 
     <div class="p-4 bg-white rounded-xl shadow">
       <h3 class="font-bold mb-2">Follow-ups Needed</h3>
-      <ul id="followupList"></ul>
+      <ul id="followupList" class="text-sm"></ul>
     </div>
 
   </div>
 
-  <!-- ACTIONS -->
-  <div class="mt-6">
+  <!-- ADD PERSON -->
+  <div class="mt-6 bg-white p-4 rounded-xl shadow">
 
     <h3 class="font-bold mb-2">Add Person</h3>
+
     <input id="name" placeholder="Name" class="border p-2 mr-2">
     <input id="phone" placeholder="Phone" class="border p-2 mr-2">
-    <button onclick="addPerson()" class="bg-green-500 text-white px-4 py-2 rounded">Add</button>
+
+    <button onclick="addPerson()" class="bg-green-500 text-white px-4 py-2 rounded">
+      Add
+    </button>
 
   </div>
 
-  <script>
-    const supabase = window.supabase.createClient(
-      "https://qnxiuojefowyzeanfhdz.supabase.co",
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFueGl1b2plZm93eXplYW5maGR6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMjY0NjEsImV4cCI6MjA5MTkwMjQ2MX0.JoSrVaT4KewYWoESPkjG5_W65nKdLYdcX7BZeaYK_FM"
-    );
+<script>
+/* =========================
+   SUPABASE INIT
+========================= */
+const supabase = window.supabase.createClient(
+  "https://qnxiuojefowyzeanfhdz.supabase.co",
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFueGl1b2plZm93eXplYW5maGR6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMjY0NjEsImV4cCI6MjA5MTkwMjQ2MX0.JoSrVaT4KewYWoESPkjG5_W65nKdLYdcX7BZeaYK_FM"
+);
 
-    async function login() {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: email.value,
-        password: password.value
-      });
+/* =========================
+   LOGIN
+========================= */
+async function login() {
+  const { error } = await supabase.auth.signInWithPassword({
+    email: email.value,
+    password: password.value
+  });
 
-      if (error) alert(error.message);
-      else {
-        alert("Logged in");
-        loadDashboard();
-      }
-    }
+  if (error) {
+    alert(error.message);
+    return;
+  }
 
-    async function addPerson() {
-      await supabase.from("people").insert([{
-        name: name.value,
-        phone: phone.value
-      }]);
+  alert("Logged in");
 
-      alert("Added");
-      loadDashboard();
-    }
+  await loadDashboard();
+}
 
-    async function loadDashboard() {
+/* =========================
+   ADD PERSON
+========================= */
+async function addPerson() {
+  const { error } = await supabase
+    .from("people")
+    .insert([{
+      name: name.value,
+      phone: phone.value
+    }]);
 
-      // Inactive Members
-      const { data: inactive } = await supabase.from("inactive_members").select("*");
-      inactiveList.innerHTML = "";
-      inactive.forEach(p => {
-        inactiveList.innerHTML += `<li>${p.name}</li>`;
-      });
+  if (error) {
+    alert(error.message);
+    return;
+  }
 
-      // Open Cases
-      const { data: cases } = await supabase.from("open_cases").select("*");
-      openCasesList.innerHTML = "";
-      cases.forEach(c => {
-        openCasesList.innerHTML += `<li>${c.case_type}</li>`;
-      });
+  name.value = "";
+  phone.value = "";
 
-      // Followups
-      const { data: followups } = await supabase.from("followup_needed").select("*");
-      followupList.innerHTML = "";
-      followups.forEach(f => {
-        followupList.innerHTML += `<li>${f.case_type}</li>`;
-      });
-    }
-  </script>
+  await loadDashboard();
+}
+
+/* =========================
+   LOAD DASHBOARD
+========================= */
+async function loadDashboard() {
+
+  // Inactive Members
+  const { data: inactive, error: err1 } = await supabase
+    .from("inactive_members")
+    .select("*");
+
+  inactiveList.innerHTML = "";
+
+  if (!err1 && inactive) {
+    inactive.forEach(p => {
+      inactiveList.innerHTML += `<li>${p.name}</li>`;
+    });
+  }
+
+  // Open Cases
+  const { data: cases, error: err2 } = await supabase
+    .from("open_cases")
+    .select("*");
+
+  openCasesList.innerHTML = "";
+
+  if (!err2 && cases) {
+    cases.forEach(c => {
+      openCasesList.innerHTML += `<li>${c.case_type}</li>`;
+    });
+  }
+
+  // Followups
+  const { data: followups, error: err3 } = await supabase
+    .from("followup_needed")
+    .select("*");
+
+  followupList.innerHTML = "";
+
+  if (!err3 && followups) {
+    followups.forEach(f => {
+      followupList.innerHTML += `<li>${f.case_type}</li>`;
+    });
+  }
+}
+
+/* =========================
+   REALTIME UPDATES
+========================= */
+supabase
+  .channel('dashboard-realtime')
+  .on('postgres_changes', {
+    event: '*',
+    schema: 'public',
+    table: 'pastoral_cases'
+  }, () => {
+    loadDashboard();
+  })
+  .subscribe();
+
+/* =========================
+   AUTO LOAD ON START
+========================= */
+window.addEventListener("load", async () => {
+  const { data } = await supabase.auth.getSession();
+
+  if (data.session) {
+    await loadDashboard();
+  }
+});
+</script>
 
 </body>
 </html>
