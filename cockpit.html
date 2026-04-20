@@ -3,91 +3,116 @@
 <head>
   <title>Master Data Cockpit</title>
 
-  <script type="module">
-    import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+ <script type="module">
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 
-    const SUPABASE_URL = "https://qnxiuojefowyzeanfhdz.supabase.co";
-    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFueGl1b2plZm93eXplYW5maGR6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMjY0NjEsImV4cCI6MjA5MTkwMjQ2MX0.JoSrVaT4KewYWoESPkjG5_W65nKdLYdcX7BZeaYK_FM";
+const SUPABASE_URL = "https://qnxiuojefowyzeanfhdz.supabase.co";
+const SUPABASE_ANON_KEY = "YOUR_ANON_KEY";
 
-    const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    let selectedPerson = null;
+let selectedPerson = null;
 
-    // ------------------------
-    // LOAD ALL PEOPLE
-    // ------------------------
-    async function loadPeople() {
-      const { data, error } = await db
-        .from('people')
-        .select('*')
-        .order('created_at', { ascending: false });
+// ------------------------
+// LOAD PEOPLE (WITH SCORE)
+// ------------------------
+async function loadPeople() {
+  const { data, error } = await db
+    .from('people')
+    .select('id, name, priority_score, last_contact_date')
+    .order('priority_score', { ascending: false });
 
-      const el = document.getElementById("people");
+  const el = document.getElementById("people");
 
-      if (error) {
-        el.innerHTML = error.message;
-        return;
-      }
+  if (error) {
+    el.innerHTML = error.message;
+    return;
+  }
 
-      el.innerHTML = data.map(p => `
-        <div class="person" onclick="selectPerson('${p.id}')">
-          ${p.name}
-        </div>
-      `).join('');
-    }
+  el.innerHTML = data.map(p => `
+    <div class="person" onclick="selectPerson('${p.id}')">
+      <b>${p.name}</b><br>
+      <small>
+        Score: ${p.priority_score ?? 0} |
+        Last: ${p.last_contact_date ?? 'Never'}
+      </small>
+    </div>
+  `).join('');
+}
 
-    // ------------------------
-    // SELECT PERSON
-    // ------------------------
-    window.selectPerson = async function(id) {
-      const { data } = await db.from('people').select('*').eq('id', id).single();
-      selectedPerson = data;
+// ------------------------
+// SELECT PERSON
+// ------------------------
+window.selectPerson = async function(id) {
 
-      document.getElementById("detail").innerHTML = `
-  <h3>${data.name}</h3>
+  const { data, error } = await db
+    .from('people')
+    .select('*')
+    .eq('id', id)
+    .single();
 
-  <h4>Identity</h4>
-  <label>Date of Birth</label>
-  <input type="date" id="dob" value="${data.date_of_birth || ''}" />
+  if (error) {
+    alert(error.message);
+    return;
+  }
 
-  <label>Gender</label>
-  <input id="gender" value="${data.gender || ''}" />
+  selectedPerson = data;
 
-  <label>Marital Status</label>
-  <input id="marital" value="${data.marital_status || ''}" />
+  document.getElementById("detail").innerHTML = `
+    <h3>${data.name}</h3>
 
-  <h4>Contact</h4>
-  <label>Phone</label>
-  <input id="phone" value="${data.phone || ''}" />
+    <h4>Priority Engine</h4>
+    <p>Score: <b>${data.priority_score ?? 0}</b></p>
+    <p>Last Contact: ${data.last_contact_date ?? 'Never'}</p>
 
-  <label>Email</label>
-  <input id="email" value="${data.email || ''}" />
+    <h4>Identity</h4>
 
-  <label>Address</label>
-  <textarea id="address">${data.address || ''}</textarea>
+    <label>Date of Birth</label>
+    <input type="date" id="dob" value="${data.date_of_birth || ''}" />
 
-  <h4>Church Journey</h4>
-  <label>Status</label>
-  <input id="status" value="${data.engagement_status || ''}" />
+    <label>Gender</label>
+    <input id="gender" value="${data.gender || ''}" />
 
-  <label>Discipleship Stage</label>
-  <input id="stage" value="${data.discipleship_stage || 1}" />
+    <label>Marital Status</label>
+    <input id="marital" value="${data.marital_status || ''}" />
 
-  <h4>Pastoral</h4>
-  <label>Notes</label>
-  <textarea id="notes">${data.notes || ''}</textarea>
+    <h4>Contact</h4>
+    <label>Phone</label>
+    <input id="phone" value="${data.phone || ''}" />
 
-  <label>Prayer Requests</label>
-  <textarea id="prayer">${data.prayer_requests || ''}</textarea>
+    <label>Email</label>
+    <input id="email" value="${data.email || ''}" />
 
-  <button onclick="savePerson()">Save</button>
-`;
-    }
+    <label>Address</label>
+    <textarea id="address">${data.address || ''}</textarea>
 
-    // ------------------------
-    // SAVE PERSON
-    // ------------------------
-   window.savePerson = async function savePerson() {
+    <h4>Church Journey</h4>
+    <label>Status</label>
+    <input id="status" value="${data.engagement_status || ''}" />
+
+    <label>Discipleship Stage</label>
+    <input id="stage" value="${data.discipleship_stage || 1}" />
+
+    <h4>Pastoral</h4>
+    <label>Notes</label>
+    <textarea id="notes">${data.notes || ''}</textarea>
+
+    <label>Prayer Requests</label>
+    <textarea id="prayer">${data.prayer_requests || ''}</textarea>
+
+    <button onclick="savePerson()">Save</button>
+  `;
+}
+
+// ------------------------
+// SAVE PERSON (FIXED + SAFE UPDATE)
+// ------------------------
+window.savePerson = async function() {
+
+  if (!selectedPerson) {
+    alert("No person selected");
+    return;
+  }
 
   const payload = {
     date_of_birth: document.getElementById("dob")?.value || null,
@@ -97,43 +122,57 @@
     email: document.getElementById("email")?.value || null,
     address: document.getElementById("address")?.value || null,
     engagement_status: document.getElementById("status")?.value || null,
-    discipleship_stage: document.getElementById("stage")?.value || null,
+    discipleship_stage: Number(document.getElementById("stage")?.value || 1),
     notes: document.getElementById("notes")?.value || null,
     prayer_requests: document.getElementById("prayer")?.value || null
   };
 
-  console.log("FINAL PAYLOAD:", payload);
+  console.log("SAVE PAYLOAD:", payload);
 
   const { data, error } = await db
     .from('people')
     .update(payload)
     .eq('id', selectedPerson.id)
-    .select();
+    .select('*')
+    .single();
 
-  console.log("UPDATE RESULT:", data, error);
+  if (error) {
+    alert(error.message);
+    return;
+  }
 
-  if (error) return alert(error.message);
+  console.log("UPDATED PERSON:", data);
+
+  // 🔥 refresh local state immediately
+  selectedPerson = data;
 
   alert("Saved");
+
   await loadPeople();
-};
+  await selectPerson(selectedPerson.id);
+}
 
-    // ------------------------
-    // ADD PERSON
-    // ------------------------
-    window.addPerson = async function() {
-      const name = document.getElementById("newName").value;
+// ------------------------
+// ADD PERSON
+// ------------------------
+window.addPerson = async function() {
+  const name = document.getElementById("newName").value;
 
-      if (!name) return alert("Enter name");
+  if (!name) return alert("Enter name");
 
-      await db.from("people").insert([{ name }]);
+  const { error } = await db.from("people").insert([{ name }]);
 
-      document.getElementById("newName").value = "";
-      loadPeople();
-    }
+  if (error) {
+    alert(error.message);
+    return;
+  }
 
-    window.onload = loadPeople;
-  </script>
+  document.getElementById("newName").value = "";
+  loadPeople();
+}
+
+window.onload = loadPeople;
+</script>
 
   <style>
     body {
