@@ -44,34 +44,62 @@
       selectedPerson = data;
 
       document.getElementById("detail").innerHTML = `
-        <h3>${data.name}</h3>
+  <h3>${data.name}</h3>
 
-        <label>Status</label>
-        <input id="status" value="${data.engagement_status || ''}" />
+  <h4>Identity</h4>
+  <label>Date of Birth</label>
+  <input type="date" id="dob" value="${data.date_of_birth || ''}" />
 
-        <label>Stage</label>
-        <input id="stage" value="${data.discipleship_stage || 1}" />
+  <label>Gender</label>
+  <input id="gender" value="${data.gender || ''}" />
 
-        <label>Notes</label>
-        <textarea id="notes">${data.notes || ''}</textarea>
+  <label>Marital Status</label>
+  <input id="marital" value="${data.marital_status || ''}" />
 
-        <label>Prayer</label>
-        <textarea id="prayer">${data.prayer_requests || ''}</textarea>
+  <h4>Contact</h4>
+  <label>Phone</label>
+  <input id="phone" value="${data.phone || ''}" />
 
-        <button onclick="savePerson()">Save</button>
-      `;
+  <label>Email</label>
+  <input id="email" value="${data.email || ''}" />
+
+  <label>Address</label>
+  <textarea id="address">${data.address || ''}</textarea>
+
+  <h4>Church Journey</h4>
+  <label>Status</label>
+  <input id="status" value="${data.engagement_status || ''}" />
+
+  <label>Discipleship Stage</label>
+  <input id="stage" value="${data.discipleship_stage || 1}" />
+
+  <h4>Pastoral</h4>
+  <label>Notes</label>
+  <textarea id="notes">${data.notes || ''}</textarea>
+
+  <label>Prayer Requests</label>
+  <textarea id="prayer">${data.prayer_requests || ''}</textarea>
+
+  <button onclick="savePerson()">Save</button>
+`;
     }
 
     // ------------------------
     // SAVE PERSON
     // ------------------------
     window.savePerson = async function() {
-      await db.from('people').update({
-        engagement_status: document.getElementById("status").value,
-        discipleship_stage: document.getElementById("stage").value,
-        notes: document.getElementById("notes").value,
-        prayer_requests: document.getElementById("prayer").value
-      }).eq('id', selectedPerson.id);
+     await db.from('people').update({
+  date_of_birth: document.getElementById("dob").value,
+  gender: document.getElementById("gender").value,
+  marital_status: document.getElementById("marital").value,
+  phone: document.getElementById("phone").value,
+  email: document.getElementById("email").value,
+  address: document.getElementById("address").value,
+  engagement_status: document.getElementById("status").value,
+  discipleship_stage: document.getElementById("stage").value,
+  notes: document.getElementById("notes").value,
+  prayer_requests: document.getElementById("prayer").value
+}).eq('id', selectedPerson.id);
 
       alert("Saved");
       loadPeople();
