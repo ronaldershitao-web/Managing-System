@@ -1,50 +1,185 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Ministry OS v3.0</title>
-  
+  <title>Ministry OS v3.1</title>
+
+  <script type="module">
+    import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+
+    const SUPABASE_URL = "https://qnxiuojefowyzeanfhdz.supabase.co";
+    const SUPABASE_ANON_KEY = "YOUR_KEY";
+
+    const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    window.db = db;
+
+    console.log("Ministry OS Online");
+
+    // ------------------------
+    // LOAD PEOPLE
+    // ------------------------
+    async function loadPeople() {
+      const { data, error } = await db
+        .from('people')
+        .select('*')
+        .order('priority_score', { ascending: false })
+        .limit(5);
+
+      const el = document.getElementById("people");
+
+      if (error) {
+        el.innerHTML = `<div class="error">${error.message}</div>`;
+        return;
+      }
+
+      el.innerHTML = (data || []).map(p => `
+        <div class="card-item">
+          <div class="name">${p.name}</div>
+          <div class="meta">
+            Stage ${p.relationship_stage} • ${p.engagement_status}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // ------------------------
+    // LOAD TASKS
+    // ------------------------
+    async function loadTasks() {
+      const { data, error } = await db
+        .from('tasks')
+        .select('*')
+        .eq('status', 'pending')
+        .order('priority_score', { ascending: false })
+        .limit(8);
+
+      const el = document.getElementById("tasks");
+
+      if (error) {
+        el.innerHTML = `<div class="error">${error.message}</div>`;
+        return;
+      }
+
+      el.innerHTML = (data || []).map(t => `
+        <div class="card-item">
+          <div class="name">${t.title}</div>
+          <div class="meta">Priority ${t.priority_score}</div>
+        </div>
+      `).join('');
+    }
+
+    // ------------------------
+    // ADD PERSON
+    // ------------------------
+    window.addPerson = async function () {
+      const name = document.getElementById("name").value;
+
+      if (!name) return alert("Enter name");
+
+      const { error } = await db.from("people").insert([
+        { name, relationship_stage: 1, discipleship_stage: 1 }
+      ]);
+
+      if (error) return alert(error.message);
+
+      document.getElementById("name").value = "";
+      loadPeople();
+    }
+
+    window.onload = () => {
+      loadPeople();
+      loadTasks();
+    };
+  </script>
 
   <style>
     body {
-      font-family: Arial;
+      font-family: Arial, sans-serif;
       margin: 0;
-      background: #f5f6fa;
+      background: #0f172a;
+      color: #e5e7eb;
     }
 
     header {
-      background: #1e2a38;
-      color: white;
-      padding: 15px;
+      background: #111827;
+      padding: 18px;
       font-size: 18px;
+      font-weight: bold;
+      border-bottom: 1px solid #1f2937;
     }
 
     .container {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 15px;
-      padding: 15px;
+      gap: 16px;
+      padding: 16px;
     }
 
-    .card {
-      background: white;
-      padding: 15px;
-      border-radius: 8px;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    .panel {
+      background: #111827;
+      padding: 16px;
+      border-radius: 12px;
+      border: 1px solid #1f2937;
     }
 
-    h3 {
+    .panel h3 {
       margin-top: 0;
+      color: #60a5fa;
+    }
+
+    .card-item {
+      padding: 10px;
+      margin-bottom: 8px;
+      background: #0b1220;
+      border-radius: 8px;
+      border: 1px solid #1f2937;
+    }
+
+    .name {
+      font-weight: bold;
+    }
+
+    .meta {
+      font-size: 12px;
+      color: #9ca3af;
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    input {
+      flex: 1;
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid #374151;
+      background: #0b1220;
+      color: white;
     }
 
     button {
-      padding: 6px 10px;
-      margin-top: 5px;
+      padding: 8px 12px;
+      border: none;
+      background: #2563eb;
+      color: white;
+      border-radius: 6px;
       cursor: pointer;
     }
 
-    .task {
-      padding: 8px;
-      border-bottom: 1px solid #eee;
+    button:hover {
+      background: #1d4ed8;
+    }
+
+    .error {
+      color: #f87171;
+      font-size: 12px;
+    }
+
+    @media (max-width: 800px) {
+      .container {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
@@ -52,93 +187,30 @@
 <body>
 
 <header>
-  Ministry OS v3.0 Dashboard
+  Ministry OS v3.1 — Command Center
 </header>
 
 <div class="container">
 
-  <div class="card">
+  <!-- PEOPLE -->
+  <div class="panel">
     <h3>Top People to Follow Up</h3>
+
+    <div class="row">
+      <input id="name" placeholder="Add new person..." />
+      <button onclick="addPerson()">Add</button>
+    </div>
+
     <div id="people"></div>
   </div>
 
-  <div class="card">
+  <!-- TASKS -->
+  <div class="panel">
     <h3>Priority Tasks</h3>
     <div id="tasks"></div>
   </div>
 
 </div>
 
-<script type="module">
-import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-
-const SUPABASE_URL = "https://qnxiuojefowyzeanfhdz.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFueGl1b2plZm93eXplYW5maGR6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMjY0NjEsImV4cCI6MjA5MTkwMjQ2MX0.JoSrVaT4KewYWoESPkjG5_W65nKdLYdcX7BZeaYK_FM";
-
-
-const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-// TEST IMMEDIATELY
-console.log("Supabase client ready");
-  db.auth.getSession().then(console.log);
-  db.from('people').select('*')
-  .then(res => console.log("PEOPLE RESULT:", res));
-
-window.db = db;
-
-// -------------------
-// LOAD PEOPLE
-// -------------------
-async function loadPeople() {
-  const { data, error } = await db
-    .from('people')
-    .select('*')
-    .order('priority_score', { ascending: false })
-    .limit(5);
-
-  if (error) {
-    console.log("People error:", error);
-    document.getElementById("people").innerHTML = error.message;
-    return;
-  }
-
-  document.getElementById("people").innerHTML =
-    (data || []).map(p => `
-      <div class="task">
-        <b>${p.name}</b><br>
-        Stage: ${p.relationship_stage} | Status: ${p.engagement_status}
-      </div>
-    `).join('');
-}
-
-// -------------------
-// LOAD TASKS
-// -------------------
-async function loadTasks() {
-  const { data, error } = await db
-    .from('tasks')
-    .select('*')
-    .eq('status','pending')
-    .order('priority_score', { ascending: false })
-    .limit(10);
-
-  if (error) {
-    console.log("Task error:", error);
-    document.getElementById("tasks").innerHTML = error.message;
-    return;
-  }
-
-  document.getElementById("tasks").innerHTML =
-    (data || []).map(t => `
-      <div class="task">
-        <b>${t.title}</b><br>
-        Priority: ${t.priority_score}
-      </div>
-    `).join('');
-}
-
-loadPeople();
-loadTasks();
-</script>
 </body>
 </html>
