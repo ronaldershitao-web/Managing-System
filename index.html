@@ -121,16 +121,20 @@ async function loadDashboard() {
     .select("*");
 
   inactiveList.innerHTML = (inactive || [])
-    .map(x => `<li>${x.name || "No Name"}</li>`).join("");
+  .map(x => `<li>${x.name ?? "Unnamed"}</li>`)
+  .join("");
 
-  casesList.innerHTML = (cases || [])
-    .map(x => `<li>${x.case_type || "Case"}</li>`).join("");
+casesList.innerHTML = (cases || [])
+  .map(x => `<li>${x.case_type ?? "No Type"}</li>`)
+  .join("");
 
-  followupList.innerHTML = (followups || [])
-    .map(x => `<li>${x.case_type || "Follow-up"}</li>`).join("");
+followupList.innerHTML = (followups || [])
+  .map(x => `<li>${x.case_type ?? "No Type"}</li>`)
+  .join("");
 
-  notesList.innerHTML = (notes || [])
-    .map(x => `<li>${x.note || "Note"}</li>`).join("");
+notesList.innerHTML = (notes || [])
+  .map(x => `<li>${x.note ?? "Empty Note"}</li>`)
+  .join("");
 }
 
 /* =========================
