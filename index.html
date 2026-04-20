@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Ministry System</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+
+<body>
+  <h2>Login</h2>
+  <input id="email" placeholder="Email">
+  <input id="password" type="password">
+  <button onclick="login()">Login</button>
+
+  <hr>
+
+  <h2>Add Person</h2>
+  <input id="name" placeholder="Name">
+  <input id="phone" placeholder="Phone">
+  <button onclick="addPerson()">Add</button>
+
+  <hr>
+
+  <h2>People</h2>
+  <ul id="peopleList"></ul>
+
+  <hr>
+
+  <button onclick="createService()">Create Service + Attendance</button>
+
+  <script>
+    const supabase = window.supabase.createClient(
+      "https://YOUR_PROJECT.supabase.co",
+      "YOUR_ANON_KEY"
+    );
+
+    async function login() {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.value,
+        password: password.value
+      });
+
+      if (error) alert(error.message);
+      else {
+        alert("Logged in");
+        loadPeople();
+      }
+    }
+
+    async function addPerson() {
+      const { error } = await supabase
+        .from("people")
+        .insert([{ name: name.value, phone: phone.value }]);
+
+      if (error) alert(error.message);
+      else loadPeople();
+    }
+
+    async function loadPeople() {
+      const { data } = await supabase
+        .from("people")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      peopleList.innerHTML = "";
+
+      data.forEach(p => {
+        const li = document.createElement("li");
+        li.innerText = p.name + " - " + p.phone;
+        peopleList.appendChild(li);
+      });
+    }
+
+    async function createService() {
+      // 1. Create service
+      const { data: service } = await supabase
+        .from("services")
+        .insert([{ service_date: new Date() }])
+        .select();
+
+      const serviceId = service[0].id;
+
+      // 2. Get all people
+      const { data: people } = await supabase
+        .from("people")
+        .select("id");
+
+      // 3. Insert attendance
+      const records = people.map(p => ({
+        service_id: serviceId,
+        person_id: p.id
+      }));
+
+      await supabase.from("attendance").insert(records);
+
+      alert("Service & attendance created");
+    }
+  </script>
+</body>
+</html>
