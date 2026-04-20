@@ -1,98 +1,51 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Timeline Cockpit</title>
+  <title>Timeline</title>
 
   <script type="module">
-    import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+    import { db } from "./assets/app.js";
 
-    const db = createClient("https://qnxiuojefowyzeanfhdz.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFueGl1b2plZm93eXplYW5maGR6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMjY0NjEsImV4cCI6MjA5MTkwMjQ2MX0.JoSrVaT4KewYWoESPkjG5_W65nKdLYdcX7BZeaYK_FM");
-
-    async function loadTimeline() {
-
-      const { data, error } = await db
+    async function load() {
+      const { data } = await db
         .from('interactions')
-        .select(`
-          id,
-          interaction_type,
-          interaction_date,
-          notes,
-          people(name)
-        `)
+        .select('*')
         .order('interaction_date', { ascending: false })
-        .limit(50);
+        .limit(20);
 
-      const el = document.getElementById("timeline");
-
-      if (error) {
-        el.innerHTML = error.message;
-        return;
-      }
-
-      el.innerHTML = data.map(i => `
-        <div class="item">
-          <b>${i.people?.name || "Unknown"}</b><br>
-          ${i.interaction_type} • ${new Date(i.interaction_date).toLocaleString()}<br>
-          <small>${i.notes || ""}</small>
-        </div>
-      `).join('');
+      document.getElementById("list").innerHTML =
+        (data || []).map(i => `
+          <div class="card">
+            ${new Date(i.interaction_date).toLocaleString()}<br>
+            ${i.notes ?? ''}
+          </div>
+        `).join('');
     }
 
-    async function addInteraction() {
-
-      const person_id = document.getElementById("person").value;
-      const date = document.getElementById("date").value;
-      const notes = document.getElementById("notes").value;
-
-      const { error } = await db.from('interactions').insert([
-        {
-          person_id,
-          interaction_type: "manual_entry",
-          interaction_date: date,
-          notes
-        }
-      ]);
-
-      if (error) return alert(error.message);
-
-      alert("Backfilled");
-      loadTimeline();
-    }
-
-    async function loadPeopleDropdown() {
-      const { data } = await db.from('people').select('id,name');
-
-      document.getElementById("person").innerHTML =
-        data.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-    }
-
-    window.onload = () => {
-      loadTimeline();
-      loadPeopleDropdown();
-    };
+    window.onload = load;
   </script>
 
   <style>
-    body { font-family: Arial; background:#0f172a; color:white; padding:20px; }
-    .item { background:#111827; padding:10px; margin-bottom:8px; border-radius:6px; }
-    input,select { margin:5px; padding:6px; }
+    body { margin:0; font-family:Arial; background:#0f172a; color:white; }
+    header { padding:15px; background:#111827; }
+    .card {
+      background:#111827;
+      padding:10px;
+      margin:10px;
+      border-radius:8px;
+      border:1px solid #1f2937;
+    }
   </style>
 </head>
 
 <body>
 
-<h2>Interaction Timeline</h2>
+<header>
+  📊 Timeline
+  <button onclick="location.href='index.html'" style="float:right;">Home</button>
+</header>
 
-<div>
-  <select id="person"></select>
-  <input type="datetime-local" id="date">
-  <input id="notes" placeholder="Notes">
-  <button onclick="addInteraction()">Backfill</button>
-</div>
-
-<hr>
-
-<div id="timeline"></div>
+<div id="list"></div>
 
 </body>
 </html>
