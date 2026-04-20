@@ -1,15 +1,15 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Master Data Cockpit v2</title>
+  <title>Master Data Cockpit v3</title>
 
   <script type="module">
     import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 
-    const SUPABASE_URL = "https://qnxiuojefowyzeanfhdz.supabase.co";
-    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFueGl1b2plZm93eXplYW5maGR6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMjY0NjEsImV4cCI6MjA5MTkwMjQ2MX0.JoSrVaT4KewYWoESPkjG5_W65nKdLYdcX7BZeaYK_FM";
-
-    const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const db = createClient(
+      "https://qnxiuojefowyzeanfhdz.supabase.co",
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFueGl1b2plZm93eXplYW5maGR6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMjY0NjEsImV4cCI6MjA5MTkwMjQ2MX0.JoSrVaT4KewYWoESPkjG5_W65nKdLYdcX7BZeaYK_FM"
+    );
 
     let selectedPerson = null;
 
@@ -19,13 +19,13 @@
     async function loadPeople() {
       const { data, error } = await db
         .from('people')
-        .select('id,name,priority_score,last_contact_date,relationship_stage,engagement_status')
+        .select('id,name,priority_score,last_contact_date')
         .order('priority_score', { ascending: false });
 
       const el = document.getElementById("people");
 
       if (error) {
-        el.innerHTML = `<div style="color:red">${error.message}</div>`;
+        el.innerHTML = `<div class="error">${error.message}</div>`;
         return;
       }
 
@@ -41,67 +41,109 @@
     }
 
     // ------------------------
-    // SELECT PERSON
+    // SELECT PERSON (FULL VIEW)
     // ------------------------
     window.selectPerson = async function(id) {
 
-      const { data, error } = await db
+      const { data: person, error } = await db
         .from('people')
         .select('*')
         .eq('id', id)
         .single();
 
-      if (error) {
-        alert(error.message);
-        return;
+      if (error) return alert(error.message);
+
+      selectedPerson = person;
+
+      // 🔥 load recent interactions
+      const { data: interactions } = await db
+        .from('interactions')
+        .select('*')
+        .eq('person_id', id)
+        .order('interaction_date', { ascending: false })
+        .limit(5);
+
+      // 🔥 compute days gap
+      let daysGap = "Never";
+      if (person.last_contact_date) {
+        const diff = (new Date() - new Date(person.last_contact_date)) / (1000*60*60*24);
+        daysGap = Math.floor(diff) + " days ago";
       }
 
-      selectedPerson = data;
+      // 🔥 urgency styling
+      const score = person.priority_score ?? 0;
+      const urgencyClass =
+        score > 50 ? "urgent" :
+        score > 20 ? "medium" : "";
 
       document.getElementById("detail").innerHTML = `
-        <h3>${data.name}</h3>
+        <div class="${urgencyClass}">
 
-        <h4>Priority Engine</h4>
-        <p>Score: <b>${data.priority_score ?? 0}</b></p>
-        <p>Last Contact: ${data.last_contact_date ?? 'Never'}</p>
+          <h2>${person.name}</h2>
 
-        <button onclick="logInteraction()">+ Log Interaction</button>
+          <h4>🧠 Priority Engine</h4>
+          <p><b>Score:</b> ${score}</p>
+          <p><b>Last Contact:</b> ${daysGap}</p>
 
-        <hr>
+          <button onclick="logInteraction()">+ Log Interaction</button>
+          <button onclick="createTask()">+ Follow-up Task</button>
 
-        <label>Date of Birth</label>
-        <input type="date" id="dob" value="${data.date_of_birth || ''}" />
+          <hr>
 
-        <label>Gender</label>
-        <input id="gender" value="${data.gender || ''}" />
+          <h4>🕒 Recent Interactions</h4>
+          ${
+            (interactions || []).map(i => `
+              <div class="timeline">
+                ${i.interaction_type} • 
+                ${new Date(i.interaction_date).toLocaleDateString()}
+              </div>
+            `).join('') || "<i>No interactions yet</i>"
+          }
 
-        <label>Marital Status</label>
-        <input id="marital" value="${data.marital_status || ''}" />
+          <hr>
 
-        <label>Phone</label>
-        <input id="phone" value="${data.phone || ''}" />
+          <h4>👤 Identity</h4>
 
-        <label>Email</label>
-        <input id="email" value="${data.email || ''}" />
+          <label>Date of Birth</label>
+          <input type="date" id="dob" value="${person.date_of_birth || ''}" />
 
-        <label>Address</label>
-        <textarea id="address">${data.address || ''}</textarea>
+          <label>Gender</label>
+          <input id="gender" value="${person.gender || ''}" />
 
-        <label>Status</label>
-        <input id="status" value="${data.engagement_status || ''}" />
+          <label>Marital Status</label>
+          <input id="marital" value="${person.marital_status || ''}" />
 
-        <label>Stage</label>
-        <input id="stage" value="${data.discipleship_stage || 1}" />
+          <h4>📞 Contact</h4>
 
-        <label>Notes</label>
-        <textarea id="notes">${data.notes || ''}</textarea>
+          <label>Phone</label>
+          <input id="phone" value="${person.phone || ''}" />
 
-        <button onclick="savePerson()">Save</button>
+          <label>Email</label>
+          <input id="email" value="${person.email || ''}" />
+
+          <label>Address</label>
+          <textarea id="address">${person.address || ''}</textarea>
+
+          <h4>⛪ Church Journey</h4>
+
+          <label>Status</label>
+          <input id="status" value="${person.engagement_status || ''}" />
+
+          <label>Stage</label>
+          <input id="stage" value="${person.discipleship_stage || 1}" />
+
+          <h4>📝 Pastoral Notes</h4>
+
+          <textarea id="notes">${person.notes || ''}</textarea>
+
+          <button onclick="savePerson()">Save</button>
+
+        </div>
       `;
     }
 
     // ------------------------
-    // SAVE PERSON (SAFE + CLEAN)
+    // SAVE PERSON
     // ------------------------
     window.savePerson = async function() {
 
@@ -124,10 +166,7 @@
         .update(payload)
         .eq('id', selectedPerson.id);
 
-      if (error) {
-        alert(error.message);
-        return;
-      }
+      if (error) return alert(error.message);
 
       alert("Saved");
 
@@ -136,7 +175,7 @@
     }
 
     // ------------------------
-    // LOG INTERACTION (🔥 CORE ENGINE HOOK)
+    // LOG INTERACTION
     // ------------------------
     window.logInteraction = async function() {
 
@@ -145,51 +184,125 @@
       const { error } = await db.from('interactions').insert([
         {
           person_id: selectedPerson.id,
-          interaction_type: "manual_visit",
+          interaction_type: "visit",
           interaction_date: new Date().toISOString(),
           notes: "Logged from cockpit"
         }
       ]);
 
-      if (error) {
-        alert(error.message);
-        return;
-      }
+      if (error) return alert(error.message);
 
-      alert("Interaction logged → priority auto-updated");
+      alert("Interaction logged");
 
       await loadPeople();
       await selectPerson(selectedPerson.id);
     }
 
     // ------------------------
-    // INIT
+    // CREATE FOLLOW-UP TASK
     // ------------------------
+    window.createTask = async function() {
+
+      const { error } = await db.from('tasks').insert([
+        {
+          title: "Follow up " + selectedPerson.name,
+          person_id: selectedPerson.id,
+          status: "pending",
+          priority_score: selectedPerson.priority_score ?? 0,
+          due_date: new Date(Date.now() + 3*24*60*60*1000)
+        }
+      ]);
+
+      if (error) return alert(error.message);
+
+      alert("Task created");
+    }
+
     window.onload = loadPeople;
   </script>
 
   <style>
-    body { margin:0; font-family:Arial; background:#0f172a; color:white; }
+    body {
+      margin: 0;
+      font-family: Arial;
+      background: #0f172a;
+      color: white;
+    }
 
-    .layout { display:grid; grid-template-columns:260px 1fr; height:100vh; }
+    .layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      height: 100vh;
+    }
 
-    .sidebar { background:#020617; padding:10px; overflow:auto; }
+    .sidebar {
+      background: #020617;
+      padding: 10px;
+      overflow-y: auto;
+    }
 
-    .person { padding:8px; margin-bottom:6px; background:#111827; cursor:pointer; border-radius:6px; }
+    .person {
+      padding: 8px;
+      margin-bottom: 6px;
+      background: #111827;
+      border-radius: 6px;
+      cursor: pointer;
+    }
 
-    .person:hover { background:#1f2937; }
+    .person:hover {
+      background: #1f2937;
+    }
 
-    .main { padding:20px; }
+    .main {
+      padding: 20px;
+      overflow-y: auto;
+    }
 
-    input,textarea {
-      width:100%; padding:8px; margin:5px 0 10px;
-      background:#0b1220; color:white; border:1px solid #374151;
-      border-radius:6px;
+    input, textarea {
+      width: 100%;
+      padding: 8px;
+      margin: 5px 0 10px;
+      border-radius: 6px;
+      border: 1px solid #374151;
+      background: #0b1220;
+      color: white;
     }
 
     button {
-      background:#2563eb; border:none; color:white;
-      padding:8px 12px; border-radius:6px; cursor:pointer;
+      margin-right: 6px;
+      margin-top: 6px;
+      padding: 8px 12px;
+      background: #2563eb;
+      border: none;
+      border-radius: 6px;
+      color: white;
+      cursor: pointer;
+    }
+
+    .urgent {
+      border: 1px solid #ef4444;
+      background: #1f0a0a;
+      padding: 12px;
+      border-radius: 8px;
+    }
+
+    .medium {
+      border: 1px solid #f59e0b;
+      background: #1f140a;
+      padding: 12px;
+      border-radius: 8px;
+    }
+
+    .timeline {
+      font-size: 12px;
+      padding: 6px;
+      margin-bottom: 4px;
+      background: #0b1220;
+      border-radius: 6px;
+    }
+
+    .error {
+      color: #f87171;
     }
   </style>
 </head>
@@ -199,7 +312,7 @@
 <div class="layout">
 
   <div class="sidebar">
-    <h3>People</h3>
+    <h3>People (Priority)</h3>
     <div id="people"></div>
   </div>
 
