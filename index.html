@@ -40,6 +40,23 @@
   <h3>My Cases</h3>
 <ul id="caseList"></ul>
 <button onclick="loadCases()">Load Cases</button>
+
+<h2>Dashboard</h2>
+
+<button onclick="loadDashboard()">Refresh Dashboard</button>
+
+<h3>Inactive Members</h3>
+<ul id="inactiveList"></ul>
+
+<h3>Open Cases</h3>
+<ul id="openCasesList"></ul>
+
+<h3>Leader Workload</h3>
+<ul id="workloadList"></ul>
+
+  <h3>Follow-Up Needed</h3>
+<ul id="followupList"></ul>
+  
   <script>
     const supabase = window.supabase.createClient(
       "https://qnxiuojefowyzeanfhdz.supabase.co",
@@ -148,6 +165,58 @@ async function addNote() {
     const li = document.createElement("li");
     li.innerText = c.case_type + " - " + c.status;
     caseList.appendChild(li);
+  });
+}
+
+    async function loadDashboard() {
+  // Inactive members
+  const { data: inactive } = await supabase
+    .from("inactive_members")
+    .select("*");
+
+  inactiveList.innerHTML = "";
+  inactive.forEach(p => {
+    const li = document.createElement("li");
+    li.innerText = p.name + " (Inactive)";
+    inactiveList.appendChild(li);
+  });
+
+  // Open cases
+  const { data: cases } = await supabase
+    .from("open_cases")
+    .select("*");
+
+  openCasesList.innerHTML = "";
+  cases.forEach(c => {
+    const li = document.createElement("li");
+    li.innerText = c.case_type + " - Assigned to: " + c.assigned_to;
+    openCasesList.appendChild(li);
+  });
+
+  // Workload
+  const { data: workload } = await supabase
+    .from("leader_workload")
+    .select("*");
+
+  workloadList.innerHTML = "";
+  workload.forEach(w => {
+    const li = document.createElement("li");
+    li.innerText = "Leader: " + w.assigned_to + " | Cases: " + w.total_cases;
+    workloadList.appendChild(li);
+  });
+}
+
+    async function loadFollowups() {
+  const { data } = await supabase
+    .from("followup_needed")
+    .select("*");
+
+  followupList.innerHTML = "";
+
+  data.forEach(f => {
+    const li = document.createElement("li");
+    li.innerText = f.case_type + " (Needs follow-up)";
+    followupList.appendChild(li);
   });
 }
     
