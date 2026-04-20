@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Ministry OS v4</title>
+  <title>Ministry OS v5</title>
 
   <script type="module">
     import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
@@ -11,185 +11,122 @@
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFueGl1b2plZm93eXplYW5maGR6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMjY0NjEsImV4cCI6MjA5MTkwMjQ2MX0.JoSrVaT4KewYWoESPkjG5_W65nKdLYdcX7BZeaYK_FM"
     );
 
-    // ------------------------
-    // LOAD PEOPLE (ENHANCED)
-    // ------------------------
-    async function loadPeople() {
+    window.db = db;
 
-      const { data, error } = await db
-        .from('people_priority_engine')   // 🔥 use your engine
+    // ------------------------
+    // COCKPIT SWITCHER
+    // ------------------------
+    window.showCockpit = function(name) {
+
+      document.querySelectorAll(".cockpit").forEach(c => {
+        c.style.display = "none";
+      });
+
+      document.getElementById(name).style.display = "block";
+
+      // load data when switching
+      if (name === "command") loadCommand();
+      if (name === "master") loadMaster();
+      if (name === "timeline") loadTimeline();
+    }
+
+    // ------------------------
+    // COMMAND CENTER
+    // ------------------------
+    async function loadCommand() {
+      const { data } = await db
+        .from('people_priority_engine')
         .select('*')
         .order('computed_priority_score', { ascending: false })
-        .limit(8);
+        .limit(5);
 
-      const el = document.getElementById("people");
-
-      if (error) {
-        el.innerHTML = `<div class="error">${error.message}</div>`;
-        return;
-      }
-
-      el.innerHTML = (data || []).map(p => {
-
-        const urgent = p.computed_priority_score > 50 ? "urgent" : "";
-
-        return `
-          <div class="card-item ${urgent}">
-            <div class="name">${p.name}</div>
-
-            <div class="meta">
-              Score: <b>${Math.round(p.computed_priority_score)}</b><br>
-              Last Contact: ${p.days_since_last_contact ?? 'N/A'} days<br>
-              Interactions: ${p.interaction_count}
-            </div>
-
-            <button onclick="logInteraction('${p.id}')">
-              Quick Contact
-            </button>
+      document.getElementById("command_people").innerHTML =
+        (data || []).map(p => `
+          <div class="card">
+            <b>${p.name}</b><br>
+            Score: ${Math.round(p.computed_priority_score)}
           </div>
-        `;
-      }).join('');
+        `).join('');
     }
 
     // ------------------------
-    // QUICK INTERACTION LOG
+    // MASTER DATA
     // ------------------------
-    window.logInteraction = async function(personId) {
-
-      const { error } = await db.from('interactions').insert([{
-        person_id: personId,
-        interaction_type: "follow_up",
-        interaction_date: new Date(),
-        duration_minutes: 10
-      }]);
-
-      if (error) {
-        alert(error.message);
-        return;
-      }
-
-      alert("Interaction logged");
-
-      // 🔥 auto refresh
-      loadPeople();
-    }
-
-    // ------------------------
-    // LOAD TASKS
-    // ------------------------
-    async function loadTasks() {
-
-      const { data, error } = await db
-        .from('tasks')
+    async function loadMaster() {
+      const { data } = await db
+        .from('people')
         .select('*')
-        .eq('status', 'pending')
-        .order('priority_score', { ascending: false })
-        .limit(8);
+        .order('priority_score', { ascending: false });
 
-      const el = document.getElementById("tasks");
-
-      if (error) {
-        el.innerHTML = `<div class="error">${error.message}</div>`;
-        return;
-      }
-
-      el.innerHTML = (data || []).map(t => `
-        <div class="card-item">
-          <div class="name">${t.title}</div>
-          <div class="meta">
-            Priority ${t.priority_score}<br>
-            Due: ${t.due_date ?? 'N/A'}
+      document.getElementById("master_people").innerHTML =
+        (data || []).map(p => `
+          <div class="card">
+            ${p.name} (Score: ${p.priority_score ?? 0})
           </div>
-        </div>
-      `).join('');
+        `).join('');
     }
 
-    window.onload = () => {
-      loadPeople();
-      loadTasks();
-    };
+    // ------------------------
+    // TIMELINE
+    // ------------------------
+    async function loadTimeline() {
+      const { data } = await db
+        .from('interactions')
+        .select('interaction_date, notes')
+        .order('interaction_date', { ascending: false })
+        .limit(10);
+
+      document.getElementById("timeline_list").innerHTML =
+        (data || []).map(i => `
+          <div class="card">
+            ${i.interaction_date}<br>
+            ${i.notes ?? ''}
+          </div>
+        `).join('');
+    }
+
+    window.onload = () => showCockpit("command");
   </script>
 
   <style>
     body {
-      font-family: Arial;
-      margin: 0;
-      background: #0f172a;
-      color: #e5e7eb;
+      margin:0;
+      font-family:Arial;
+      background:#0f172a;
+      color:white;
     }
 
     header {
-      background: #111827;
-      padding: 18px;
-      font-size: 18px;
-      font-weight: bold;
-      border-bottom: 1px solid #1f2937;
+      padding:15px;
+      background:#111827;
+      border-bottom:1px solid #1f2937;
     }
 
-    .container {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
-      padding: 16px;
+    .nav button {
+      margin-right:8px;
+      padding:8px 12px;
+      background:#2563eb;
+      border:none;
+      color:white;
+      border-radius:6px;
+      cursor:pointer;
     }
 
-    .panel {
-      background: #111827;
-      padding: 16px;
-      border-radius: 12px;
-      border: 1px solid #1f2937;
+    .nav button:hover {
+      background:#1d4ed8;
     }
 
-    .panel h3 {
-      margin-top: 0;
-      color: #60a5fa;
+    .cockpit {
+      display:none;
+      padding:20px;
     }
 
-    .card-item {
-      padding: 10px;
-      margin-bottom: 8px;
-      background: #0b1220;
-      border-radius: 8px;
-      border: 1px solid #1f2937;
-    }
-
-    .card-item.urgent {
-      border: 1px solid #ef4444;
-      background: #1f0a0a;
-    }
-
-    .name {
-      font-weight: bold;
-    }
-
-    .meta {
-      font-size: 12px;
-      color: #9ca3af;
-      margin-bottom: 6px;
-    }
-
-    button {
-      padding: 6px 10px;
-      border: none;
-      background: #2563eb;
-      color: white;
-      border-radius: 6px;
-      cursor: pointer;
-    }
-
-    button:hover {
-      background: #1d4ed8;
-    }
-
-    .error {
-      color: #f87171;
-      font-size: 12px;
-    }
-
-    @media (max-width: 800px) {
-      .container {
-        grid-template-columns: 1fr;
-      }
+    .card {
+      background:#111827;
+      padding:10px;
+      margin-bottom:8px;
+      border-radius:8px;
+      border:1px solid #1f2937;
     }
   </style>
 </head>
@@ -197,33 +134,31 @@
 <body>
 
 <header>
-  Ministry OS v4 — Command Center
+  Ministry OS v5
 
-  <div style="float:right;">
-    <button onclick="window.location.href='cockpit.html'">
-      Master Data
-    </button>
-
-    <button onclick="window.location.href='timeline.html'">
-      Timeline
-    </button>
+  <div class="nav" style="float:right;">
+    <button onclick="showCockpit('command')">🏠 Command</button>
+    <button onclick="showCockpit('master')">👤 Master</button>
+    <button onclick="showCockpit('timeline')">📊 Timeline</button>
   </div>
 </header>
 
-<div class="container">
+<!-- COMMAND CENTER -->
+<div id="command" class="cockpit">
+  <h2>🔥 Command Center</h2>
+  <div id="command_people"></div>
+</div>
 
-  <!-- PEOPLE -->
-  <div class="panel">
-    <h3>🔥 People You Must Act On</h3>
-    <div id="people"></div>
-  </div>
+<!-- MASTER DATA -->
+<div id="master" class="cockpit">
+  <h2>👤 Master Data</h2>
+  <div id="master_people"></div>
+</div>
 
-  <!-- TASKS -->
-  <div class="panel">
-    <h3>📌 Priority Tasks</h3>
-    <div id="tasks"></div>
-  </div>
-
+<!-- TIMELINE -->
+<div id="timeline" class="cockpit">
+  <h2>📊 Interaction Timeline</h2>
+  <div id="timeline_list"></div>
 </div>
 
 </body>
