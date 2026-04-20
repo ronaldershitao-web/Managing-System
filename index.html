@@ -29,88 +29,124 @@
 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
 
   <div class="bg-white p-3 rounded shadow">
-    <h3 class="font-bold">Inactive Members</h3>
+    <h3 class="font-bold mb-2">Inactive Members</h3>
     <ul id="inactiveList"></ul>
   </div>
 
   <div class="bg-white p-3 rounded shadow">
-    <h3 class="font-bold">Open Cases</h3>
+    <h3 class="font-bold mb-2">Open Cases</h3>
     <ul id="casesList"></ul>
   </div>
 
   <div class="bg-white p-3 rounded shadow">
-    <h3 class="font-bold">Notes</h3>
+    <h3 class="font-bold mb-2">Pastoral Notes</h3>
     <ul id="notesList"></ul>
   </div>
 
 </div>
 
 <script>
-
+/* =========================
+   SUPABASE INIT (ONLY ONCE)
+========================= */
 const supabase = window.supabase.createClient(
   "https://qnxiuojefowyzeanfhdz.supabase.co",
-  "YOUR_ANON_KEY"
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFueGl1b2plZm93eXplYW5maGR6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMjY0NjEsImV4cCI6MjA5MTkwMjQ2MX0.JoSrVaT4KewYWoESPkjG5_W65nKdLYdcX7BZeaYK_FM"
 );
 
-let user = null;
+/* =========================
+   GLOBAL STATE
+========================= */
+let currentUser = null;
 
-/* LOGIN */
+/* =========================
+   LOGIN
+========================= */
 async function login() {
   const { data, error } = await supabase.auth.signInWithPassword({
-    email: email.value,
-    password: password.value
+    email: document.getElementById("email").value,
+    password: document.getElementById("password").value
   });
 
-  if (error) return alert(error.message);
+  if (error) {
+    alert(error.message);
+    return;
+  }
 
-  user = data.user;
-  loadAll();
+  currentUser = data.user;
+  await loadDashboard();
 }
 
-/* LOGOUT */
+/* =========================
+   LOGOUT
+========================= */
 async function logout() {
   await supabase.auth.signOut();
-  user = null;
-
-  inactiveList.innerHTML = "";
-  casesList.innerHTML = "";
-  notesList.innerHTML = "";
+  currentUser = null;
+  clearUI();
 }
 
-/* LOAD DATA */
-async function loadAll() {
+/* =========================
+   CLEAR UI
+========================= */
+function clearUI() {
+  document.getElementById("inactiveList").innerHTML = "";
+  document.getElementById("casesList").innerHTML = "";
+  document.getElementById("notesList").innerHTML = "";
+}
 
-  if (!user) return;
+/* =========================
+   LOAD DASHBOARD
+========================= */
+async function loadDashboard() {
+
+  if (!currentUser) return;
 
   const { data: inactive } = await supabase.from("inactive_members").select("*");
   const { data: cases } = await supabase.from("open_cases").select("*");
   const { data: notes } = await supabase.from("pastoral_notes").select("*");
 
-  inactiveList.innerHTML = (inactive || [])
-    .map(x => `<li>${x.name}</li>`).join("");
+  document.getElementById("inactiveList").innerHTML =
+    (inactive || []).map(x => `<li>${x.name ?? "Unnamed"}</li>`).join("");
 
-  casesList.innerHTML = (cases || [])
-    .map(x => `<li>${x.case_type}</li>`).join("");
+  document.getElementById("casesList").innerHTML =
+    (cases || []).map(x => `<li>${x.case_type ?? "No Type"}</li>`).join("");
 
-  notesList.innerHTML = (notes || [])
-    .map(x => `<li>${x.note}</li>`).join("");
+  document.getElementById("notesList").innerHTML =
+    (notes || []).map(x => `<li>${x.note ?? "Empty"}</li>`).join("");
 }
 
-/* REALTIME */
+/* =========================
+   REALTIME SYNC
+========================= */
 supabase
-  .channel('live')
-  .on('postgres_changes', { event: '*', schema: 'public', table: 'people' }, loadAll)
-  .on('postgres_changes', { event: '*', schema: 'public', table: 'pastoral_cases' }, loadAll)
-  .on('postgres_changes', { event: '*', schema: 'public', table: 'pastoral_notes' }, loadAll)
+  .channel('ministry-live')
+  .on('postgres_changes', {
+    event: '*',
+    schema: 'public',
+    table: 'people'
+  }, loadDashboard)
+  .on('postgres_changes', {
+    event: '*',
+    schema: 'public',
+    table: 'pastoral_cases'
+  }, loadDashboard)
+  .on('postgres_changes', {
+    event: '*',
+    schema: 'public',
+    table: 'pastoral_notes'
+  }, loadDashboard)
   .subscribe();
 
-/* SESSION RESTORE */
+/* =========================
+   SESSION RESTORE
+========================= */
 window.addEventListener("load", async () => {
   const { data } = await supabase.auth.getSession();
 
   if (data.session) {
-    user = data.session.user;
-    loadAll();
+    currentUser = data.session.user;
+    loadDashboard();
   }
 });
 
