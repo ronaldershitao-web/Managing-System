@@ -87,31 +87,36 @@
     // ------------------------
     // SAVE PERSON
     // ------------------------
-    window.savePerson = async function savePerson() {
-  console.log("Saving person:", selectedPerson);
+   window.savePerson = async function savePerson() {
 
- const { data, error } = await db.from('people').update({
-  date_of_birth: document.getElementById("dob").value,
-  gender: document.getElementById("gender").value,
-  marital_status: document.getElementById("marital").value,
-  phone: document.getElementById("phone").value,
-  email: document.getElementById("email").value,
-  address: document.getElementById("address").value,
-  engagement_status: document.getElementById("status").value,
-  discipleship_stage: document.getElementById("stage").value,
-  notes: document.getElementById("notes").value,
-  prayer_requests: document.getElementById("prayer").value
-})
-.eq('id', selectedPerson.id)
-.select();
+  const payload = {
+    date_of_birth: document.getElementById("dob")?.value || null,
+    gender: document.getElementById("gender")?.value || null,
+    marital_status: document.getElementById("marital")?.value || null,
+    phone: document.getElementById("phone")?.value || null,
+    email: document.getElementById("email")?.value || null,
+    address: document.getElementById("address")?.value || null,
+    engagement_status: document.getElementById("status")?.value || null,
+    discipleship_stage: document.getElementById("stage")?.value || null,
+    notes: document.getElementById("notes")?.value || null,
+    prayer_requests: document.getElementById("prayer")?.value || null
+  };
 
-  console.log("Update result:", { data, error });
+  console.log("FINAL PAYLOAD:", payload);
+
+  const { data, error } = await db
+    .from('people')
+    .update(payload)
+    .eq('id', selectedPerson.id)
+    .select();
+
+  console.log("UPDATE RESULT:", data, error);
 
   if (error) return alert(error.message);
 
   alert("Saved");
-      await loadPeople();
-}
+  await loadPeople();
+};
 
     // ------------------------
     // ADD PERSON
