@@ -27,6 +27,19 @@
 
   <button onclick="createService()">Create Service + Attendance</button>
 
+  <h3>Create Pastoral Case</h3>
+<input id="personId" placeholder="Person ID">
+<input id="caseType" placeholder="Case Type">
+<button onclick="createCase()">Create Case</button>
+
+  <h3>Add Note</h3>
+<input id="caseId" placeholder="Case ID">
+<input id="noteText" placeholder="Note">
+<button onclick="addNote()">Add Note</button>
+
+  <h3>My Cases</h3>
+<ul id="caseList"></ul>
+<button onclick="loadCases()">Load Cases</button>
   <script>
     const supabase = window.supabase.createClient(
       "https://qnxiuojefowyzeanfhdz.supabase.co",
@@ -93,7 +106,51 @@
       await supabase.from("attendance").insert(records);
 
       alert("Service & attendance created");
+
+     
     }
+
+     async function createCase() {
+  const { error } = await supabase
+    .from("pastoral_cases")
+    .insert([{
+      person_id: personId.value,
+      case_type: caseType.value,
+      assigned_to: (await supabase.auth.getUser()).data.user.id,
+      created_by: (await supabase.auth.getUser()).data.user.id
+    }]);
+
+  if (error) alert(error.message);
+  else alert("Case created");
+}
+async function addNote() {
+  const { error } = await supabase
+    .from("pastoral_notes")
+    .insert([{
+      case_id: caseId.value,
+      note: noteText.value,
+      created_by: (await supabase.auth.getUser()).data.user.id
+    }]);
+
+  if (error) alert(error.message);
+  else alert("Note added");
+}
+
+    async function loadCases() {
+  const { data } = await supabase
+    .from("pastoral_cases")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  caseList.innerHTML = "";
+
+  data.forEach(c => {
+    const li = document.createElement("li");
+    li.innerText = c.case_type + " - " + c.status;
+    caseList.appendChild(li);
+  });
+}
+    
   </script>
 </body>
 </html>
