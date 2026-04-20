@@ -1,155 +1,119 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Ministry System</title>
-
+  <title>Ministry OS v3.0</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    body {
+      font-family: Arial;
+      margin: 0;
+      background: #f5f6fa;
+    }
+
+    header {
+      background: #1e2a38;
+      color: white;
+      padding: 15px;
+      font-size: 18px;
+    }
+
+    .container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+      padding: 15px;
+    }
+
+    .card {
+      background: white;
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+
+    h3 {
+      margin-top: 0;
+    }
+
+    button {
+      padding: 6px 10px;
+      margin-top: 5px;
+      cursor: pointer;
+    }
+
+    .task {
+      padding: 8px;
+      border-bottom: 1px solid #eee;
+    }
+  </style>
 </head>
 
-<body class="bg-gray-100 p-4">
+<body>
 
-<h1 class="text-2xl font-bold mb-4">Ministry System</h1>
+<header>
+  Ministry OS v3.0 Dashboard
+</header>
 
-<!-- LOGIN -->
-<div class="bg-white p-4 rounded shadow mb-4">
-  <input id="email" placeholder="Email" class="border p-2 mr-2">
-  <input id="password" type="password" placeholder="Password" class="border p-2 mr-2">
+<div class="container">
 
-  <button onclick="login()" class="bg-blue-500 text-white px-4 py-2 rounded">
-    Login
-  </button>
-
-  <button onclick="logout()" class="bg-gray-500 text-white px-4 py-2 rounded ml-2">
-    Logout
-  </button>
-</div>
-
-<!-- DASHBOARD -->
-<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-
-  <div class="bg-white p-3 rounded shadow">
-    <h3 class="font-bold mb-2">Inactive Members</h3>
-    <ul id="inactiveList"></ul>
+  <div class="card">
+    <h3>Top People to Follow Up</h3>
+    <div id="people"></div>
   </div>
 
-  <div class="bg-white p-3 rounded shadow">
-    <h3 class="font-bold mb-2">Open Cases</h3>
-    <ul id="casesList"></ul>
-  </div>
-
-  <div class="bg-white p-3 rounded shadow">
-    <h3 class="font-bold mb-2">Pastoral Notes</h3>
-    <ul id="notesList"></ul>
+  <div class="card">
+    <h3>Priority Tasks</h3>
+    <div id="tasks"></div>
   </div>
 
 </div>
 
 <script>
-/* =========================
-   SUPABASE INIT (ONLY ONCE)
-========================= */
-const supabase = window.supabase.createClient(
-  "https://qnxiuojefowyzeanfhdz.supabase.co",
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFueGl1b2plZm93eXplYW5maGR6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMjY0NjEsImV4cCI6MjA5MTkwMjQ2MX0.JoSrVaT4KewYWoESPkjG5_W65nKdLYdcX7BZeaYK_FM"
-);
+const SUPABASE_URL = "https://YOUR_PROJECT.supabase.co";
+const SUPABASE_KEY = "YOUR_ANON_KEY";
 
-/* =========================
-   GLOBAL STATE
-========================= */
-let currentUser = null;
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-/* =========================
-   LOGIN
-========================= */
-async function login() {
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: document.getElementById("email").value,
-    password: document.getElementById("password").value
-  });
+// -------------------
+// LOAD PEOPLE
+// -------------------
+async function loadPeople() {
+  let { data } = await db.from('people')
+    .select('*')
+    .order('priority_score', { ascending: false })
+    .limit(5);
 
-  if (error) {
-    alert(error.message);
-    return;
-  }
-
-  currentUser = data.user;
-  await loadDashboard();
+  document.getElementById("people").innerHTML =
+    data.map(p => `
+      <div class="task">
+        <b>${p.name}</b><br>
+        Stage: ${p.relationship_stage} | Status: ${p.engagement_status}
+      </div>
+    `).join('');
 }
 
-/* =========================
-   LOGOUT
-========================= */
-async function logout() {
-  await supabase.auth.signOut();
-  currentUser = null;
-  clearUI();
+// -------------------
+// LOAD TASKS
+// -------------------
+async function loadTasks() {
+  let { data } = await db.from('tasks')
+    .select('*')
+    .eq('status','pending')
+    .order('priority_score', { ascending: false })
+    .limit(10);
+
+  document.getElementById("tasks").innerHTML =
+    data.map(t => `
+      <div class="task">
+        <b>${t.title}</b><br>
+        Priority: ${t.priority_score}
+      </div>
+    `).join('');
 }
 
-/* =========================
-   CLEAR UI
-========================= */
-function clearUI() {
-  document.getElementById("inactiveList").innerHTML = "";
-  document.getElementById("casesList").innerHTML = "";
-  document.getElementById("notesList").innerHTML = "";
-}
-
-/* =========================
-   LOAD DASHBOARD
-========================= */
-async function loadDashboard() {
-
-  if (!currentUser) return;
-
-  const { data: inactive } = await supabase.from("inactive_members").select("*");
-  const { data: cases } = await supabase.from("open_cases").select("*");
-  const { data: notes } = await supabase.from("pastoral_notes").select("*");
-
-  document.getElementById("inactiveList").innerHTML =
-    (inactive || []).map(x => `<li>${x.name ?? "Unnamed"}</li>`).join("");
-
-  document.getElementById("casesList").innerHTML =
-    (cases || []).map(x => `<li>${x.case_type ?? "No Type"}</li>`).join("");
-
-  document.getElementById("notesList").innerHTML =
-    (notes || []).map(x => `<li>${x.note ?? "Empty"}</li>`).join("");
-}
-
-/* =========================
-   REALTIME SYNC
-========================= */
-supabase
-  .channel('ministry-live')
-  .on('postgres_changes', {
-    event: '*',
-    schema: 'public',
-    table: 'people'
-  }, loadDashboard)
-  .on('postgres_changes', {
-    event: '*',
-    schema: 'public',
-    table: 'pastoral_cases'
-  }, loadDashboard)
-  .on('postgres_changes', {
-    event: '*',
-    schema: 'public',
-    table: 'pastoral_notes'
-  }, loadDashboard)
-  .subscribe();
-
-/* =========================
-   SESSION RESTORE
-========================= */
-window.addEventListener("load", async () => {
-  const { data } = await supabase.auth.getSession();
-
-  if (data.session) {
-    currentUser = data.session.user;
-    loadDashboard();
-  }
-});
-
+loadPeople();
+loadTasks();
 </script>
 
 </body>
