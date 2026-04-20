@@ -1,28 +1,26 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Ministry OS v3.1</title>
+  <title>Ministry OS v4</title>
 
   <script type="module">
     import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 
-    const SUPABASE_URL = "https://qnxiuojefowyzeanfhdz.supabase.co";
-    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFueGl1b2plZm93eXplYW5maGR6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMjY0NjEsImV4cCI6MjA5MTkwMjQ2MX0.JoSrVaT4KewYWoESPkjG5_W65nKdLYdcX7BZeaYK_FM";
-
-    const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    window.db = db;
-
-    console.log("Ministry OS Online");
+    const db = createClient(
+      "https://qnxiuojefowyzeanfhdz.supabase.co",
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFueGl1b2plZm93eXplYW5maGR6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMjY0NjEsImV4cCI6MjA5MTkwMjQ2MX0.JoSrVaT4KewYWoESPkjG5_W65nKdLYdcX7BZeaYK_FM"
+    );
 
     // ------------------------
-    // LOAD PEOPLE
+    // LOAD PEOPLE (ENHANCED)
     // ------------------------
     async function loadPeople() {
+
       const { data, error } = await db
-        .from('people')
+        .from('people_priority_engine')   // 🔥 use your engine
         .select('*')
-        .order('priority_score', { ascending: false })
-        .limit(5);
+        .order('computed_priority_score', { ascending: false })
+        .limit(8);
 
       const el = document.getElementById("people");
 
@@ -31,20 +29,56 @@
         return;
       }
 
-      el.innerHTML = (data || []).map(p => `
-        <div class="card-item">
-          <div class="name">${p.name}</div>
-          <div class="meta">
-            Stage ${p.relationship_stage} • ${p.engagement_status}
+      el.innerHTML = (data || []).map(p => {
+
+        const urgent = p.computed_priority_score > 50 ? "urgent" : "";
+
+        return `
+          <div class="card-item ${urgent}">
+            <div class="name">${p.name}</div>
+
+            <div class="meta">
+              Score: <b>${Math.round(p.computed_priority_score)}</b><br>
+              Last Contact: ${p.days_since_last_contact ?? 'N/A'} days<br>
+              Interactions: ${p.interaction_count}
+            </div>
+
+            <button onclick="logInteraction('${p.id}')">
+              Quick Contact
+            </button>
           </div>
-        </div>
-      `).join('');
+        `;
+      }).join('');
+    }
+
+    // ------------------------
+    // QUICK INTERACTION LOG
+    // ------------------------
+    window.logInteraction = async function(personId) {
+
+      const { error } = await db.from('interactions').insert([{
+        person_id: personId,
+        interaction_type: "follow_up",
+        interaction_date: new Date(),
+        duration_minutes: 10
+      }]);
+
+      if (error) {
+        alert(error.message);
+        return;
+      }
+
+      alert("Interaction logged");
+
+      // 🔥 auto refresh
+      loadPeople();
     }
 
     // ------------------------
     // LOAD TASKS
     // ------------------------
     async function loadTasks() {
+
       const { data, error } = await db
         .from('tasks')
         .select('*')
@@ -62,27 +96,12 @@
       el.innerHTML = (data || []).map(t => `
         <div class="card-item">
           <div class="name">${t.title}</div>
-          <div class="meta">Priority ${t.priority_score}</div>
+          <div class="meta">
+            Priority ${t.priority_score}<br>
+            Due: ${t.due_date ?? 'N/A'}
+          </div>
         </div>
       `).join('');
-    }
-
-    // ------------------------
-    // ADD PERSON
-    // ------------------------
-    window.addPerson = async function () {
-      const name = document.getElementById("name").value;
-
-      if (!name) return alert("Enter name");
-
-      const { error } = await db.from("people").insert([
-        { name, relationship_stage: 1, discipleship_stage: 1 }
-      ]);
-
-      if (error) return alert(error.message);
-
-      document.getElementById("name").value = "";
-      loadPeople();
     }
 
     window.onload = () => {
@@ -93,7 +112,7 @@
 
   <style>
     body {
-      font-family: Arial, sans-serif;
+      font-family: Arial;
       margin: 0;
       background: #0f172a;
       color: #e5e7eb;
@@ -134,6 +153,11 @@
       border: 1px solid #1f2937;
     }
 
+    .card-item.urgent {
+      border: 1px solid #ef4444;
+      background: #1f0a0a;
+    }
+
     .name {
       font-weight: bold;
     }
@@ -141,25 +165,11 @@
     .meta {
       font-size: 12px;
       color: #9ca3af;
-    }
-
-    .row {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 10px;
-    }
-
-    input {
-      flex: 1;
-      padding: 8px;
-      border-radius: 6px;
-      border: 1px solid #374151;
-      background: #0b1220;
-      color: white;
+      margin-bottom: 6px;
     }
 
     button {
-      padding: 8px 12px;
+      padding: 6px 10px;
       border: none;
       background: #2563eb;
       color: white;
@@ -187,32 +197,30 @@
 <body>
 
 <header>
-  Ministry OS v3.1 — Command Center
+  Ministry OS v4 — Command Center
 
   <div style="float:right;">
-  <button onclick="window.location.href='cockpit.html'">
-    Master Data Cockpit
-  </button>
-</div>
+    <button onclick="window.location.href='cockpit.html'">
+      Master Data
+    </button>
+
+    <button onclick="window.location.href='timeline.html'">
+      Timeline
+    </button>
+  </div>
 </header>
 
 <div class="container">
 
   <!-- PEOPLE -->
   <div class="panel">
-    <h3>Top People to Follow Up</h3>
-
-    <div class="row">
-      <input id="name" placeholder="Add new person..." />
-      <button onclick="addPerson()">Add</button>
-    </div>
-
+    <h3>🔥 People You Must Act On</h3>
     <div id="people"></div>
   </div>
 
   <!-- TASKS -->
   <div class="panel">
-    <h3>Priority Tasks</h3>
+    <h3>📌 Priority Tasks</h3>
     <div id="tasks"></div>
   </div>
 
