@@ -1,30 +1,73 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>People</title>
+  <title>People by Leaders</title>
   <link rel="stylesheet" href="../styles/main.css">
 </head>
 
 <body>
 
-<h2>👤 People</h2>
+<h2>👤 People (Grouped by Leaders)</h2>
 
-<div id="list"></div>
+<div id="view"></div>
 
 <script type="module">
-import { getPeople } from "../services/people.service.js";
+import { db } from "../assets/app.js";
 
-const { data } = await getPeople();
+/**
+ * 1. Load all people
+ */
+const { data: people } = await db
+  .from("people")
+  .select("*");
 
-document.getElementById("list").innerHTML =
-  (data || []).map(p => `
-    <div class="card" onclick="location.href='person.html?id=${p.id}'">
-      <b>${p.name}</b><br>
-      Stage: ${p.relationship_stage ?? "-"}<br>
-      Risk: ${p.priority_score ?? "-"}
+/**
+ * 2. Separate leaders and members
+ */
+const leaders = people.filter(p => !p.leader_id);
+const members = people.filter(p => p.leader_id);
+
+/**
+ * 3. Group members under leaders
+ */
+function getMembers(leaderId) {
+  return members.filter(m => m.leader_id === leaderId);
+}
+
+/**
+ * 4. Render
+ */
+document.getElementById("view").innerHTML =
+  leaders.map(l => `
+    <div class="card">
+
+      <h3>👤 ${l.name}</h3>
+      <small>Stage: ${l.relationship_stage ?? "-"}</small>
+      <hr>
+
+      <b>Members:</b>
+      <div>
+        ${getMembers(l.id).map(m => `
+          <div class="subcard">
+            ${m.name} (Stage ${m.relationship_stage ?? "-"})
+          </div>
+        `).join("") || "<i>No members</i>"}
+      </div>
+
     </div>
   `).join("");
+
 </script>
+
+<style>
+.subcard {
+  margin:5px 0;
+  padding:6px;
+  background:#0f172a;
+  border:1px solid #1f2937;
+  border-radius:6px;
+}
+</style>
 
 </body>
 </html>
