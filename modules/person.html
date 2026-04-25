@@ -14,8 +14,13 @@ import { db } from "../assets/app.js";
 
 const id = new URLSearchParams(window.location.search).get("id");
 
+if (!id) {
+  alert("Missing person ID");
+  throw new Error("No ID");
+}
+
 /**
- * Load person
+ * LOAD PERSON
  */
 const { data: person } = await db
   .from("people")
@@ -24,7 +29,7 @@ const { data: person } = await db
   .single();
 
 /**
- * Load interactions
+ * LOAD INTERACTIONS
  */
 const { data: interactions } = await db
   .from("interactions")
@@ -33,7 +38,7 @@ const { data: interactions } = await db
   .order("interaction_date", { ascending: false });
 
 /**
- * Load tasks
+ * LOAD TASKS
  */
 const { data: tasks } = await db
   .from("tasks")
@@ -41,10 +46,10 @@ const { data: tasks } = await db
   .eq("person_id", id);
 
 /**
- * NAVIGATION
+ * NAV FUNCTION (IMPORTANT FIX)
  */
-window.editPerson = function(id) {
-  location.href = `edit-person.html?id=${id}`;
+window.editPerson = function(personId) {
+  location.href = `edit-person.html?id=${personId}`;
 };
 
 /**
@@ -55,13 +60,18 @@ document.getElementById("profile").innerHTML = `
 
     <h2>
       👤 ${person.name}
-      <button onclick="editPerson('${person.id}')">Edit</button>
     </h2>
+
+    <button onclick="editPerson('${person.id}')">
+      ✏️ Edit Person
+    </button>
+
+    <hr>
 
     <p>Phone: ${person.phone || "-"}</p>
     <p>Email: ${person.email || "-"}</p>
     <p>Stage: ${person.relationship_stage || "-"}</p>
-    <p>Leader: ${person.leader_id || "-"}</p>
+    <p>Leader ID: ${person.leader_id || "-"}</p>
 
   </div>
 
