@@ -15,40 +15,51 @@
 import { db } from "../assets/app.js";
 
 /**
- * 1. Load all people
+ * Load all people
  */
 const { data: people } = await db
   .from("people")
   .select("*");
 
 /**
- * 2. Separate leaders and members
+ * Split leaders vs members
  */
 const leaders = people.filter(p => !p.leader_id);
 const members = people.filter(p => p.leader_id);
 
 /**
- * 3. Group members under leaders
+ * Get members under leader
  */
 function getMembers(leaderId) {
   return members.filter(m => m.leader_id === leaderId);
 }
 
 /**
- * 4. Render
+ * NAVIGATION FUNCTION (FIX)
+ */
+window.goEdit = function(id) {
+  location.href = `edit-person.html?id=${id}`;
+};
+
+/**
+ * Render
  */
 document.getElementById("view").innerHTML =
   leaders.map(l => `
     <div class="card">
 
-      <h3>👤 ${l.name}</h3>
+      <h3 onclick="goEdit('${l.id}')" style="cursor:pointer;">
+        👤 ${l.name}
+      </h3>
+
       <small>Stage: ${l.relationship_stage ?? "-"}</small>
+
       <hr>
 
       <b>Members:</b>
       <div>
         ${getMembers(l.id).map(m => `
-          <div class="subcard">
+          <div class="subcard" onclick="goEdit('${m.id}')">
             ${m.name} (Stage ${m.relationship_stage ?? "-"})
           </div>
         `).join("") || "<i>No members</i>"}
@@ -66,6 +77,7 @@ document.getElementById("view").innerHTML =
   background:#0f172a;
   border:1px solid #1f2937;
   border-radius:6px;
+  cursor:pointer;
 }
 </style>
 
