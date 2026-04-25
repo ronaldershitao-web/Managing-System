@@ -1,61 +1,23 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Ministry OS Hub</title>
-
-  <style>
-    body {
-      margin:0;
-      font-family: Arial;
-      background:#0f172a;
-      color:white;
-      display:flex;
-      height:100vh;
-      align-items:center;
-      justify-content:center;
-    }
-
-    .grid {
-      display:grid;
-      grid-template-columns: repeat(2, 200px);
-      gap:20px;
-    }
-
-    .card {
-      background:#111827;
-      padding:20px;
-      border-radius:12px;
-      text-align:center;
-      cursor:pointer;
-      border:1px solid #1f2937;
-      transition:0.2s;
-    }
-
-    .card:hover {
-      transform: scale(1.05);
-      border-color:#2563eb;
-    }
-  </style>
+  <title>Ministry OS</title>
+  <link rel="stylesheet" href="styles/main.css">
 </head>
-
 <body>
 
-<div class="grid">
+<div class="hub">
 
-  <div class="card" onclick="location.href='command.html'">
-    🔥 Command Center
-  </div>
+  <h1>🔥 Ministry OS</h1>
 
-  <div class="card" onclick="location.href='master.html'">
-    👤 Master Data
-  </div>
+  <div class="grid">
 
-  <div class="card" onclick="location.href='timeline.html'">
-    📊 Timeline
-  </div>
+    <div class="card" onclick="location.href='modules/command.html'">🔥 Command Center</div>
+    <div class="card" onclick="location.href='modules/people.html'">👤 People</div>
+    <div class="card" onclick="location.href='modules/risk.html'">⚠️ Risk</div>
+    <div class="card" onclick="location.href='modules/tasks.html'">📌 Tasks</div>
+    <div class="card" onclick="location.href='modules/timeline.html'">📊 Timeline</div>
 
-  <div class="card" onclick="location.href='tasks.html'">
-    📌 Tasks
   </div>
 
 </div>
