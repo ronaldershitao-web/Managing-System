@@ -10,31 +10,59 @@
 <div id="profile"></div>
 
 <script type="module">
-import { getPerson } from "../services/people.service.js";
 import { db } from "../assets/app.js";
 
 const id = new URLSearchParams(window.location.search).get("id");
 
-const { data: person } = await getPerson(id);
+/**
+ * Load person
+ */
+const { data: person } = await db
+  .from("people")
+  .select("*")
+  .eq("id", id)
+  .single();
 
+/**
+ * Load interactions
+ */
 const { data: interactions } = await db
   .from("interactions")
   .select("*")
   .eq("person_id", id)
   .order("interaction_date", { ascending: false });
 
+/**
+ * Load tasks
+ */
 const { data: tasks } = await db
   .from("tasks")
   .select("*")
   .eq("person_id", id);
 
+/**
+ * NAVIGATION
+ */
+window.editPerson = function(id) {
+  location.href = `edit-person.html?id=${id}`;
+};
+
+/**
+ * RENDER
+ */
 document.getElementById("profile").innerHTML = `
   <div class="card">
-    <h2>${person.name}</h2>
+
+    <h2>
+      👤 ${person.name}
+      <button onclick="editPerson('${person.id}')">Edit</button>
+    </h2>
+
     <p>Phone: ${person.phone || "-"}</p>
     <p>Email: ${person.email || "-"}</p>
     <p>Stage: ${person.relationship_stage || "-"}</p>
-    <p>Risk: ${person.priority_score || "-"}</p>
+    <p>Leader: ${person.leader_id || "-"}</p>
+
   </div>
 
   <h3>📊 Timeline</h3>
