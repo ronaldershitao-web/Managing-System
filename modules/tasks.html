@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Tasks</title>
+  <link rel="stylesheet" href="../styles/main.css">
+</head>
+
+<body>
+
+<h2>📌 Tasks</h2>
+<div id="tasks"></div>
+
+<script type="module">
+import { getTasks, completeTask } from "../services/tasks.service.js";
+
+const { data } = await getTasks();
+
+window.completeTask = async (id) => {
+  await completeTask(id);
+  location.reload();
+};
+
+document.getElementById("tasks").innerHTML =
+  (data || []).map(t => `
+    <div class="card">
+      <b>${t.title}</b><br>
+      ${t.people?.name || ""}<br>
+      ${t.status}
+      <button onclick="completeTask('${t.id}')">Done</button>
+    </div>
+  `).join("");
+</script>
+
+</body>
+</html>
