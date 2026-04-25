@@ -11,10 +11,27 @@
 
 <div class="card">
 
+  <h3>Basic Info</h3>
+
   <input id="name" placeholder="Name"><br><br>
+
   <input id="phone" placeholder="Phone"><br><br>
+
   <input id="email" placeholder="Email"><br><br>
 
+  <label>Date of Birth</label><br>
+  <input id="dob" type="date"><br><br>
+
+  <label>Gender</label><br>
+  <select id="gender">
+    <option value="">-- Select --</option>
+    <option value="Male">Male</option>
+    <option value="Female">Female</option>
+  </select><br><br>
+
+  <h3>Ministry Info</h3>
+
+  <label>Relationship Stage</label><br>
   <select id="stage">
     <option value="0">New</option>
     <option value="1">Connected</option>
@@ -23,6 +40,7 @@
     <option value="4">Leader</option>
   </select><br><br>
 
+  <label>Engagement Status</label><br>
   <select id="status">
     <option value="active">Active</option>
     <option value="inactive">Inactive</option>
@@ -30,7 +48,10 @@
     <option value="disconnected">Disconnected</option>
   </select><br><br>
 
+  <label>Leader</label><br>
   <select id="leader"></select><br><br>
+
+  <h3>Additional</h3>
 
   <textarea id="notes" placeholder="Notes"></textarea><br><br>
 
@@ -43,16 +64,13 @@ import { db } from "../assets/app.js";
 
 const id = new URLSearchParams(window.location.search).get("id");
 
-/**
- * SAFETY CHECK
- */
 if (!id) {
-  alert("No person selected");
-  throw new Error("Missing ID");
+  alert("Missing ID");
+  throw new Error("No ID");
 }
 
 /**
- * Load person
+ * LOAD PERSON
  */
 const { data: person } = await db
   .from("people")
@@ -61,24 +79,26 @@ const { data: person } = await db
   .single();
 
 /**
- * Load all people for leader dropdown
+ * LOAD PEOPLE FOR LEADER DROPDOWN
  */
 const { data: people } = await db
   .from("people")
   .select("id, name");
 
 /**
- * Fill form
+ * FILL FORM
  */
 document.getElementById("name").value = person?.name || "";
 document.getElementById("phone").value = person?.phone || "";
 document.getElementById("email").value = person?.email || "";
+document.getElementById("dob").value = person?.date_of_birth || "";
+document.getElementById("gender").value = person?.gender || "";
 document.getElementById("stage").value = person?.relationship_stage ?? 0;
 document.getElementById("status").value = person?.engagement_status || "active";
 document.getElementById("notes").value = person?.notes || "";
 
 /**
- * Leader dropdown
+ * LEADER DROPDOWN
  */
 document.getElementById("leader").innerHTML = `
   <option value="">-- No Leader --</option>
@@ -100,6 +120,8 @@ window.updatePerson = async function () {
     name: document.getElementById("name").value,
     phone: document.getElementById("phone").value,
     email: document.getElementById("email").value,
+    date_of_birth: document.getElementById("dob").value || null,
+    gender: document.getElementById("gender").value || null,
     relationship_stage: parseInt(document.getElementById("stage").value),
     engagement_status: document.getElementById("status").value,
     leader_id: document.getElementById("leader").value || null,
