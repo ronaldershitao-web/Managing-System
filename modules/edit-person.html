@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Edit Person</title>
+  <link rel="stylesheet" href="../styles/main.css">
+</head>
+
+<body>
+
+<h2>✏️ Edit Person</h2>
+
+<div class="card">
+
+  <input id="name"><br><br>
+  <input id="phone"><br><br>
+  <input id="email"><br><br>
+
+  <select id="stage">
+    <option value="0">New</option>
+    <option value="1">Connected</option>
+    <option value="2">Attending</option>
+    <option value="3">Serving</option>
+    <option value="4">Leader</option>
+  </select><br><br>
+
+  <select id="status">
+    <option value="active">Active</option>
+    <option value="inactive">Inactive</option>
+    <option value="at_risk">At Risk</option>
+    <option value="disconnected">Disconnected</option>
+  </select><br><br>
+
+  <select id="leader"></select><br><br>
+
+  <textarea id="notes"></textarea><br><br>
+
+  <button onclick="updatePerson()">Update</button>
+
+</div>
+
+<script type="module">
+import { db } from "../assets/app.js";
+
+const id = new URLSearchParams(window.location.search).get("id");
+
+/**
+ * 1. Load person
+ */
+const { data: person } = await db
+  .from("people")
+  .select("*")
+  .eq("id", id)
+  .single();
+
+/**
+ * 2. Load leaders
+ */
+const { data: people } = await db
+  .from("people")
+  .select("id, name");
+
+/**
+ * 3. Fill form
+ */
+document.getElementById("name").value = person.name || "";
+document.getElementById("phone").value = person.phone || "";
+document.getElementById("email").value = person.email || "";
+document.getElementById("stage").value = person.relationship_stage ?? 0;
+document.getElementById("status").value = person.engagement_status || "active";
+document.getElementById("notes").value = person.notes || "";
+
+/**
+ * 4. Leader dropdown
+ */
+const leaderSelect = document.getElementById("leader");
+
+leaderSelect.innerHTML = `
+  <option value="">-- No Leader --</option>
+  ${people
+    .filter(p => p.id !== id)
+    .map(p => `
+      <option value="${p.id}" ${p.id === person.leader_id ? "selected" : ""}>
+        ${p.name}
+      </option>
+    `).join("")}
+`;
+
+/**
+ * 5. Update function
+ */
+window.updatePerson = async function () {
+
+  const payload = {
+    name: document.getElementById("name").value,
+    phone: document.getElementById("phone").value,
+    email: document.getElementById("email").value,
+    relationship_stage: parseInt(document.getElementById("stage").value),
+    engagement_status: document.getElementById("status").value,
+    leader_id: document.getElementById("leader").value || null,
+    notes: document.getElementById("notes").value
+  };
+
+  const { error } = await db
+    .from("people")
+    .update(payload)
+    .eq("id", id);
+
+  if (error) {
+    alert(error.message);
+  } else {
+    alert("Updated!");
+    location.href = "people.html";
+  }
+};
+
+</script>
+
+</body>
+</html>
