@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Timeline</title>
+  <link rel="stylesheet" href="../styles/main.css">
+</head>
+
+<body>
+
+<h2>📊 Timeline</h2>
+<div id="timeline"></div>
+
+<script type="module">
+import { getTimeline } from "../services/interaction.service.js";
+
+const { data } = await getTimeline();
+
+document.getElementById("timeline").innerHTML =
+  (data || []).map(i => `
+    <div class="card">
+      ${i.interaction_type}<br>
+      ${i.notes || ""}
+    </div>
+  `).join("");
+</script>
+
+</body>
+</html>
