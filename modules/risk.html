@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Risk</title>
+  <link rel="stylesheet" href="../styles/main.css">
+</head>
+
+<body>
+
+<h2>⚠️ Risk Cockpit</h2>
+<div id="risk"></div>
+
+<script type="module">
+import { getRiskPeople } from "../services/risk.service.js";
+
+const { data } = await getRiskPeople();
+
+document.getElementById("risk").innerHTML =
+  (data || []).map(p => `
+    <div class="card">
+      <b>${p.name}</b><br>
+      Score: ${p.priority_score}
+    </div>
+  `).join("");
+</script>
+
+</body>
+</html>
