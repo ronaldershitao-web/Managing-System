@@ -1,8 +1,11 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Person Profile</title>
-  <link rel="stylesheet" href="../styles/main.css">
+  <title>Person</title>
+  <style>
+    body { font-family: Arial; background:#0f172a; color:white; margin:0; }
+    .card { background:#111827; padding:12px; margin:10px; border-radius:8px; }
+  </style>
 </head>
 
 <body>
@@ -10,17 +13,12 @@
 <div id="profile"></div>
 
 <script type="module">
-import { db } from "../assets/app.js";
+import { db } from "./assets/app.js";
 
-const id = new URLSearchParams(window.location.search).get("id");
-
-if (!id) {
-  alert("Missing person ID");
-  throw new Error("No ID");
-}
+const id = new URLSearchParams(location.search).get("id");
 
 /**
- * LOAD PERSON
+ * PERSON
  */
 const { data: person } = await db
   .from("people")
@@ -29,66 +27,30 @@ const { data: person } = await db
   .single();
 
 /**
- * LOAD INTERACTIONS
+ * GROUPS
  */
-const { data: interactions } = await db
-  .from("interactions")
-  .select("*")
-  .eq("person_id", id)
-  .order("interaction_date", { ascending: false });
-
-/**
- * LOAD TASKS
- */
-const { data: tasks } = await db
-  .from("tasks")
-  .select("*")
+const { data: memberships } = await db
+  .from("group_members")
+  .select("*, groups(name)")
   .eq("person_id", id);
 
-/**
- * NAV FUNCTION (IMPORTANT FIX)
- */
-window.editPerson = function(personId) {
-  location.href = `edit-person.html?id=${personId}`;
-};
-
-/**
- * RENDER
- */
 document.getElementById("profile").innerHTML = `
   <div class="card">
-
-    <h2>
-      👤 ${person.name}
-    </h2>
-
-    <button onclick="editPerson('${person.id}')">
-      ✏️ Edit Person
-    </button>
-
-    <hr>
-
-    <p>Phone: ${person.phone || "-"}</p>
-    <p>Email: ${person.email || "-"}</p>
-    <p>Stage: ${person.relationship_stage || "-"}</p>
-    <p>Leader ID: ${person.leader_id || "-"}</p>
-
+    <h2>👤 ${person.name}</h2>
+    <p>${person.email || ""}</p>
   </div>
 
-  <h3>📊 Timeline</h3>
-  ${(interactions || []).map(i => `
-    <div class="card">
-      ${i.interaction_type} - ${i.notes || ""}
-    </div>
-  `).join("")}
+  <div class="card">
+    <h3>🏠 Groups</h3>
 
-  <h3>📌 Tasks</h3>
-  ${(tasks || []).map(t => `
-    <div class="card">
-      ${t.title} - ${t.status}
-    </div>
-  `).join("")}
+    ${memberships.map(m => `
+      <div>
+        ${m.groups?.name} - <b>${m.role}</b>
+      </div>
+    `).join("")}
+  </div>
 `;
+
 </script>
 
 </body>
