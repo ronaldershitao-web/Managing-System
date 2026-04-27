@@ -1,10 +1,39 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Person</title>
+  <title>Person Profile</title>
+
   <style>
-    body { font-family: Arial; background:#0f172a; color:white; margin:0; }
-    .card { background:#111827; padding:12px; margin:10px; border-radius:8px; }
+    body {
+      font-family: Arial;
+      background:#0f172a;
+      color:white;
+      margin:0;
+      padding:15px;
+    }
+
+    .card {
+      background:#111827;
+      padding:12px;
+      margin-bottom:10px;
+      border-radius:8px;
+      border:1px solid #1f2937;
+    }
+
+    select, button {
+      padding:6px;
+      margin-top:5px;
+      border-radius:6px;
+      border:1px solid #334155;
+      background:#0f172a;
+      color:white;
+    }
+
+    button {
+      background:#2563eb;
+      cursor:pointer;
+    }
+
   </style>
 </head>
 
@@ -15,41 +44,86 @@
 <script type="module">
 import { db } from "../assets/app.js";
 
-const id = new URLSearchParams(location.search).get("id");
+const id = new URLSearchParams(window.location.search).get("id");
 
-/**
- * PERSON
- */
 const { data: person } = await db
   .from("people")
   .select("*")
   .eq("id", id)
   .single();
 
-/**
- * GROUPS
- */
+const { data: groups } = await db.from("groups").select("*");
+
 const { data: memberships } = await db
   .from("group_members")
   .select("*, groups(name)")
   .eq("person_id", id);
 
+/**
+ * RENDER
+ */
 document.getElementById("profile").innerHTML = `
   <div class="card">
-    <h2>👤 ${person.name}</h2>
-    <p>${person.email || ""}</p>
+    <h2>${person.name}</h2>
+    <p>📞 ${person.phone || "-"}</p>
+    <p>📧 ${person.email || "-"}</p>
   </div>
 
   <div class="card">
-    <h3>🏠 Groups</h3>
+    <h3>🏠 Assign to Group</h3>
 
-    ${memberships.map(m => `
-      <div>
-        ${m.groups?.name} - <b>${m.role}</b>
-      </div>
-    `).join("")}
+    <select id="groupSelect">
+      ${(groups || []).map(g => `
+        <option value="${g.id}">${g.name}</option>
+      `).join("")}
+    </select>
+
+    <select id="roleSelect">
+      <option value="member">Member</option>
+      <option value="co_leader">Co-Leader</option>
+      <option value="leader">Leader</option>
+    </select>
+
+    <button onclick="assignGroup()">Assign</button>
+  </div>
+
+  <div class="card">
+    <h3>📌 Current Groups</h3>
+
+    ${(memberships || []).length === 0
+      ? "<i>No groups</i>"
+      : memberships.map(m => `
+          <div>
+            ${m.groups?.name} (${m.role})
+          </div>
+        `).join("")
+    }
   </div>
 `;
+
+/**
+ * ASSIGN GROUP
+ */
+window.assignGroup = async function () {
+
+  const group_id = document.getElementById("groupSelect").value;
+  const role = document.getElementById("roleSelect").value;
+
+  const { error } = await db
+    .from("group_members")
+    .insert([{
+      group_id,
+      person_id: id,
+      role
+    }]);
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  location.reload();
+};
 
 </script>
 
