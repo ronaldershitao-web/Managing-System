@@ -22,51 +22,38 @@ const { data: people } = await db
   .select("*");
 
 /**
- * Split leaders vs members
+ * NAVIGATION
  */
-const leaders = people.filter(p => !p.leader_id);
-const members = people.filter(p => p.leader_id);
-
-/**
- * Get members under leader
- */
-function getMembers(leaderId) {
-  return members.filter(m => m.leader_id === leaderId);
-}
-
-/**
- * NAVIGATION FUNCTION (FIX)
- */
-window.goEdit = function(id) {
+window.goPerson = function(id) {
   location.href = `person.html?id=${id}`;
 };
 
 /**
- * Render
+ * RECURSIVE TREE RENDER (KEY FIX)
  */
-document.getElementById("view").innerHTML =
-  leaders.map(l => `
-    <div class="card">
+function renderTree(parentId = null) {
+  return people
+    .filter(p => p.leader_id === parentId)
+    .map(p => `
+      <div class="card">
 
-      <h3 onclick="goEdit('${l.id}')" style="cursor:pointer;">
-        👤 ${l.name}
-      </h3>
+        <div onclick="goPerson('${p.id}')" style="cursor:pointer;">
+          👤 ${p.name}
+          <small>(Stage ${p.relationship_stage ?? "-"})</small>
+        </div>
 
-      <small>Stage: ${l.relationship_stage ?? "-"}</small>
+        <div style="margin-left:20px;">
+          ${renderTree(p.id)}
+        </div>
 
-      <hr>
-
-      <b>Members:</b>
-      <div>
-        ${getMembers(l.id).map(m => `
-          <div class="subcard" onclick="goEdit('${m.id}')">
-            ${m.name} (Stage ${m.relationship_stage ?? "-"})
-          </div>
-        `).join("") || "<i>No members</i>"}
       </div>
+    `).join("");
+}
 
-    </div>
-  `).join("");
+/**
+ * Render full hierarchy
+ */
+document.getElementById("view").innerHTML = renderTree();
 
 </script>
 
