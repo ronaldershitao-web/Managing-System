@@ -3,34 +3,90 @@
 <head>
   <title>People by Leaders</title>
   <link rel="stylesheet" href="../styles/main.css">
+
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial;
+      background: #0f172a;
+      color: white;
+    }
+
+    h2 {
+      padding: 15px;
+    }
+
+    /* 🔥 IMPORTANT: scroll-safe container */
+    .org-container {
+      height: calc(100vh - 60px);
+      overflow: auto;
+      padding: 20px;
+    }
+
+    /* 🔥 TREE STRUCTURE (VERTICAL) */
+    .tree-node {
+      margin-left: 20px;
+      padding-left: 12px;
+      border-left: 1px solid #1f2937;
+      margin-top: 10px;
+    }
+
+    .card {
+      background: #111827;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid #1f2937;
+      cursor: pointer;
+      transition: 0.2s;
+      display: inline-block;
+      min-width: 160px;
+    }
+
+    .card:hover {
+      border-color: #2563eb;
+      transform: scale(1.02);
+    }
+  </style>
 </head>
 
 <body>
 
 <h2>👤 People (Grouped by Leaders)</h2>
 
-<div id="view"></div>
+<div id="view" class="org-container"></div>
 
 <script type="module">
 import { db } from "../assets/app.js";
 
-const { data: people } = await db
+/**
+ * LOAD PEOPLE
+ */
+const { data: people, error } = await db
   .from("people")
   .select("*");
 
+if (error) {
+  document.getElementById("view").innerHTML = "Error loading data";
+  throw error;
+}
+
+/**
+ * NAVIGATION
+ */
 window.goPerson = (id) => {
   location.href = `person.html?id=${id}`;
 };
 
 /**
- * SAFE NORMALIZATION
+ * NORMALIZE DATA
  */
 function clean(val) {
-  return val === "" ? null : val;
+  if (val === "" || val === undefined) return null;
+  return val;
 }
 
 /**
- * SAFE TREE
+ * BUILD TREE
  */
 function renderTree(parentId = null) {
 
@@ -51,6 +107,8 @@ function renderTree(parentId = null) {
 
       <div class="card" onclick="goPerson('${p.id}')">
         👤 ${p.name}
+        <br>
+        <small>Stage ${p.relationship_stage ?? "-"}</small>
       </div>
 
       ${renderTree(p.id)}
@@ -59,39 +117,17 @@ function renderTree(parentId = null) {
   `).join("");
 }
 
+/**
+ * RENDER
+ */
 document.getElementById("view").innerHTML = renderTree();
 
+/**
+ * DEBUG (optional)
+ */
+console.log("People loaded:", people);
+
 </script>
-  
-<style>
-.subcard {
-  margin:5px 0;
-  padding:6px;
-  background:#0f172a;
-  border:1px solid #1f2937;
-  border-radius:6px;
-  cursor:pointer;
-}
-
- 
-.tree-level {
-  display: flex;
-  justify-content: center;
-  margin-top: 20px;
-}
-
-.tree-node {
-  text-align: center;
-  margin: 0 20px;
-}
-
-.node {
-  min-width: 120px;
-  margin-bottom: 10px;
-  border: 1px solid #2563eb;
-}
-
-</style>
 
 </body>
 </html>
