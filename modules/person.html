@@ -20,9 +20,10 @@
       border:1px solid #1f2937;
     }
 
-    select, button {
+    input, select, textarea {
+      width:100%;
+      margin:5px 0;
       padding:6px;
-      margin-top:5px;
       border-radius:6px;
       border:1px solid #334155;
       background:#0f172a;
@@ -30,7 +31,12 @@
     }
 
     button {
+      margin-top:5px;
+      padding:6px 10px;
+      border:none;
+      border-radius:6px;
       background:#2563eb;
+      color:white;
       cursor:pointer;
     }
 
@@ -46,6 +52,9 @@ import { db } from "../assets/app.js";
 
 const id = new URLSearchParams(window.location.search).get("id");
 
+/**
+ * LOAD DATA
+ */
 const { data: person } = await db
   .from("people")
   .select("*")
@@ -60,15 +69,47 @@ const { data: memberships } = await db
   .eq("person_id", id);
 
 /**
+ * FORMAT DATE
+ */
+function formatDate(d) {
+  if (!d) return "";
+  return new Date(d).toISOString().split("T")[0];
+}
+
+/**
  * RENDER
  */
 document.getElementById("profile").innerHTML = `
+
+  <!-- BASIC INFO -->
   <div class="card">
-    <h2>${person.name}</h2>
-    <p>📞 ${person.phone || "-"}</p>
-    <p>📧 ${person.email || "-"}</p>
+    <h2>👤 ${person.name}</h2>
+
+    <input id="phone" value="${person.phone || ""}" placeholder="Phone">
+    <input id="email" value="${person.email || ""}" placeholder="Email">
+
+    <input id="dob" type="date" value="${formatDate(person.date_of_birth)}">
+
+    <select id="gender">
+      <option value="">Gender</option>
+      <option value="male" ${person.gender==='male'?'selected':''}>Male</option>
+      <option value="female" ${person.gender==='female'?'selected':''}>Female</option>
+    </select>
+
+    <input id="ministry" value="${person.ministry || ""}" placeholder="Ministry">
+
+    <select id="marital">
+      <option value="">Marital Status</option>
+      <option value="single" ${person.marital_status==='single'?'selected':''}>Single</option>
+      <option value="married" ${person.marital_status==='married'?'selected':''}>Married</option>
+    </select>
+
+    <textarea id="notes" placeholder="Notes">${person.notes || ""}</textarea>
+
+    <button onclick="updatePerson()">💾 Save Profile</button>
   </div>
 
+  <!-- GROUP ASSIGNMENT -->
   <div class="card">
     <h3>🏠 Assign to Group</h3>
 
@@ -87,6 +128,7 @@ document.getElementById("profile").innerHTML = `
     <button onclick="assignGroup()">Assign</button>
   </div>
 
+  <!-- CURRENT GROUPS -->
   <div class="card">
     <h3>📌 Current Groups</h3>
 
@@ -99,7 +141,36 @@ document.getElementById("profile").innerHTML = `
         `).join("")
     }
   </div>
+
 `;
+
+/**
+ * UPDATE PERSON
+ */
+window.updatePerson = async function () {
+
+  const payload = {
+    phone: document.getElementById("phone").value,
+    email: document.getElementById("email").value,
+    date_of_birth: document.getElementById("dob").value || null,
+    gender: document.getElementById("gender").value,
+    ministry: document.getElementById("ministry").value,
+    marital_status: document.getElementById("marital").value,
+    notes: document.getElementById("notes").value
+  };
+
+  const { error } = await db
+    .from("people")
+    .update(payload)
+    .eq("id", id);
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  alert("Profile updated!");
+};
 
 /**
  * ASSIGN GROUP
@@ -111,11 +182,7 @@ window.assignGroup = async function () {
 
   const { error } = await db
     .from("group_members")
-    .insert([{
-      group_id,
-      person_id: id,
-      role
-    }]);
+    .insert([{ group_id, person_id: id, role }]);
 
   if (error) {
     alert(error.message);
