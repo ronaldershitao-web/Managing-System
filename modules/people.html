@@ -14,49 +14,42 @@
 <script type="module">
 import { db } from "../assets/app.js";
 
-/**
- * Load all people
- */
 const { data: people } = await db
   .from("people")
   .select("*");
 
-/**
- * NAVIGATION
- */
 window.goPerson = function(id) {
   location.href = `person.html?id=${id}`;
 };
 
-/**
- * RECURSIVE TREE RENDER (KEY FIX)
- */
 function renderTree(parentId = null) {
-  return people
-    .filter(p => p.leader_id === parentId)
-    .map(p => `
-      <div class="card">
+  const children = people.filter(p => p.leader_id === parentId);
 
-        <div onclick="goPerson('${p.id}')" style="cursor:pointer;">
-          👤 ${p.name}
-          <small>(Stage ${p.relationship_stage ?? "-"})</small>
-        </div>
+  if (!children.length) return "";
 
-        <div style="margin-left:20px;">
+  return `
+    <div class="tree-level">
+      ${children.map(p => `
+        <div class="tree-node">
+          
+          <div class="card node" onclick="goPerson('${p.id}')">
+            👤 ${p.name}
+            <br>
+            <small>Stage ${p.relationship_stage ?? "-"}</small>
+          </div>
+
           ${renderTree(p.id)}
-        </div>
 
-      </div>
-    `).join("");
+        </div>
+      `).join("")}
+    </div>
+  `;
 }
 
-/**
- * Render full hierarchy
- */
 document.getElementById("view").innerHTML = renderTree();
-
 </script>
 
+  
 <style>
 .subcard {
   margin:5px 0;
@@ -66,6 +59,25 @@ document.getElementById("view").innerHTML = renderTree();
   border-radius:6px;
   cursor:pointer;
 }
+
+ 
+.tree-level {
+  display: flex;
+  justify-content: center;
+  margin-top: 20px;
+}
+
+.tree-node {
+  text-align: center;
+  margin: 0 20px;
+}
+
+.node {
+  min-width: 120px;
+  margin-bottom: 10px;
+  border: 1px solid #2563eb;
+}
+
 </style>
 
 </body>
