@@ -11,9 +11,7 @@
       margin:0;
     }
 
-    h2 {
-      padding:15px;
-    }
+    h2 { padding:15px; }
 
     .card {
       background:#111827;
@@ -23,44 +21,30 @@
       border:1px solid #1f2937;
     }
 
-    .input-card {
-      background:#111827;
-      padding:12px;
-      margin:10px;
-      border-radius:8px;
-      border:1px solid #1f2937;
-    }
-
-    input {
-      padding:8px;
-      width:70%;
+    input, select {
+      padding:6px;
+      margin:5px 0;
       border-radius:6px;
       border:1px solid #334155;
       background:#0f172a;
       color:white;
+      width:100%;
     }
 
     button {
-      padding:8px 12px;
-      border-radius:6px;
+      padding:6px 10px;
       border:none;
-      cursor:pointer;
+      border-radius:6px;
       background:#2563eb;
       color:white;
-    }
-
-    button:hover {
-      background:#1d4ed8;
+      cursor:pointer;
+      margin-top:5px;
     }
 
     .role-leader { color:#22c55e; font-weight:bold; }
     .role-co_leader { color:#f59e0b; }
     .role-member { color:#94a3b8; }
 
-    .error {
-      color:#ef4444;
-      padding:10px;
-    }
   </style>
 </head>
 
@@ -68,15 +52,14 @@
 
 <h2>🏠 Groups</h2>
 
-<!-- 🔥 CREATE GROUP UI -->
-<div class="input-card">
+<!-- CREATE GROUP -->
+<div class="card">
   <h3>Create Group</h3>
-
-  <input id="groupName" placeholder="Enter group name" />
-  <button onclick="createGroup()">➕ Add</button>
+  <input id="groupName" placeholder="Group name">
+  <input id="groupLocation" placeholder="Meeting location">
+  <button onclick="createGroup()">➕ Create</button>
 </div>
 
-<!-- GROUP LIST -->
 <div id="groups"></div>
 
 <script type="module">
@@ -85,59 +68,108 @@ import { db } from "../assets/app.js";
 const container = document.getElementById("groups");
 
 /**
- * LOAD GROUPS FUNCTION (IMPORTANT FOR REFRESH)
+ * LOAD ALL DATA
  */
-async function loadGroups() {
+async function load() {
 
-  const { data: groups, error: groupError } = await db
-    .from("groups")
-    .select("*");
+  const { data: groups } = await db.from("groups").select("*");
+  const { data: members } = await db.from("group_members").select("*, people(name)");
+  const { data: people } = await db.from("people").select("id, name");
 
-  if (groupError) {
-    container.innerHTML = `<div class="error">❌ ${groupError.message}</div>`;
-    return;
+  function getMembers(groupId) {
+    return (members || []).filter(m => m.group_id === groupId);
   }
 
-  const safeGroups = groups || [];
+  container.innerHTML = (groups || []).map(g => {
 
-  container.innerHTML = safeGroups.map(g => `
-    <div class="card">
-      <h3>🏠 ${g.name || "Unnamed Group"}</h3>
-    </div>
-  `).join("");
+    const list = getMembers(g.id);
+
+    return `
+      <div class="card">
+
+        <h3>🏠 ${g.name}</h3>
+        <small>📍 ${g.location || "No location"}</small>
+
+        <hr>
+
+        <b>Add Person</b>
+
+        <select id="person-${g.id}">
+          ${(people || []).map(p => `
+            <option value="${p.id}">${p.name}</option>
+          `).join("")}
+        </select>
+
+        <select id="role-${g.id}">
+          <option value="member">Member</option>
+          <option value="co_leader">Co-Leader</option>
+          <option value="leader">Leader</option>
+        </select>
+
+        <button onclick="addToGroup('${g.id}')">➕ Add</button>
+
+        <hr>
+
+        <b>Members</b>
+
+        ${list.length === 0
+          ? `<i>No members</i>`
+          : list.map(m => `
+              <div class="role-${m.role}">
+                ${m.people?.name || "Unknown"} (${m.role})
+              </div>
+            `).join("")
+        }
+
+      </div>
+    `;
+  }).join("");
 }
 
 /**
- * CREATE GROUP (GLOBAL ACCESS FOR BUTTON)
+ * CREATE GROUP
  */
 window.createGroup = async function () {
 
-  const name = document.getElementById("groupName").value.trim();
+  const name = document.getElementById("groupName").value;
+  const location = document.getElementById("groupLocation").value;
 
-  if (!name) {
-    alert("Group name required");
-    return;
-  }
+  if (!name) return alert("Group name required");
 
   const { error } = await db
     .from("groups")
-    .insert([{ name }]);
+    .insert([{ name, location }]);
 
-  if (error) {
-    alert("Error: " + error.message);
-    console.log(error);
-    return;
-  }
+  if (error) return alert(error.message);
 
-  document.getElementById("groupName").value = "";
-
-  await loadGroups();
+  location.reload();
 };
 
 /**
- * INIT
+ * ADD PERSON TO GROUP
  */
-loadGroups();
+window.addToGroup = async function (groupId) {
+
+  const person_id = document.getElementById(`person-${groupId}`).value;
+  const role = document.getElementById(`role-${groupId}`).value;
+
+  const { error } = await db
+    .from("group_members")
+    .insert([{
+      group_id: groupId,
+      person_id,
+      role
+    }]);
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  location.reload();
+};
+
+load();
 
 </script>
 
