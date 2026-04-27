@@ -15,7 +15,7 @@
 <div id="list"></div>
 
 <script type="module">
-import { db } from "./assets/app.js";
+import { db } from "../assets/app.js";
 
 const { data: people } = await db.from("people").select("*");
 
