@@ -23,18 +23,39 @@
       border:1px solid #1f2937;
     }
 
-    .role-leader {
-      color:#22c55e;
-      font-weight:bold;
+    .input-card {
+      background:#111827;
+      padding:12px;
+      margin:10px;
+      border-radius:8px;
+      border:1px solid #1f2937;
     }
 
-    .role-co_leader {
-      color:#f59e0b;
+    input {
+      padding:8px;
+      width:70%;
+      border-radius:6px;
+      border:1px solid #334155;
+      background:#0f172a;
+      color:white;
     }
 
-    .role-member {
-      color:#94a3b8;
+    button {
+      padding:8px 12px;
+      border-radius:6px;
+      border:none;
+      cursor:pointer;
+      background:#2563eb;
+      color:white;
     }
+
+    button:hover {
+      background:#1d4ed8;
+    }
+
+    .role-leader { color:#22c55e; font-weight:bold; }
+    .role-co_leader { color:#f59e0b; }
+    .role-member { color:#94a3b8; }
 
     .error {
       color:#ef4444;
@@ -47,6 +68,15 @@
 
 <h2>🏠 Groups</h2>
 
+<!-- 🔥 CREATE GROUP UI -->
+<div class="input-card">
+  <h3>Create Group</h3>
+
+  <input id="groupName" placeholder="Enter group name" />
+  <button onclick="createGroup()">➕ Add</button>
+</div>
+
+<!-- GROUP LIST -->
 <div id="groups"></div>
 
 <script type="module">
@@ -55,75 +85,59 @@ import { db } from "../assets/app.js";
 const container = document.getElementById("groups");
 
 /**
- * SAFE LOAD GROUPS
+ * LOAD GROUPS FUNCTION (IMPORTANT FOR REFRESH)
  */
-const { data: groups, error: groupError } = await db
-  .from("groups")
-  .select("*");
+async function loadGroups() {
 
-/**
- * SHOW ERROR IF ANY
- */
-if (groupError) {
-  container.innerHTML = `
-    <div class="error">
-      ❌ Failed to load groups: ${groupError.message}
-    </div>
-  `;
-  throw groupError;
-}
+  const { data: groups, error: groupError } = await db
+    .from("groups")
+    .select("*");
 
-/**
- * SAFE LOAD MEMBERS
- */
-const { data: members, error: memberError } = await db
-  .from("group_members")
-  .select("*, people(name)");
+  if (groupError) {
+    container.innerHTML = `<div class="error">❌ ${groupError.message}</div>`;
+    return;
+  }
 
-if (memberError) {
-  container.innerHTML = `
-    <div class="error">
-      ❌ Failed to load group members: ${memberError.message}
-    </div>
-  `;
-  throw memberError;
-}
+  const safeGroups = groups || [];
 
-/**
- * SAFE GUARDS
- */
-const safeGroups = groups || [];
-const safeMembers = members || [];
-
-/**
- * GET MEMBERS FOR GROUP
- */
-function getMembers(groupId) {
-  return safeMembers.filter(m => m.group_id === groupId);
-}
-
-/**
- * RENDER UI
- */
-container.innerHTML = safeGroups.map(g => {
-
-  const list = getMembers(g.id);
-
-  return `
+  container.innerHTML = safeGroups.map(g => `
     <div class="card">
       <h3>🏠 ${g.name || "Unnamed Group"}</h3>
-
-      ${list.length === 0
-        ? `<i style="color:#64748b;">No members</i>`
-        : list.map(m => `
-            <div class="role-${m.role}">
-              ${m.people?.name || "Unknown"} (${m.role})
-            </div>
-          `).join("")
-      }
     </div>
-  `;
-}).join("");
+  `).join("");
+}
+
+/**
+ * CREATE GROUP (GLOBAL ACCESS FOR BUTTON)
+ */
+window.createGroup = async function () {
+
+  const name = document.getElementById("groupName").value.trim();
+
+  if (!name) {
+    alert("Group name required");
+    return;
+  }
+
+  const { error } = await db
+    .from("groups")
+    .insert([{ name }]);
+
+  if (error) {
+    alert("Error: " + error.message);
+    console.log(error);
+    return;
+  }
+
+  document.getElementById("groupName").value = "";
+
+  await loadGroups();
+};
+
+/**
+ * INIT
+ */
+loadGroups();
 
 </script>
 
