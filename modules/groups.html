@@ -2,61 +2,128 @@
 <html>
 <head>
   <title>Groups</title>
+
   <style>
-    body { font-family: Arial; background:#0f172a; color:white; margin:0; }
-    .card { background:#111827; padding:12px; margin:10px; border-radius:8px; }
-    .role-leader { color:#22c55e; }
-    .role-co_leader { color:#f59e0b; }
-    .role-member { color:#94a3b8; }
+    body {
+      font-family: Arial;
+      background:#0f172a;
+      color:white;
+      margin:0;
+    }
+
+    h2 {
+      padding:15px;
+    }
+
+    .card {
+      background:#111827;
+      padding:12px;
+      margin:10px;
+      border-radius:8px;
+      border:1px solid #1f2937;
+    }
+
+    .role-leader {
+      color:#22c55e;
+      font-weight:bold;
+    }
+
+    .role-co_leader {
+      color:#f59e0b;
+    }
+
+    .role-member {
+      color:#94a3b8;
+    }
+
+    .error {
+      color:#ef4444;
+      padding:10px;
+    }
   </style>
 </head>
 
 <body>
 
-<h2 style="padding:15px;">🏠 Groups</h2>
+<h2>🏠 Groups</h2>
 
 <div id="groups"></div>
 
 <script type="module">
 import { db } from "../assets/app.js";
 
-/**
- * LOAD GROUPS
- */
-const { data: groups } = await db.from("groups").select("*");
+const container = document.getElementById("groups");
 
 /**
- * LOAD MEMBERS
+ * SAFE LOAD GROUPS
  */
-const { data: members } = await db
-  .from("group_members")
-  .select("*, people(name)");
+const { data: groups, error: groupError } = await db
+  .from("groups")
+  .select("*");
 
-function getMembers(groupId) {
-  return members.filter(m => m.group_id === groupId);
+/**
+ * SHOW ERROR IF ANY
+ */
+if (groupError) {
+  container.innerHTML = `
+    <div class="error">
+      ❌ Failed to load groups: ${groupError.message}
+    </div>
+  `;
+  throw groupError;
 }
 
 /**
- * RENDER
+ * SAFE LOAD MEMBERS
  */
-document.getElementById("groups").innerHTML =
-  groups.map(g => {
+const { data: members, error: memberError } = await db
+  .from("group_members")
+  .select("*, people(name)");
 
-    const list = getMembers(g.id);
+if (memberError) {
+  container.innerHTML = `
+    <div class="error">
+      ❌ Failed to load group members: ${memberError.message}
+    </div>
+  `;
+  throw memberError;
+}
 
-    return `
-      <div class="card">
-        <h3>🏠 ${g.name}</h3>
+/**
+ * SAFE GUARDS
+ */
+const safeGroups = groups || [];
+const safeMembers = members || [];
 
-        ${list.map(m => `
-          <div class="role-${m.role}">
-            ${m.people?.name} (${m.role})
-          </div>
-        `).join("")}
+/**
+ * GET MEMBERS FOR GROUP
+ */
+function getMembers(groupId) {
+  return safeMembers.filter(m => m.group_id === groupId);
+}
 
-      </div>
-    `;
-  }).join("");
+/**
+ * RENDER UI
+ */
+container.innerHTML = safeGroups.map(g => {
+
+  const list = getMembers(g.id);
+
+  return `
+    <div class="card">
+      <h3>🏠 ${g.name || "Unnamed Group"}</h3>
+
+      ${list.length === 0
+        ? `<i style="color:#64748b;">No members</i>`
+        : list.map(m => `
+            <div class="role-${m.role}">
+              ${m.people?.name || "Unknown"} (${m.role})
+            </div>
+          `).join("")
+      }
+    </div>
+  `;
+}).join("");
 
 </script>
 
