@@ -4,13 +4,7 @@
   <title>Groups</title>
 
   <style>
-    body {
-      font-family: Arial;
-      background:#0f172a;
-      color:white;
-      margin:0;
-    }
-
+    body { font-family: Arial; background:#0f172a; color:white; margin:0; }
     h2 { padding:15px; }
 
     .card {
@@ -22,26 +16,32 @@
     }
 
     input, select {
-      padding:6px;
+      width:100%;
       margin:5px 0;
+      padding:6px;
       border-radius:6px;
       border:1px solid #334155;
       background:#0f172a;
       color:white;
-      width:100%;
     }
 
     button {
+      margin-top:5px;
       padding:6px 10px;
       border:none;
       border-radius:6px;
       background:#2563eb;
       color:white;
       cursor:pointer;
-      margin-top:5px;
     }
 
-    .role-leader { color:#22c55e; font-weight:bold; }
+    .metrics {
+      margin-top:10px;
+      font-size:13px;
+      color:#94a3b8;
+    }
+
+    .role-leader { color:#22c55e; }
     .role-co_leader { color:#f59e0b; }
     .role-member { color:#94a3b8; }
 
@@ -52,11 +52,21 @@
 
 <h2>🏠 Groups</h2>
 
-<!-- CREATE GROUP -->
+<!-- CREATE -->
 <div class="card">
   <h3>Create Group</h3>
   <input id="groupName" placeholder="Group name">
-  <input id="groupLocation" placeholder="Meeting location">
+  <input id="groupLocation" placeholder="Location">
+  <select id="groupDay">
+    <option value="">Select day</option>
+    <option value="0">Sunday</option>
+    <option value="1">Monday</option>
+    <option value="2">Tuesday</option>
+    <option value="3">Wednesday</option>
+    <option value="4">Thursday</option>
+    <option value="5">Friday</option>
+    <option value="6">Saturday</option>
+  </select>
   <button onclick="createGroup()">➕ Create</button>
 </div>
 
@@ -67,33 +77,59 @@ import { db } from "../assets/app.js";
 
 const container = document.getElementById("groups");
 
-/**
- * LOAD ALL DATA
- */
 async function load() {
 
   const { data: groups } = await db.from("groups").select("*");
-  const { data: members } = await db.from("group_members").select("*, people(name)");
+  const { data: members } = await db.from("group_members").select("*, people(*)");
   const { data: people } = await db.from("people").select("id, name");
 
   function getMembers(groupId) {
     return (members || []).filter(m => m.group_id === groupId);
   }
 
+  function getStats(list) {
+
+    const total = list.length;
+
+    const males = list.filter(m => m.people?.gender === "male").length;
+    const females = list.filter(m => m.people?.gender === "female").length;
+
+    const avgAge = Math.round(
+      list.reduce((sum, m) => sum + (m.people?.age || 0), 0) / (total || 1)
+    );
+
+    return { total, males, females, avgAge };
+  }
+
   container.innerHTML = (groups || []).map(g => {
 
     const list = getMembers(g.id);
+    const stats = getStats(list);
 
     return `
       <div class="card">
 
         <h3>🏠 ${g.name}</h3>
-        <small>📍 ${g.location || "No location"}</small>
+
+        <!-- EDIT SECTION -->
+        <input id="loc-${g.id}" value="${g.location || ""}" placeholder="Location">
+        
+        <select id="day-${g.id}">
+          <option value="">Day</option>
+          <option value="0" ${g.meeting_day==0?'selected':''}>Sun</option>
+          <option value="1" ${g.meeting_day==1?'selected':''}>Mon</option>
+          <option value="2" ${g.meeting_day==2?'selected':''}>Tue</option>
+          <option value="3" ${g.meeting_day==3?'selected':''}>Wed</option>
+          <option value="4" ${g.meeting_day==4?'selected':''}>Thu</option>
+          <option value="5" ${g.meeting_day==5?'selected':''}>Fri</option>
+          <option value="6" ${g.meeting_day==6?'selected':''}>Sat</option>
+        </select>
+
+        <button onclick="updateGroup('${g.id}')">💾 Save</button>
 
         <hr>
 
-        <b>Add Person</b>
-
+        <!-- ADD PERSON -->
         <select id="person-${g.id}">
           ${(people || []).map(p => `
             <option value="${p.id}">${p.name}</option>
@@ -110,16 +146,19 @@ async function load() {
 
         <hr>
 
-        <b>Members</b>
+        <!-- MEMBERS -->
+        ${list.map(m => `
+          <div class="role-${m.role}">
+            ${m.people?.name} (${m.role})
+          </div>
+        `).join("")}
 
-        ${list.length === 0
-          ? `<i>No members</i>`
-          : list.map(m => `
-              <div class="role-${m.role}">
-                ${m.people?.name || "Unknown"} (${m.role})
-              </div>
-            `).join("")
-        }
+        <!-- METRICS -->
+        <div class="metrics">
+          👥 Total: ${stats.total}<br>
+          ♂ Male: ${stats.males} | ♀ Female: ${stats.females}<br>
+          🎂 Avg Age: ${stats.avgAge}
+        </div>
 
       </div>
     `;
@@ -127,26 +166,39 @@ async function load() {
 }
 
 /**
- * CREATE GROUP
+ * CREATE
  */
 window.createGroup = async function () {
 
   const name = document.getElementById("groupName").value;
   const location = document.getElementById("groupLocation").value;
+  const meeting_day = document.getElementById("groupDay").value;
 
-  if (!name) return alert("Group name required");
-
-  const { error } = await db
-    .from("groups")
-    .insert([{ name, location }]);
-
-  if (error) return alert(error.message);
+  await db.from("groups").insert([{ name, location, meeting_day }]);
 
   location.reload();
 };
 
 /**
- * ADD PERSON TO GROUP
+ * UPDATE
+ */
+window.updateGroup = async function (id) {
+
+  const location = document.getElementById(`loc-${id}`).value;
+  const meeting_day = document.getElementById(`day-${id}`).value;
+
+  const { error } = await db
+    .from("groups")
+    .update({ location, meeting_day })
+    .eq("id", id);
+
+  if (error) return alert(error.message);
+
+  alert("Updated!");
+};
+
+/**
+ * ADD MEMBER
  */
 window.addToGroup = async function (groupId) {
 
@@ -155,16 +207,9 @@ window.addToGroup = async function (groupId) {
 
   const { error } = await db
     .from("group_members")
-    .insert([{
-      group_id: groupId,
-      person_id,
-      role
-    }]);
+    .insert([{ group_id: groupId, person_id, role }]);
 
-  if (error) {
-    alert(error.message);
-    return;
-  }
+  if (error) return alert(error.message);
 
   location.reload();
 };
