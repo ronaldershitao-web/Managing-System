@@ -14,16 +14,40 @@
 <script type="module">
 import { db } from "../assets/app.js";
 
-const { data: people } = await db
+/**
+ * LOAD DATA
+ */
+const { data: people, error } = await db
   .from("people")
   .select("*");
 
+if (error) {
+  console.error(error);
+  document.getElementById("view").innerHTML = "Error loading data";
+  throw error;
+}
+
+/**
+ * NAVIGATION
+ */
 window.goPerson = function(id) {
   location.href = `person.html?id=${id}`;
 };
 
+/**
+ * SAFE TREE RENDER
+ */
 function renderTree(parentId = null) {
-  const children = people.filter(p => p.leader_id === parentId);
+
+  const children = people.filter(p => {
+    // ROOT LEVEL
+    if (parentId === null) {
+      return !p.leader_id; // handles null, undefined, ""
+    }
+
+    // CHILD LEVELS (safe comparison)
+    return String(p.leader_id) === String(parentId);
+  });
 
   if (!children.length) return "";
 
@@ -38,7 +62,9 @@ function renderTree(parentId = null) {
             <small>Stage ${p.relationship_stage ?? "-"}</small>
           </div>
 
-          ${renderTree(p.id)}
+          <div class="children">
+            ${renderTree(p.id)}
+          </div>
 
         </div>
       `).join("")}
@@ -46,9 +72,17 @@ function renderTree(parentId = null) {
   `;
 }
 
+/**
+ * INITIAL RENDER
+ */
 document.getElementById("view").innerHTML = renderTree();
-</script>
 
+/**
+ * DEBUG (remove later if not needed)
+ */
+console.log("People Data:", people);
+
+</script>
   
 <style>
 .subcard {
