@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Groups</title>
+  <style>
+    body { font-family: Arial; background:#0f172a; color:white; margin:0; }
+    .card { background:#111827; padding:12px; margin:10px; border-radius:8px; }
+    .role-leader { color:#22c55e; }
+    .role-co_leader { color:#f59e0b; }
+    .role-member { color:#94a3b8; }
+  </style>
+</head>
+
+<body>
+
+<h2 style="padding:15px;">🏠 Groups</h2>
+
+<div id="groups"></div>
+
+<script type="module">
+import { db } from "./assets/app.js";
+
+/**
+ * LOAD GROUPS
+ */
+const { data: groups } = await db.from("groups").select("*");
+
+/**
+ * LOAD MEMBERS
+ */
+const { data: members } = await db
+  .from("group_members")
+  .select("*, people(name)");
+
+function getMembers(groupId) {
+  return members.filter(m => m.group_id === groupId);
+}
+
+/**
+ * RENDER
+ */
+document.getElementById("groups").innerHTML =
+  groups.map(g => {
+
+    const list = getMembers(g.id);
+
+    return `
+      <div class="card">
+        <h3>🏠 ${g.name}</h3>
+
+        ${list.map(m => `
+          <div class="role-${m.role}">
+            ${m.people?.name} (${m.role})
+          </div>
+        `).join("")}
+
+      </div>
+    `;
+  }).join("");
+
+</script>
+
+</body>
+</html>
