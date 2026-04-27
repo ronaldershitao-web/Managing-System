@@ -14,73 +14,52 @@
 <script type="module">
 import { db } from "../assets/app.js";
 
-/**
- * LOAD DATA
- */
-const { data: people, error } = await db
+const { data: people } = await db
   .from("people")
   .select("*");
 
-if (error) {
-  console.error(error);
-  document.getElementById("view").innerHTML = "Error loading data";
-  throw error;
-}
-
-/**
- * NAVIGATION
- */
-window.goPerson = function(id) {
+window.goPerson = (id) => {
   location.href = `person.html?id=${id}`;
 };
 
 /**
- * SAFE TREE RENDER
+ * SAFE NORMALIZATION
+ */
+function clean(val) {
+  return val === "" ? null : val;
+}
+
+/**
+ * SAFE TREE
  */
 function renderTree(parentId = null) {
 
   const children = people.filter(p => {
-    // ROOT LEVEL
+    const pid = clean(p.leader_id);
+
     if (parentId === null) {
-      return !p.leader_id; // handles null, undefined, ""
+      return pid === null;
     }
 
-    // CHILD LEVELS (safe comparison)
-    return String(p.leader_id) === String(parentId);
+    return String(pid) === String(parentId);
   });
 
   if (!children.length) return "";
 
-  return `
-    <div class="tree-level">
-      ${children.map(p => `
-        <div class="tree-node">
-          
-          <div class="card node" onclick="goPerson('${p.id}')">
-            👤 ${p.name}
-            <br>
-            <small>Stage ${p.relationship_stage ?? "-"}</small>
-          </div>
+  return children.map(p => `
+    <div class="tree-node">
 
-          <div class="children">
-            ${renderTree(p.id)}
-          </div>
+      <div class="card" onclick="goPerson('${p.id}')">
+        👤 ${p.name}
+      </div>
 
-        </div>
-      `).join("")}
+      ${renderTree(p.id)}
+
     </div>
-  `;
+  `).join("");
 }
 
-/**
- * INITIAL RENDER
- */
 document.getElementById("view").innerHTML = renderTree();
-
-/**
- * DEBUG (remove later if not needed)
- */
-console.log("People Data:", people);
 
 </script>
   
