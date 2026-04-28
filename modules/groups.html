@@ -118,9 +118,12 @@ async function load() {
   }
 
   function getStats(list) {
+
     const total = list.length;
 
-    const core = list.filter(m => m.tier === "core").length;
+    const coreList = list.filter(m => m.tier === "core");
+    const leaders = list.filter(m => m.role === "leader");
+    const coLeaders = list.filter(m => m.role === "co_leader");
 
     const ages = list
       .map(m => m.people?.computed_age)
@@ -130,48 +133,65 @@ async function load() {
       ? Math.round(ages.reduce((a,b)=>a+b,0) / ages.length)
       : "-";
 
-    return { total, core, avgAge };
+    return {
+      total,
+      coreCount: coreList.length,
+      leaders,
+      coLeaders,
+      coreList
+    };
   }
 
-  function renderMembers(list, roleFilter, tierFilter) {
-    return list
-      .filter(m => (!roleFilter || m.role === roleFilter) &&
-                   (!tierFilter || m.tier === tierFilter))
-      .map(m => `
-        <div class="member-row">
+  function renderList(list, emptyText = "None") {
+    if (!list.length) return `<i style="color:#64748b;">${emptyText}</i>`;
 
-          <div class="member-info">
-            ${m.people?.name || "Unknown"}
-            <br>
-            <small>${m.role} | ${m.tier} 
-            ${m.people?.computed_age ? `| 🎂 ${m.people.computed_age}` : ""}</small>
-          </div>
+    return list.map(m => `
+      <div class="member-row">
 
-          <div class="member-actions">
-            <select id="role-${m.id}">
-              <option value="member" ${m.role==="member"?"selected":""}>Member</option>
-              <option value="co_leader" ${m.role==="co_leader"?"selected":""}>Co-Leader</option>
-              <option value="leader" ${m.role==="leader"?"selected":""}>Leader</option>
-            </select>
+        <div class="member-info">
+          ${m.people?.name || "Unknown"}
+          <br>
+          <small>
+            ${m.role} | ${m.tier || "member"}
+            ${m.people?.computed_age ? `| 🎂 ${m.people.computed_age}` : ""}
+          </small>
+        </div>
 
-            <select id="tier-${m.id}">
-              <option value="member" ${m.tier==="member"?"selected":""}>Member</option>
-              <option value="core" ${m.tier==="core"?"selected":""}>Core</option>
-              <option value="trainee" ${m.tier==="trainee"?"selected":""}>Trainee</option>
-            </select>
+        <div class="member-actions">
 
-            <button onclick="updateMember('${m.id}')">💾</button>
-            <button onclick="removeMember('${m.id}')">❌</button>
-          </div>
+          <select id="role-${m.id}">
+            <option value="member" ${m.role==="member"?"selected":""}>Member</option>
+            <option value="co_leader" ${m.role==="co_leader"?"selected":""}>Co-Leader</option>
+            <option value="leader" ${m.role==="leader"?"selected":""}>Leader</option>
+          </select>
+
+          <select id="tier-${m.id}">
+            <option value="member" ${m.tier==="member"?"selected":""}>Member</option>
+            <option value="core" ${m.tier==="core"?"selected":""}>Core</option>
+            <option value="trainee" ${m.tier==="trainee"?"selected":""}>Trainee</option>
+          </select>
+
+          <button onclick="updateMember('${m.id}')">💾</button>
+          <button onclick="removeMember('${m.id}')">❌</button>
 
         </div>
-      `).join("");
+
+      </div>
+    `).join("");
   }
 
   container.innerHTML = (groups || []).map(g => {
 
     const list = getMembers(g.id);
     const stats = getStats(list);
+
+    const leaders = stats.leaders;
+    const coLeaders = stats.coLeaders;
+    const core = stats.coreList;
+
+    const membersOnly = list.filter(m =>
+      m.role === "member" && m.tier !== "core"
+    );
 
     return `
       <div class="card">
@@ -181,30 +201,33 @@ async function load() {
 
         <hr>
 
-        <!-- HIERARCHY -->
+        <!-- LEADERS -->
         <div class="section">
           <b>👑 Leader</b>
-          ${renderMembers(list, "leader")}
+          ${renderList(leaders, "No leader assigned")}
         </div>
 
+        <!-- CO LEADERS -->
         <div class="section">
-          <b>🧑‍🤝‍🧑 Co-Leaders</b>
-          ${renderMembers(list, "co_leader")}
+          <b>🧑 Co-Leaders</b>
+          ${renderList(coLeaders, "No co-leaders")}
         </div>
 
+        <!-- CORE -->
         <div class="section">
-          <b>🌱 Core Members</b>
-          ${renderMembers(list, null, "core")}
+          <b>🌱 Core Members (${stats.coreCount})</b>
+          ${renderList(core, "No core members")}
         </div>
 
+        <!-- MEMBERS -->
         <div class="section">
           <b>👥 Members</b>
-          ${renderMembers(list, "member", "member")}
+          ${renderList(membersOnly, "No members")}
         </div>
 
         <hr>
 
-        <!-- ADD -->
+        <!-- ADD PERSON -->
         <select id="person-${g.id}">
           ${(people || []).map(p => `
             <option value="${p.id}">${p.name}</option>
@@ -229,14 +252,8 @@ async function load() {
 
         <!-- METRICS -->
         <div class="metrics">
-          👥 ${stats.total} | 🎂 ${stats.avgAge} | 🌱 Core: ${stats.core}
-        </div>
-
-        <!-- HEALTH -->
-        <div class="metrics" style="color:#f87171;">
-          ${stats.total > 12 ? "⚠ Too many members<br>" : ""}
-          ${!list.some(m => m.role === "leader") ? "⚠ No leader<br>" : ""}
-          ${stats.core === 0 ? "⚠ No core<br>" : ""}
+          👥 Total: ${stats.total} |
+          🌱 Core: ${stats.coreCount}
         </div>
 
       </div>
