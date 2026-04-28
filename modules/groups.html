@@ -4,48 +4,72 @@
   <title>Groups</title>
 
   <style>
-    body { font-family: Arial; background:#0f172a; color:white; margin:0; }
-    h2 { padding:15px; }
+body { font-family: Arial; background:#0f172a; color:white; margin:0; }
+h2 { padding:15px; }
 
-    .card {
-      background:#111827;
-      padding:12px;
-      margin:10px;
-      border-radius:8px;
-      border:1px solid #1f2937;
-    }
+.card {
+  background:#111827;
+  padding:14px;
+  margin:12px;
+  border-radius:10px;
+  border:1px solid #1f2937;
+}
 
-    input, select {
-      width:100%;
-      margin:5px 0;
-      padding:6px;
-      border-radius:6px;
-      border:1px solid #334155;
-      background:#0f172a;
-      color:white;
-    }
+input, select {
+  width:100%;
+  margin:5px 0;
+  padding:6px;
+  border-radius:6px;
+  border:1px solid #334155;
+  background:#020617;
+  color:white;
+}
 
-    button {
-      margin-top:5px;
-      padding:6px 10px;
-      border:none;
-      border-radius:6px;
-      background:#2563eb;
-      color:white;
-      cursor:pointer;
-    }
+button {
+  margin-top:5px;
+  padding:6px 10px;
+  border:none;
+  border-radius:6px;
+  background:#2563eb;
+  color:white;
+  cursor:pointer;
+}
 
-    .metrics {
-      margin-top:10px;
-      font-size:13px;
-      color:#94a3b8;
-    }
+.metrics {
+  margin-top:10px;
+  font-size:13px;
+  color:#94a3b8;
+}
 
-    .role-leader { color:#22c55e; }
-    .role-co_leader { color:#f59e0b; }
-    .role-member { color:#94a3b8; }
+.section {
+  margin-top:10px;
+}
 
-  </style>
+.member-row {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  background:#020617;
+  padding:6px;
+  margin:4px 0;
+  border-radius:6px;
+}
+
+.member-info {
+  font-size:13px;
+}
+
+.member-actions select {
+  width:auto;
+  margin-left:5px;
+}
+
+.member-actions button {
+  margin-left:5px;
+  padding:4px 6px;
+  font-size:12px;
+}
+</style>
 </head>
 
 <body>
@@ -93,21 +117,10 @@ async function load() {
     return (members || []).filter(m => m.group_id === groupId);
   }
 
-  /**
-   * 🔥 ADVANCED STATS
-   */
   function getStats(list) {
-
     const total = list.length;
 
-    const leaders = list.filter(m => m.role === "leader");
-    const coLeaders = list.filter(m => m.role === "co_leader");
-
-    const core = list.filter(m => m.tier === "core");
-    const normal = list.filter(m => m.tier === "member");
-
-    const males = list.filter(m => m.people?.gender === "male").length;
-    const females = list.filter(m => m.people?.gender === "female").length;
+    const core = list.filter(m => m.tier === "core").length;
 
     const ages = list
       .map(m => m.people?.computed_age)
@@ -117,21 +130,42 @@ async function load() {
       ? Math.round(ages.reduce((a,b)=>a+b,0) / ages.length)
       : "-";
 
-    const corePercent = total
-      ? Math.round((core.length / total) * 100)
-      : 0;
+    return { total, core, avgAge };
+  }
 
-    return {
-      total,
-      leaders,
-      coLeaders,
-      core,
-      normal,
-      males,
-      females,
-      avgAge,
-      corePercent
-    };
+  function renderMembers(list, roleFilter, tierFilter) {
+    return list
+      .filter(m => (!roleFilter || m.role === roleFilter) &&
+                   (!tierFilter || m.tier === tierFilter))
+      .map(m => `
+        <div class="member-row">
+
+          <div class="member-info">
+            ${m.people?.name || "Unknown"}
+            <br>
+            <small>${m.role} | ${m.tier} 
+            ${m.people?.computed_age ? `| 🎂 ${m.people.computed_age}` : ""}</small>
+          </div>
+
+          <div class="member-actions">
+            <select id="role-${m.id}">
+              <option value="member" ${m.role==="member"?"selected":""}>Member</option>
+              <option value="co_leader" ${m.role==="co_leader"?"selected":""}>Co-Leader</option>
+              <option value="leader" ${m.role==="leader"?"selected":""}>Leader</option>
+            </select>
+
+            <select id="tier-${m.id}">
+              <option value="member" ${m.tier==="member"?"selected":""}>Member</option>
+              <option value="core" ${m.tier==="core"?"selected":""}>Core</option>
+              <option value="trainee" ${m.tier==="trainee"?"selected":""}>Trainee</option>
+            </select>
+
+            <button onclick="updateMember('${m.id}')">💾</button>
+            <button onclick="removeMember('${m.id}')">❌</button>
+          </div>
+
+        </div>
+      `).join("");
   }
 
   container.innerHTML = (groups || []).map(g => {
@@ -147,41 +181,43 @@ async function load() {
 
         <hr>
 
-        <!-- 🔥 HIERARCHY -->
-        <b>👑 Leader</b><br>
-        ${stats.leaders.map(l => `• ${l.people?.name}`).join("<br>") || "<span style='color:red;'>None</span>"}
+        <!-- HIERARCHY -->
+        <div class="section">
+          <b>👑 Leader</b>
+          ${renderMembers(list, "leader")}
+        </div>
 
-        <br><br>
+        <div class="section">
+          <b>🧑‍🤝‍🧑 Co-Leaders</b>
+          ${renderMembers(list, "co_leader")}
+        </div>
 
-        <b>🧑‍🤝‍🧑 Co-Leaders</b><br>
-        ${stats.coLeaders.map(l => `• ${l.people?.name}`).join("<br>") || "<span style='color:#f59e0b;'>None</span>"}
+        <div class="section">
+          <b>🌱 Core Members</b>
+          ${renderMembers(list, null, "core")}
+        </div>
 
-        <br><br>
-
-        <b>🌱 Core Members</b><br>
-        ${stats.core.map(m => `• ${m.people?.name}`).join("<br>") || "<i>None</i>"}
-
-        <br><br>
-
-        <b>👥 Members</b><br>
-        ${stats.normal.map(m => `• ${m.people?.name}`).join("<br>") || "<i>None</i>"}
+        <div class="section">
+          <b>👥 Members</b>
+          ${renderMembers(list, "member", "member")}
+        </div>
 
         <hr>
 
-        <!-- 🔥 ADD PERSON -->
+        <!-- ADD -->
         <select id="person-${g.id}">
           ${(people || []).map(p => `
             <option value="${p.id}">${p.name}</option>
           `).join("")}
         </select>
 
-        <select id="role-${g.id}">
+        <select id="role-new-${g.id}">
           <option value="member">Member</option>
           <option value="co_leader">Co-Leader</option>
           <option value="leader">Leader</option>
         </select>
 
-        <select id="tier-${g.id}">
+        <select id="tier-new-${g.id}">
           <option value="member">Member</option>
           <option value="core">Core</option>
           <option value="trainee">Trainee</option>
@@ -191,18 +227,16 @@ async function load() {
 
         <hr>
 
-        <!-- 🔥 METRICS -->
+        <!-- METRICS -->
         <div class="metrics">
-          👥 ${stats.total} | 🎂 ${stats.avgAge}<br>
-          ♂ ${stats.males} | ♀ ${stats.females}<br>
-          🌱 Core: ${stats.corePercent}%
+          👥 ${stats.total} | 🎂 ${stats.avgAge} | 🌱 Core: ${stats.core}
         </div>
 
-        <!-- 🔥 HEALTH FLAGS -->
+        <!-- HEALTH -->
         <div class="metrics" style="color:#f87171;">
           ${stats.total > 12 ? "⚠ Too many members<br>" : ""}
-          ${stats.leaders.length === 0 ? "⚠ No leader<br>" : ""}
-          ${stats.core.length === 0 ? "⚠ No core<br>" : ""}
+          ${!list.some(m => m.role === "leader") ? "⚠ No leader<br>" : ""}
+          ${stats.core === 0 ? "⚠ No core<br>" : ""}
         </div>
 
       </div>
@@ -211,19 +245,42 @@ async function load() {
 }
 
 /**
- * ADD MEMBER WITH TIER
+ * ADD
  */
 window.addToGroup = async function (groupId) {
-
   const person_id = document.getElementById(`person-${groupId}`).value;
-  const role = document.getElementById(`role-${groupId}`).value;
-  const tier = document.getElementById(`tier-${groupId}`).value;
+  const role = document.getElementById(`role-new-${groupId}`).value;
+  const tier = document.getElementById(`tier-new-${groupId}`).value;
 
-  const { error } = await db
-    .from("group_members")
+  await db.from("group_members")
     .insert([{ group_id: groupId, person_id, role, tier }]);
 
-  if (error) return alert(error.message);
+  location.reload();
+};
+
+/**
+ * UPDATE
+ */
+window.updateMember = async function (id) {
+  const role = document.getElementById(`role-${id}`).value;
+  const tier = document.getElementById(`tier-${id}`).value;
+
+  await db.from("group_members")
+    .update({ role, tier })
+    .eq("id", id);
+
+  alert("Updated!");
+};
+
+/**
+ * REMOVE
+ */
+window.removeMember = async function (id) {
+  if (!confirm("Remove this member?")) return;
+
+  await db.from("group_members")
+    .delete()
+    .eq("id", id);
 
   location.reload();
 };
