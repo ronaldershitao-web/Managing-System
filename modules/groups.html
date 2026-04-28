@@ -80,13 +80,23 @@ const container = document.getElementById("groups");
 async function load() {
 
   const { data: groups } = await db.from("groups").select("*");
-  const { data: members } = await db.from("group_members").select("*, people(*)");
-  const { data: people } = await db.from("people").select("id, name");
+
+  // 🔥 USE ENRICHED VIEW HERE
+  const { data: members } = await db
+    .from("group_members")
+    .select("*, people:people_enriched(*)");
+
+  const { data: people } = await db
+    .from("people")
+    .select("id, name");
 
   function getMembers(groupId) {
     return (members || []).filter(m => m.group_id === groupId);
   }
 
+  /**
+   * 🔥 FIXED STATS (USES computed_age)
+   */
   function getStats(list) {
 
     const total = list.length;
@@ -94,9 +104,13 @@ async function load() {
     const males = list.filter(m => m.people?.gender === "male").length;
     const females = list.filter(m => m.people?.gender === "female").length;
 
-    const avgAge = Math.round(
-      list.reduce((sum, m) => sum + (m.people?.age || 0), 0) / (total || 1)
-    );
+    const ages = list
+      .map(m => m.people?.computed_age)
+      .filter(a => a != null);
+
+    const avgAge = ages.length
+      ? Math.round(ages.reduce((a,b)=>a+b,0) / ages.length)
+      : "-";
 
     return { total, males, females, avgAge };
   }
@@ -111,7 +125,7 @@ async function load() {
 
         <h3>🏠 ${g.name}</h3>
 
-        <!-- EDIT SECTION -->
+        <!-- EDIT -->
         <input id="loc-${g.id}" value="${g.location || ""}" placeholder="Location">
         
         <select id="day-${g.id}">
@@ -149,7 +163,8 @@ async function load() {
         <!-- MEMBERS -->
         ${list.map(m => `
           <div class="role-${m.role}">
-            ${m.people?.name} (${m.role})
+            ${m.people?.name} (${m.role}) 
+            ${m.people?.computed_age ? `- 🎂 ${m.people.computed_age}` : ""}
           </div>
         `).join("")}
 
@@ -174,7 +189,11 @@ window.createGroup = async function () {
   const location = document.getElementById("groupLocation").value;
   const meeting_day = document.getElementById("groupDay").value;
 
-  await db.from("groups").insert([{ name, location, meeting_day }]);
+  const { error } = await db
+    .from("groups")
+    .insert([{ name, location, meeting_day }]);
+
+  if (error) return alert(error.message);
 
   location.reload();
 };
@@ -215,7 +234,6 @@ window.addToGroup = async function (groupId) {
 };
 
 load();
-
 </script>
 
 </body>
