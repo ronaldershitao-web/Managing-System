@@ -81,7 +81,6 @@ async function load() {
 
   const { data: groups } = await db.from("groups").select("*");
 
-  // 🔥 USE ENRICHED VIEW HERE
   const { data: members } = await db
     .from("group_members")
     .select("*, people:people_enriched(*)");
@@ -95,11 +94,17 @@ async function load() {
   }
 
   /**
-   * 🔥 FIXED STATS (USES computed_age)
+   * 🔥 ADVANCED STATS
    */
   function getStats(list) {
 
     const total = list.length;
+
+    const leaders = list.filter(m => m.role === "leader");
+    const coLeaders = list.filter(m => m.role === "co_leader");
+
+    const core = list.filter(m => m.tier === "core");
+    const normal = list.filter(m => m.tier === "member");
 
     const males = list.filter(m => m.people?.gender === "male").length;
     const females = list.filter(m => m.people?.gender === "female").length;
@@ -112,7 +117,21 @@ async function load() {
       ? Math.round(ages.reduce((a,b)=>a+b,0) / ages.length)
       : "-";
 
-    return { total, males, females, avgAge };
+    const corePercent = total
+      ? Math.round((core.length / total) * 100)
+      : 0;
+
+    return {
+      total,
+      leaders,
+      coLeaders,
+      core,
+      normal,
+      males,
+      females,
+      avgAge,
+      corePercent
+    };
   }
 
   container.innerHTML = (groups || []).map(g => {
@@ -124,26 +143,32 @@ async function load() {
       <div class="card">
 
         <h3>🏠 ${g.name}</h3>
-
-        <!-- EDIT -->
-        <input id="loc-${g.id}" value="${g.location || ""}" placeholder="Location">
-        
-        <select id="day-${g.id}">
-          <option value="">Day</option>
-          <option value="0" ${g.meeting_day==0?'selected':''}>Sun</option>
-          <option value="1" ${g.meeting_day==1?'selected':''}>Mon</option>
-          <option value="2" ${g.meeting_day==2?'selected':''}>Tue</option>
-          <option value="3" ${g.meeting_day==3?'selected':''}>Wed</option>
-          <option value="4" ${g.meeting_day==4?'selected':''}>Thu</option>
-          <option value="5" ${g.meeting_day==5?'selected':''}>Fri</option>
-          <option value="6" ${g.meeting_day==6?'selected':''}>Sat</option>
-        </select>
-
-        <button onclick="updateGroup('${g.id}')">💾 Save</button>
+        <small>📍 ${g.location || "-"} | Day: ${g.meeting_day ?? "-"}</small>
 
         <hr>
 
-        <!-- ADD PERSON -->
+        <!-- 🔥 HIERARCHY -->
+        <b>👑 Leader</b><br>
+        ${stats.leaders.map(l => `• ${l.people?.name}`).join("<br>") || "<span style='color:red;'>None</span>"}
+
+        <br><br>
+
+        <b>🧑‍🤝‍🧑 Co-Leaders</b><br>
+        ${stats.coLeaders.map(l => `• ${l.people?.name}`).join("<br>") || "<span style='color:#f59e0b;'>None</span>"}
+
+        <br><br>
+
+        <b>🌱 Core Members</b><br>
+        ${stats.core.map(m => `• ${m.people?.name}`).join("<br>") || "<i>None</i>"}
+
+        <br><br>
+
+        <b>👥 Members</b><br>
+        ${stats.normal.map(m => `• ${m.people?.name}`).join("<br>") || "<i>None</i>"}
+
+        <hr>
+
+        <!-- 🔥 ADD PERSON -->
         <select id="person-${g.id}">
           ${(people || []).map(p => `
             <option value="${p.id}">${p.name}</option>
@@ -156,23 +181,28 @@ async function load() {
           <option value="leader">Leader</option>
         </select>
 
+        <select id="tier-${g.id}">
+          <option value="member">Member</option>
+          <option value="core">Core</option>
+          <option value="trainee">Trainee</option>
+        </select>
+
         <button onclick="addToGroup('${g.id}')">➕ Add</button>
 
         <hr>
 
-        <!-- MEMBERS -->
-        ${list.map(m => `
-          <div class="role-${m.role}">
-            ${m.people?.name} (${m.role}) 
-            ${m.people?.computed_age ? `- 🎂 ${m.people.computed_age}` : ""}
-          </div>
-        `).join("")}
-
-        <!-- METRICS -->
+        <!-- 🔥 METRICS -->
         <div class="metrics">
-          👥 Total: ${stats.total}<br>
-          ♂ Male: ${stats.males} | ♀ Female: ${stats.females}<br>
-          🎂 Avg Age: ${stats.avgAge}
+          👥 ${stats.total} | 🎂 ${stats.avgAge}<br>
+          ♂ ${stats.males} | ♀ ${stats.females}<br>
+          🌱 Core: ${stats.corePercent}%
+        </div>
+
+        <!-- 🔥 HEALTH FLAGS -->
+        <div class="metrics" style="color:#f87171;">
+          ${stats.total > 12 ? "⚠ Too many members<br>" : ""}
+          ${stats.leaders.length === 0 ? "⚠ No leader<br>" : ""}
+          ${stats.core.length === 0 ? "⚠ No core<br>" : ""}
         </div>
 
       </div>
@@ -181,52 +211,17 @@ async function load() {
 }
 
 /**
- * CREATE
- */
-window.createGroup = async function () {
-
-  const name = document.getElementById("groupName").value;
-  const location = document.getElementById("groupLocation").value;
-  const meeting_day = document.getElementById("groupDay").value;
-
-  const { error } = await db
-    .from("groups")
-    .insert([{ name, location, meeting_day }]);
-
-  if (error) return alert(error.message);
-
-  location.reload();
-};
-
-/**
- * UPDATE
- */
-window.updateGroup = async function (id) {
-
-  const location = document.getElementById(`loc-${id}`).value;
-  const meeting_day = document.getElementById(`day-${id}`).value;
-
-  const { error } = await db
-    .from("groups")
-    .update({ location, meeting_day })
-    .eq("id", id);
-
-  if (error) return alert(error.message);
-
-  alert("Updated!");
-};
-
-/**
- * ADD MEMBER
+ * ADD MEMBER WITH TIER
  */
 window.addToGroup = async function (groupId) {
 
   const person_id = document.getElementById(`person-${groupId}`).value;
   const role = document.getElementById(`role-${groupId}`).value;
+  const tier = document.getElementById(`tier-${groupId}`).value;
 
   const { error } = await db
     .from("group_members")
-    .insert([{ group_id: groupId, person_id, role }]);
+    .insert([{ group_id: groupId, person_id, role, tier }]);
 
   if (error) return alert(error.message);
 
