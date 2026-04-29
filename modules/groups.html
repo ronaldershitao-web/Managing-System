@@ -3,7 +3,7 @@
 <head>
   <title>Groups</title>
 
-  <style>
+<style>
 body { font-family: Arial; background:#0f172a; color:white; margin:0; }
 h2 { padding:15px; }
 
@@ -15,8 +15,7 @@ h2 { padding:15px; }
   border:1px solid #1f2937;
 }
 
-input, select {
-  width:100%;
+select, button {
   margin:5px 0;
   padding:6px;
   border-radius:6px;
@@ -25,76 +24,17 @@ input, select {
   color:white;
 }
 
-button {
-  margin-top:5px;
-  padding:6px 10px;
-  border:none;
-  border-radius:6px;
-  background:#2563eb;
-  color:white;
-  cursor:pointer;
-}
-
-.metrics {
-  margin-top:10px;
-  font-size:13px;
-  color:#94a3b8;
-}
-
-.section {
-  margin-top:10px;
-}
-
-.member-row {
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  background:#020617;
+.member {
+  margin-left:20px;
   padding:6px;
-  margin:4px 0;
-  border-radius:6px;
-}
-
-.member-info {
-  font-size:13px;
-}
-
-.member-actions select {
-  width:auto;
-  margin-left:5px;
-}
-
-.member-actions button {
-  margin-left:5px;
-  padding:4px 6px;
-  font-size:12px;
+  border-left:2px solid #334155;
 }
 </style>
 </head>
 
 <body>
 
-<h2>🏠 Groups Dashboard</h2>
-
-<!-- CREATE GROUP -->
-<div class="card">
-  <h3>Create Group</h3>
-  <input id="groupName" placeholder="Group name">
-  <input id="groupLocation" placeholder="Location">
-
-  <select id="groupDay">
-    <option value="">Select day</option>
-    <option value="0">Sunday</option>
-    <option value="1">Monday</option>
-    <option value="2">Tuesday</option>
-    <option value="3">Wednesday</option>
-    <option value="4">Thursday</option>
-    <option value="5">Friday</option>
-    <option value="6">Saturday</option>
-  </select>
-
-  <button onclick="createGroup()">➕ Create</button>
-</div>
+<h2>🏠 Groups (Tree View)</h2>
 
 <div id="groups"></div>
 
@@ -109,7 +49,7 @@ async function load() {
 
   const { data: members } = await db
     .from("group_members")
-    .select("*, people:people_enriched(*)");
+    .select("*, people(*)");
 
   const { data: people } = await db
     .from("people")
@@ -119,93 +59,22 @@ async function load() {
     return (members || []).filter(m => m.group_id === groupId);
   }
 
-  function getStats(list) {
+  // 🌳 TREE RENDER
+  function renderTree(list, parentId = null) {
 
-    const total = list.length;
+    const children = list.filter(m => {
+      if (parentId === null) return !m.parent_member_id;
+      return m.parent_member_id === parentId;
+    });
 
-    const coreList = list.filter(m => m.tier === "core");
-    const leaders = list.filter(m => m.role === "leader");
-    const coLeaders = list.filter(m => m.role === "co_leader");
+    if (!children.length) return "";
 
-    const ages = list
-      .map(m => m.people?.computed_age)
-      .filter(a => a != null)
-      .sort((a,b)=>a-b);
+    return children.map(m => `
+      <div class="member">
+        👤 ${m.people?.name} 
+        <small>(${m.role})</small>
 
-    let avgAge = "-", minAge = "-", maxAge = "-", medianAge = "-";
-
-    if (ages.length) {
-      minAge = ages[0];
-      maxAge = ages[ages.length-1];
-
-      avgAge = Math.round(ages.reduce((a,b)=>a+b,0)/ages.length);
-
-      const mid = Math.floor(ages.length/2);
-      medianAge = ages.length % 2
-        ? ages[mid]
-        : Math.round((ages[mid-1] + ages[mid])/2);
-    }
-
-    const married = list.filter(m => m.people?.marital_status === "married").length;
-    const single = list.filter(m => m.people?.marital_status === "single").length;
-
-    const corePercent = total
-      ? Math.round((coreList.length / total) * 100)
-      : 0;
-
-    return {
-      total,
-      coreCount: coreList.length,
-      leaders,
-      coLeaders,
-      coreList,
-      avgAge,
-      minAge,
-      maxAge,
-      medianAge,
-      married,
-      single,
-      corePercent
-    };
-  }
-
-  function renderList(list, emptyText = "None") {
-
-    if (!list.length) {
-      return `<i style="color:#64748b;">${emptyText}</i>`;
-    }
-
-    return list.map(m => `
-      <div class="member-row">
-
-        <div class="member-info">
-          ${m.people?.name || "Unknown"}
-          <br>
-          <small>
-            ${m.role} | ${m.tier || "member"}
-            ${m.people?.computed_age ? `| 🎂 ${m.people.computed_age}` : ""}
-          </small>
-        </div>
-
-        <div class="member-actions">
-
-          <select id="role-${m.id}">
-            <option value="member" ${m.role==="member"?"selected":""}>Member</option>
-            <option value="co_leader" ${m.role==="co_leader"?"selected":""}>Co-Leader</option>
-            <option value="leader" ${m.role==="leader"?"selected":""}>Leader</option>
-          </select>
-
-          <select id="tier-${m.id}">
-            <option value="member" ${m.tier==="member"?"selected":""}>Member</option>
-            <option value="core" ${m.tier==="core"?"selected":""}>Core</option>
-            <option value="trainee" ${m.tier==="trainee"?"selected":""}>Trainee</option>
-          </select>
-
-          <button onclick="updateMember('${m.id}')">💾</button>
-          <button onclick="removeMember('${m.id}')">❌</button>
-
-        </div>
-
+        ${renderTree(list, m.id)}
       </div>
     `).join("");
   }
@@ -213,11 +82,6 @@ async function load() {
   container.innerHTML = (groups || []).map(g => {
 
     const list = getMembers(g.id);
-    const stats = getStats(list);
-
-    const membersOnly = list.filter(m =>
-      m.role === "member" && m.tier !== "core"
-    );
 
     return `
       <div class="card">
@@ -227,74 +91,36 @@ async function load() {
 
         <hr>
 
-        <div class="section">
-          <b>👑 Leader</b>
-          ${renderList(stats.leaders, "No leader")}
-        </div>
-
-        <div class="section">
-          <b>🧑 Co-Leaders</b>
-          ${renderList(stats.coLeaders, "No co-leaders")}
-        </div>
-
-        <div class="section">
-          <b>🌱 Core (${stats.coreCount})</b>
-          ${renderList(stats.coreList, "No core")}
-        </div>
-
-        <div class="section">
-          <b>👥 Members</b>
-          ${renderList(membersOnly, "No members")}
-        </div>
+        <b>🌳 Structure</b>
+        ${renderTree(list)}
 
         <hr>
 
-        <!-- ADD -->
+        <!-- ADD MEMBER -->
         <select id="person-${g.id}">
           ${(people || []).map(p => `
             <option value="${p.id}">${p.name}</option>
           `).join("")}
         </select>
 
-        <select id="role-new-${g.id}">
+        <select id="role-${g.id}">
           <option value="member">Member</option>
-          <option value="co_leader">Co-Leader</option>
+          <option value="sub_leader">Sub Leader</option>
+          <option value="co_leader">Co Leader</option>
           <option value="leader">Leader</option>
         </select>
 
-        <select id="tier-new-${g.id}">
-          <option value="member">Member</option>
-          <option value="core">Core</option>
-          <option value="trainee">Trainee</option>
+        <!-- REPORTING TO -->
+        <select id="parent-${g.id}">
+          <option value="">Top Level (Leader)</option>
+          ${list.map(m => `
+            <option value="${m.id}">
+              ${m.people?.name} (${m.role})
+            </option>
+          `).join("")}
         </select>
 
         <button onclick="addToGroup('${g.id}')">➕ Add</button>
-
-        <hr>
-
-        <!-- 📊 DASHBOARD -->
-        <div class="metrics">
-          <b>📊 Stats</b><br>
-
-          👥 Total: ${stats.total}<br>
-          🌱 Core: ${stats.coreCount} (${stats.corePercent}%)<br>
-
-          <br>
-
-          🎂 Avg: ${stats.avgAge} | Median: ${stats.medianAge}<br>
-          Min: ${stats.minAge} | Max: ${stats.maxAge}<br>
-
-          <br>
-
-          💍 Married: ${stats.married} | Single: ${stats.single}
-        </div>
-
-        <!-- 🚨 HEALTH -->
-        <div class="metrics" style="color:#f87171;">
-          ${stats.total > 12 ? "⚠ Group too large<br>" : ""}
-          ${stats.leaders.length === 0 ? "⚠ No leader<br>" : ""}
-          ${stats.coreCount < 2 ? "⚠ Weak core<br>" : ""}
-        </div>
 
       </div>
     `;
@@ -302,60 +128,25 @@ async function load() {
 }
 
 /**
- * CREATE
- */
-window.createGroup = async function () {
-
-  const name = document.getElementById("groupName").value;
-  const location = document.getElementById("groupLocation").value;
-  const meeting_day = document.getElementById("groupDay").value;
-
-  await db.from("groups")
-    .insert([{ name, location, meeting_day }]);
-
-  location.reload();
-};
-
-/**
- * ADD MEMBER
+ * ADD MEMBER WITH REPORTING
  */
 window.addToGroup = async function (groupId) {
 
   const person_id = document.getElementById(`person-${groupId}`).value;
-  const role = document.getElementById(`role-new-${groupId}`).value;
-  const tier = document.getElementById(`tier-new-${groupId}`).value;
+  const role = document.getElementById(`role-${groupId}`).value;
+  const parent_member_id =
+    document.getElementById(`parent-${groupId}`).value || null;
 
-  await db.from("group_members")
-    .insert([{ group_id: groupId, person_id, role, tier }]);
+  const { error } = await db
+    .from("group_members")
+    .insert([{
+      group_id: groupId,
+      person_id,
+      role,
+      parent_member_id
+    }]);
 
-  location.reload();
-};
-
-/**
- * UPDATE MEMBER
- */
-window.updateMember = async function (id) {
-
-  const role = document.getElementById(`role-${id}`).value;
-  const tier = document.getElementById(`tier-${id}`).value;
-
-  await db.from("group_members")
-    .update({ role, tier })
-    .eq("id", id);
-
-  alert("Updated!");
-};
-
-/**
- * REMOVE MEMBER
- */
-window.removeMember = async function (id) {
-
-  if (!confirm("Remove this member?")) return;
-
-  await db.from("group_members")
-    .delete()
-    .eq("id", id);
+  if (error) return alert(error.message);
 
   location.reload();
 };
