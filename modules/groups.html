@@ -269,13 +269,18 @@ window.updateMember = async function (id) {
 
   const role = document.getElementById(`role-${id}`).value;
 
-  const { error } = await db.from("group_members")
+  const { error } = await db
+    .from("group_members")
     .update({ role })
     .eq("id", id);
 
-  if (error) return alert(error.message);
+  if (error) {
+    console.error(error);
+    alert("Update failed: " + error.message);
+    return;
+  }
 
-  await fetchData();
+  await load(); // IMPORTANT instead of reload
 };
 
 /**
