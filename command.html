@@ -7,19 +7,112 @@
     import { db } from "./assets/app.js";
 
     async function load() {
-      const { data } = await db
-        .from('people_priority_engine')
-        .select('*')
-        .order('computed_priority_score', { ascending: false })
-        .limit(10);
 
-      document.getElementById("list").innerHTML =
-        (data || []).map(p => `
-          <div class="card">
-            <b>${p.name}</b><br>
-            Score: ${Math.round(p.computed_priority_score)}
-          </div>
-        `).join('');
+      const [peopleRes, groupsRes, membersRes, priorityRes] = await Promise.all([
+        db.from("people").select("id, created_at, computed_priority_score"),
+        db.from("groups").select("*"),
+        db.from("group_members").select("id, group_id, reports_to"),
+        db.from("people_priority_engine").select("*")
+      ]);
+
+      const people = peopleRes.data || [];
+      const groups = groupsRes.data || [];
+      const members = membersRes.data || [];
+      const priority = priorityRes.data || [];
+
+      renderPeopleStats(people);
+      renderGroupStats(groups, members);
+      renderLeadershipStats(members);
+      renderPriority(priority);
+    }
+
+    /**
+     * PEOPLE STATS
+     */
+    function renderPeopleStats(people) {
+
+      const total = people.length;
+
+      const avgScore = people.length
+        ? people.reduce((a,b)=>a + (b.computed_priority_score || 0),0) / people.length
+        : 0;
+
+      const html = `
+        <div class="card">
+          <h3>🧍 People Intelligence</h3>
+          <p>Total People: ${total}</p>
+          <p>Avg Priority Score: ${avgScore.toFixed(2)}</p>
+        </div>
+      `;
+
+      document.getElementById("people").innerHTML = html;
+    }
+
+    /**
+     * GROUP STATS
+     */
+    function renderGroupStats(groups, members) {
+
+      const groupSizes = groups.map(g => {
+        const size = members.filter(m => m.group_id === g.id).length;
+        return size;
+      });
+
+      const avgGroupSize = groupSizes.length
+        ? (groupSizes.reduce((a,b)=>a+b,0) / groupSizes.length).toFixed(1)
+        : 0;
+
+      const overloaded = groupSizes.filter(s => s > 15).length;
+
+      document.getElementById("groups").innerHTML = `
+        <div class="card">
+          <h3>🏠 Group Health</h3>
+          <p>Total Groups: ${groups.length}</p>
+          <p>Avg Group Size: ${avgGroupSize}</p>
+          <p>Overloaded Groups (>15): ${overloaded}</p>
+        </div>
+      `;
+    }
+
+    /**
+     * LEADERSHIP STATS
+     */
+    function renderLeadershipStats(members) {
+
+      const roots = members.filter(m => !m.reports_to);
+      const orphan = members.filter(m => !m.reports_to).length;
+
+      document.getElementById("leaders").innerHTML = `
+        <div class="card">
+          <h3>🧭 Leadership Structure</h3>
+          <p>Top-Level Leaders: ${roots.length}</p>
+          <p>Orphan Nodes: ${orphan}</p>
+        </div>
+      `;
+    }
+
+    /**
+     * PRIORITY ENGINE
+     */
+    function renderPriority(priority) {
+
+      const top = priority
+        .sort((a,b)=>b.computed_priority_score - a.computed_priority_score)
+        .slice(0,10);
+
+      document.getElementById("priority").innerHTML = `
+        <div class="card">
+          <h3>🔥 Priority Engine</h3>
+
+          ${top.map(p => `
+            <div style="padding:5px; border-bottom:1px solid #1f2937;">
+              <b>${p.name}</b><br>
+              Score: ${Math.round(p.computed_priority_score)}
+            </div>
+          `).join("")}
+
+        </div>
+      `;
     }
 
     window.onload = load;
@@ -28,12 +121,20 @@
   <style>
     body { margin:0; font-family:Arial; background:#0f172a; color:white; }
     header { padding:15px; background:#111827; }
+
+    .grid {
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:10px;
+      padding:10px;
+    }
+
     .card {
       background:#111827;
-      padding:10px;
-      margin:10px;
+      padding:12px;
       border-radius:8px;
       border:1px solid #1f2937;
+      margin:10px;
     }
   </style>
 </head>
@@ -42,10 +143,16 @@
 
 <header>
   🔥 Command Center
-  <button onclick="location.href='index.html'" style="float:right;">Home</button>
 </header>
 
-<div id="list"></div>
+<div class="grid">
+
+  <div id="people"></div>
+  <div id="groups"></div>
+  <div id="leaders"></div>
+  <div id="priority"></div>
+
+</div>
 
 </body>
 </html>
