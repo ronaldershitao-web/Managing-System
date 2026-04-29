@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Groups Dashboard</title>
+  <title>Groups Dashboard (Hierarchy)</title>
 
   <style>
     body { font-family: Arial; background:#0f172a; color:white; margin:0; }
@@ -24,39 +24,30 @@
       color:white;
     }
 
-    .section { margin-top:10px; }
-
-    .member-row {
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
+    .member {
       background:#020617;
       padding:6px;
-      margin:4px 0;
+      margin-top:6px;
       border-radius:6px;
+    }
+
+    .tree {
+      margin-left:10px;
+      padding-left:10px;
+      border-left:1px solid #334155;
     }
 
     .metrics {
       margin-top:10px;
       font-size:13px;
       color:#94a3b8;
-      line-height:1.5;
-    }
-
-    .tag {
-      font-size:12px;
-      padding:2px 6px;
-      border-radius:4px;
-      background:#1f2937;
-      margin-left:5px;
     }
   </style>
 </head>
 
 <body>
 
-<h2>🏠 Groups Dashboard</h2>
-
+<h2>🏠 Groups Dashboard (Hierarchy Mode)</h2>
 <div id="groups"></div>
 
 <script type="module">
@@ -68,11 +59,18 @@ let groups = [];
 let members = [];
 let people = [];
 
+/**
+ * LOAD DATA
+ */
 async function fetchData() {
 
   const g = await db.from("groups").select("*");
-  const m = await db.from("group_members").select("id, group_id, role, person_id, people:people_enriched(*)");
-  const p = await db.from("people").select("id, name, computed_age, marital_status, gender");
+
+  const m = await db.from("group_members")
+    .select("id, group_id, role, person_id, reports_to, people:people_enriched(*)");
+
+  const p = await db.from("people")
+    .select("id, name, computed_age, marital_status");
 
   groups = g.data || [];
   members = m.data || [];
@@ -82,105 +80,71 @@ async function fetchData() {
 }
 
 /**
- * GROUP MEMBERS
+ * BUILD TREE FROM reports_to
  */
-function getMembers(groupId) {
-  return members.filter(m => m.group_id === groupId);
+function buildTree(list) {
+
+  const map = new Map();
+  const roots = [];
+
+  list.forEach(m => {
+    map.set(m.id, { ...m, children: [] });
+  });
+
+  map.forEach(node => {
+    if (node.reports_to && map.has(node.reports_to)) {
+      map.get(node.reports_to).children.push(node);
+    } else {
+      roots.push(node);
+    }
+  });
+
+  return roots;
 }
 
 /**
- * STATS ENGINE
+ * RENDER TREE
  */
-function getStats(list) {
+function renderTree(nodes, level = 0) {
 
-  const ages = list
-    .map(m => m.people?.computed_age)
-    .filter(Boolean)
-    .sort((a,b)=>a-b);
+  return nodes.map(n => `
+    <div class="member" style="margin-left:${level * 15}px">
 
-  const total = list.length;
+      <b>${n.people?.name || "Unknown"}</b>
+      <small> (${n.role})</small>
 
-  const avg = ages.length ? Math.round(ages.reduce((a,b)=>a+b,0)/ages.length) : 0;
-  const min = ages.length ? ages[0] : 0;
-  const max = ages.length ? ages[ages.length-1] : 0;
-
-  const median = ages.length
-    ? (ages.length % 2
-        ? ages[Math.floor(ages.length/2)]
-        : Math.round((ages[ages.length/2-1] + ages[ages.length/2]) / 2)
-      )
-    : 0;
-
-  const married = list.filter(m => m.people?.marital_status === "married").length;
-  const single = list.filter(m => m.people?.marital_status === "single").length;
-
-  const leaders = list.filter(m => m.role === "leader");
-  const coLeaders = list.filter(m => m.role === "co_leader");
-  const core = list.filter(m => m.role === "core");
-  const membersOnly = list.filter(m => m.role === "member");
-  const trainees = list.filter(m => m.role === "trainee");
-
-  return {
-    total,
-    avg,
-    min,
-    max,
-    median,
-    married,
-    single,
-    leaders,
-    coLeaders,
-    core,
-    membersOnly,
-    trainees
-  };
-}
-
-/**
- * MEMBER UI
- */
-function renderList(list) {
-
-  if (!list.length) return `<i style="color:#64748b;">None</i>`;
-
-  return list.map(m => `
-    <div class="member-row">
-
-      <div>
-        ${m.people?.name || "Unknown"}
-        <br>
-        <small>
-          ${m.role}
-          <span class="tag">${m.people?.computed_age ?? "-"} yrs</span>
-        </small>
-      </div>
-
-      <div>
-        <select id="role-${m.id}">
-          <option value="trainee" ${m.role==="trainee"?"selected":""}>Trainee</option>
-          <option value="member" ${m.role==="member"?"selected":""}>Member</option>
-          <option value="core" ${m.role==="core"?"selected":""}>Core</option>
-          <option value="co_leader" ${m.role==="co_leader"?"selected":""}>Co-Leader</option>
-          <option value="leader" ${m.role==="leader"?"selected":""}>Leader</option>
+      <div style="margin-top:5px;">
+        <select id="role-${n.id}">
+          <option value="trainee" ${n.role==="trainee"?"selected":""}>Trainee</option>
+          <option value="member" ${n.role==="member"?"selected":""}>Member</option>
+          <option value="core" ${n.role==="core"?"selected":""}>Core</option>
+          <option value="co_leader" ${n.role==="co_leader"?"selected":""}>321 Leader</option>
+          <option value="leader" ${n.role==="leader"?"selected":""}>Cell Leader</option>
         </select>
 
-        <button onclick="updateMember('${m.id}')">💾</button>
-        <button onclick="removeMember('${m.id}')">❌</button>
+        <button onclick="updateMember('${n.id}')">💾</button>
+        <button onclick="removeMember('${n.id}')">❌</button>
       </div>
+
+      ${n.children?.length ? `
+        <div class="tree">
+          ${renderTree(n.children, level + 1)}
+        </div>
+      ` : ""}
 
     </div>
   `).join("");
 }
 
 /**
- * RENDER DASHBOARD
+ * RENDER PAGE
  */
 function render() {
 
   container.innerHTML = groups.map(g => {
 
-    const list = getMembers(g.id);
-    const stats = getStats(list);
+    const list = members.filter(m => m.group_id === g.id);
+    const tree = buildTree(list);
 
     return `
       <div class="card">
@@ -190,56 +154,35 @@ function render() {
 
         <hr>
 
-        <div class="section">
-          <b>👑 Leader</b>
-          ${renderList(stats.leaders)}
-        </div>
-
-        <div class="section">
-          <b>🧑 Co-Leaders</b>
-          ${renderList(stats.coLeaders)}
-        </div>
-
-        <div class="section">
-          <b>🌱 Core Members</b>
-          ${renderList(stats.core)}
-        </div>
-
-        <div class="section">
-          <b>👥 Members</b>
-          ${renderList(stats.membersOnly)}
-        </div>
-
-        <div class="section">
-          <b>🆕 Trainees</b>
-          ${renderList(stats.trainees)}
-        </div>
+        ${renderTree(tree)}
 
         <hr>
 
         <!-- ADD MEMBER -->
         <select id="person-${g.id}">
-          ${people.map(p => `<option value="${p.id}">${p.name}</option>`).join("")}
+          ${people.map(p => `
+            <option value="${p.id}">${p.name}</option>
+          `).join("")}
         </select>
 
         <select id="role-new-${g.id}">
           <option value="trainee">Trainee</option>
           <option value="member">Member</option>
           <option value="core">Core</option>
-          <option value="co_leader">Co-Leader</option>
-          <option value="leader">Leader</option>
+          <option value="co_leader">321 Leader</option>
+          <option value="leader">Cell Leader</option>
+        </select>
+
+        <select id="reports-${g.id}">
+          <option value="">(Top Level - Cell Leader)</option>
+          ${list.map(m => `
+            <option value="${m.id}">
+              ${m.people?.name || "Unknown"}
+            </option>
+          `).join("")}
         </select>
 
         <button onclick="addToGroup('${g.id}')">➕ Add</button>
-
-        <hr>
-
-        <!-- STATS -->
-        <div class="metrics">
-          👥 Total: ${stats.total}<br>
-          🎂 Avg: ${stats.avg} | Min: ${stats.min} | Max: ${stats.max} | Median: ${stats.median}<br>
-          💍 Married: ${stats.married} | Single: ${stats.single}
-        </div>
 
       </div>
     `;
@@ -249,43 +192,44 @@ function render() {
 /**
  * ADD MEMBER
  */
-window.addToGroup = async function (groupId) {
+window.addToGroup = async function(groupId) {
 
   const person_id = document.getElementById(`person-${groupId}`).value;
   const role = document.getElementById(`role-new-${groupId}`).value;
+  const reports_to = document.getElementById(`reports-${groupId}`).value || null;
 
-  const { error } = await db.from("group_members")
-    .insert([{ group_id: groupId, person_id, role }]);
+  const { error } = await db.from("group_members").insert([{
+    group_id: groupId,
+    person_id,
+    role,
+    reports_to
+  }]);
 
   if (error) return alert(error.message);
 
-  await fetchData();
+  fetchData();
 };
 
 /**
- * UPDATE MEMBER (FIXED REFRESH ISSUE)
+ * UPDATE MEMBER
  */
-window.updateMember = async function (id) {
+window.updateMember = async function(id) {
 
   const role = document.getElementById(`role-${id}`).value;
 
-  const { error } = await db
-    .from("group_members")
+  const { error } = await db.from("group_members")
     .update({ role })
     .eq("id", id);
 
-  if (error) {
-    console.error(error);
-    alert("Update failed: " + error.message);
-    return;
-  }
+  if (error) return alert(error.message);
 
-  await fetchData(); // ✅ FIXED
+  fetchData();
 };
+
 /**
  * DELETE MEMBER
  */
-window.removeMember = async function (id) {
+window.removeMember = async function(id) {
 
   if (!confirm("Remove member?")) return;
 
@@ -295,7 +239,7 @@ window.removeMember = async function (id) {
 
   if (error) return alert(error.message);
 
-  await fetchData();
+  fetchData();
 };
 
 fetchData();
