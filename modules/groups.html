@@ -280,9 +280,8 @@ window.updateMember = async function (id) {
     return;
   }
 
-  await load(); // IMPORTANT instead of reload
+  await fetchData(); // ✅ FIXED
 };
-
 /**
  * DELETE MEMBER
  */
