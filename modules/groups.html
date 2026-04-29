@@ -74,13 +74,14 @@ button {
 
 <body>
 
-<h2>🏠 Groups</h2>
+<h2>🏠 Groups Dashboard</h2>
 
-<!-- CREATE -->
+<!-- CREATE GROUP -->
 <div class="card">
   <h3>Create Group</h3>
   <input id="groupName" placeholder="Group name">
   <input id="groupLocation" placeholder="Location">
+
   <select id="groupDay">
     <option value="">Select day</option>
     <option value="0">Sunday</option>
@@ -91,6 +92,7 @@ button {
     <option value="5">Friday</option>
     <option value="6">Saturday</option>
   </select>
+
   <button onclick="createGroup()">➕ Create</button>
 </div>
 
@@ -127,23 +129,51 @@ async function load() {
 
     const ages = list
       .map(m => m.people?.computed_age)
-      .filter(a => a != null);
+      .filter(a => a != null)
+      .sort((a,b)=>a-b);
 
-    const avgAge = ages.length
-      ? Math.round(ages.reduce((a,b)=>a+b,0) / ages.length)
-      : "-";
+    let avgAge = "-", minAge = "-", maxAge = "-", medianAge = "-";
+
+    if (ages.length) {
+      minAge = ages[0];
+      maxAge = ages[ages.length-1];
+
+      avgAge = Math.round(ages.reduce((a,b)=>a+b,0)/ages.length);
+
+      const mid = Math.floor(ages.length/2);
+      medianAge = ages.length % 2
+        ? ages[mid]
+        : Math.round((ages[mid-1] + ages[mid])/2);
+    }
+
+    const married = list.filter(m => m.people?.marital_status === "married").length;
+    const single = list.filter(m => m.people?.marital_status === "single").length;
+
+    const corePercent = total
+      ? Math.round((coreList.length / total) * 100)
+      : 0;
 
     return {
       total,
       coreCount: coreList.length,
       leaders,
       coLeaders,
-      coreList
+      coreList,
+      avgAge,
+      minAge,
+      maxAge,
+      medianAge,
+      married,
+      single,
+      corePercent
     };
   }
 
   function renderList(list, emptyText = "None") {
-    if (!list.length) return `<i style="color:#64748b;">${emptyText}</i>`;
+
+    if (!list.length) {
+      return `<i style="color:#64748b;">${emptyText}</i>`;
+    }
 
     return list.map(m => `
       <div class="member-row">
@@ -185,10 +215,6 @@ async function load() {
     const list = getMembers(g.id);
     const stats = getStats(list);
 
-    const leaders = stats.leaders;
-    const coLeaders = stats.coLeaders;
-    const core = stats.coreList;
-
     const membersOnly = list.filter(m =>
       m.role === "member" && m.tier !== "core"
     );
@@ -201,25 +227,21 @@ async function load() {
 
         <hr>
 
-        <!-- LEADERS -->
         <div class="section">
           <b>👑 Leader</b>
-          ${renderList(leaders, "No leader assigned")}
+          ${renderList(stats.leaders, "No leader")}
         </div>
 
-        <!-- CO LEADERS -->
         <div class="section">
           <b>🧑 Co-Leaders</b>
-          ${renderList(coLeaders, "No co-leaders")}
+          ${renderList(stats.coLeaders, "No co-leaders")}
         </div>
 
-        <!-- CORE -->
         <div class="section">
-          <b>🌱 Core Members (${stats.coreCount})</b>
-          ${renderList(core, "No core members")}
+          <b>🌱 Core (${stats.coreCount})</b>
+          ${renderList(stats.coreList, "No core")}
         </div>
 
-        <!-- MEMBERS -->
         <div class="section">
           <b>👥 Members</b>
           ${renderList(membersOnly, "No members")}
@@ -227,7 +249,7 @@ async function load() {
 
         <hr>
 
-        <!-- ADD PERSON -->
+        <!-- ADD -->
         <select id="person-${g.id}">
           ${(people || []).map(p => `
             <option value="${p.id}">${p.name}</option>
@@ -250,10 +272,28 @@ async function load() {
 
         <hr>
 
-        <!-- METRICS -->
+        <!-- 📊 DASHBOARD -->
         <div class="metrics">
-          👥 Total: ${stats.total} |
-          🌱 Core: ${stats.coreCount}
+          <b>📊 Stats</b><br>
+
+          👥 Total: ${stats.total}<br>
+          🌱 Core: ${stats.coreCount} (${stats.corePercent}%)<br>
+
+          <br>
+
+          🎂 Avg: ${stats.avgAge} | Median: ${stats.medianAge}<br>
+          Min: ${stats.minAge} | Max: ${stats.maxAge}<br>
+
+          <br>
+
+          💍 Married: ${stats.married} | Single: ${stats.single}
+        </div>
+
+        <!-- 🚨 HEALTH -->
+        <div class="metrics" style="color:#f87171;">
+          ${stats.total > 12 ? "⚠ Group too large<br>" : ""}
+          ${stats.leaders.length === 0 ? "⚠ No leader<br>" : ""}
+          ${stats.coreCount < 2 ? "⚠ Weak core<br>" : ""}
         </div>
 
       </div>
@@ -262,9 +302,25 @@ async function load() {
 }
 
 /**
- * ADD
+ * CREATE
+ */
+window.createGroup = async function () {
+
+  const name = document.getElementById("groupName").value;
+  const location = document.getElementById("groupLocation").value;
+  const meeting_day = document.getElementById("groupDay").value;
+
+  await db.from("groups")
+    .insert([{ name, location, meeting_day }]);
+
+  location.reload();
+};
+
+/**
+ * ADD MEMBER
  */
 window.addToGroup = async function (groupId) {
+
   const person_id = document.getElementById(`person-${groupId}`).value;
   const role = document.getElementById(`role-new-${groupId}`).value;
   const tier = document.getElementById(`tier-new-${groupId}`).value;
@@ -276,9 +332,10 @@ window.addToGroup = async function (groupId) {
 };
 
 /**
- * UPDATE
+ * UPDATE MEMBER
  */
 window.updateMember = async function (id) {
+
   const role = document.getElementById(`role-${id}`).value;
   const tier = document.getElementById(`tier-${id}`).value;
 
@@ -290,9 +347,10 @@ window.updateMember = async function (id) {
 };
 
 /**
- * REMOVE
+ * REMOVE MEMBER
  */
 window.removeMember = async function (id) {
+
   if (!confirm("Remove this member?")) return;
 
   await db.from("group_members")
