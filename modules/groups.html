@@ -47,7 +47,6 @@ select, button {
 <body>
 
 <h2>🏠 Groups</h2>
-
 <div id="groups"></div>
 
 <script type="module">
@@ -57,21 +56,25 @@ const container = document.getElementById("groups");
 
 async function load() {
 
-  const { data: groups } = await db.from("groups").select("*");
+  const { data: groups, error: gErr } = await db.from("groups").select("*");
+  if (gErr) return alert("Groups error: " + gErr.message);
 
-  const { data: members } = await db
+  const { data: members, error: mErr } = await db
     .from("group_members")
-    .select("*, people:people_enriched(*)");
+    .select("id, role, group_id, people:people_enriched(*)");
 
-  const { data: people } = await db
+  if (mErr) return alert("Members error: " + mErr.message);
+
+  const { data: people, error: pErr } = await db
     .from("people")
     .select("id, name");
+
+  if (pErr) return alert("People error: " + pErr.message);
 
   function getMembers(groupId) {
     return (members || []).filter(m => m.group_id === groupId);
   }
 
-  // 🔥 AGE + STATS
   function getStats(list) {
 
     const total = list.length;
@@ -85,8 +88,8 @@ async function load() {
       ? Math.round(ages.reduce((a,b)=>a+b,0)/ages.length)
       : "-";
 
-    const min = ages.length ? ages[0] : "-";
-    const max = ages.length ? ages[ages.length-1] : "-";
+    const min = ages[0] ?? "-";
+    const max = ages[ages.length-1] ?? "-";
 
     const median = ages.length
       ? (ages.length % 2
@@ -101,7 +104,6 @@ async function load() {
     return { total, avg, min, max, median, married, single };
   }
 
-  // 🔥 RENDER LIST
   function renderList(list) {
 
     if (!list.length) return `<i style="color:#64748b;">None</i>`;
@@ -113,7 +115,7 @@ async function load() {
           ${m.people?.name || "Unknown"}
           <br>
           <small>
-            ${m.role}
+            ${m.role || "-"}
             ${m.people?.computed_age ? `| 🎂 ${m.people.computed_age}` : ""}
           </small>
         </div>
@@ -140,12 +142,6 @@ async function load() {
     const list = getMembers(g.id);
     const stats = getStats(list);
 
-    const leaders = list.filter(m => m.role === "leader");
-    const coLeaders = list.filter(m => m.role === "co_leader");
-    const core = list.filter(m => m.role === "core");
-    const membersOnly = list.filter(m => m.role === "member");
-    const trainees = list.filter(m => m.role === "trainee");
-
     return `
       <div class="card">
 
@@ -154,19 +150,16 @@ async function load() {
 
         <hr>
 
-        <div class="section"><b>👑 Leader</b>${renderList(leaders)}</div>
-        <div class="section"><b>🧑 Co-Leaders</b>${renderList(coLeaders)}</div>
-        <div class="section"><b>🌱 Core</b>${renderList(core)}</div>
-        <div class="section"><b>👥 Members</b>${renderList(membersOnly)}</div>
-        <div class="section"><b>🆕 Trainees</b>${renderList(trainees)}</div>
+        <div class="section"><b>👑 Leader</b>${renderList(list.filter(m=>m.role==="leader"))}</div>
+        <div class="section"><b>🧑 Co-Leaders</b>${renderList(list.filter(m=>m.role==="co_leader"))}</div>
+        <div class="section"><b>🌱 Core</b>${renderList(list.filter(m=>m.role==="core"))}</div>
+        <div class="section"><b>👥 Members</b>${renderList(list.filter(m=>m.role==="member"))}</div>
+        <div class="section"><b>🆕 Trainees</b>${renderList(list.filter(m=>m.role==="trainee"))}</div>
 
         <hr>
 
-        <!-- ADD -->
         <select id="person-${g.id}">
-          ${(people || []).map(p => `
-            <option value="${p.id}">${p.name}</option>
-          `).join("")}
+          ${(people || []).map(p => `<option value="${p.id}">${p.name}</option>`).join("")}
         </select>
 
         <select id="role-new-${g.id}">
@@ -181,11 +174,10 @@ async function load() {
 
         <hr>
 
-        <!-- 📊 STATS -->
         <div class="metrics">
-          👥 Total: ${stats.total}<br>
-          🎂 Avg: ${stats.avg} | Min: ${stats.min} | Max: ${stats.max} | Median: ${stats.median}<br>
-          💍 Married: ${stats.married} | Single: ${stats.single}
+          👥 ${stats.total}<br>
+          🎂 Avg ${stats.avg} | Min ${stats.min} | Max ${stats.max} | Med ${stats.median}<br>
+          💍 Married ${stats.married} | Single ${stats.single}
         </div>
 
       </div>
@@ -201,24 +193,31 @@ window.addToGroup = async function (groupId) {
   const person_id = document.getElementById(`person-${groupId}`).value;
   const role = document.getElementById(`role-new-${groupId}`).value;
 
-  await db.from("group_members")
+  const { error } = await db.from("group_members")
     .insert([{ group_id: groupId, person_id, role }]);
 
-  location.reload();
+  if (error) return alert("Add error: " + error.message);
+
+  await load();
 };
 
 /**
- * UPDATE
+ * UPDATE (🔥 FIXED)
  */
 window.updateMember = async function (id) {
 
   const role = document.getElementById(`role-${id}`).value;
 
-  await db.from("group_members")
+  const { error } = await db.from("group_members")
     .update({ role })
     .eq("id", id);
 
-  alert("Updated!");
+  if (error) {
+    alert("Update failed: " + error.message);
+    return;
+  }
+
+  await load(); // 🔥 refresh UI properly
 };
 
 /**
@@ -228,11 +227,13 @@ window.removeMember = async function (id) {
 
   if (!confirm("Remove member?")) return;
 
-  await db.from("group_members")
+  const { error } = await db.from("group_members")
     .delete()
     .eq("id", id);
 
-  location.reload();
+  if (error) return alert("Delete error: " + error.message);
+
+  await load();
 };
 
 load();
