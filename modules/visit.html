@@ -3,7 +3,162 @@
 <head>
   <title>Visit Cockpit</title>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script type="module">
+    import { db } from "../assets/app.js";
+
+    let groups = [];
+    let members = [];
+    let peopleMap = {};
+    let currentGroup = null;
+    let currentVisit = null;
+
+    // ---------------- LOAD GROUPS ----------------
+    async function loadGroups() {
+
+      const { data } = await db.from("groups").select("*");
+      groups = data || [];
+
+      const sel = document.getElementById("groupSelect");
+
+      sel.innerHTML = `<option value="">Select Cell</option>`;
+
+      groups.forEach(g => {
+        const opt = document.createElement("option");
+        opt.value = g.id;
+        opt.textContent = g.name;
+        sel.appendChild(opt);
+      });
+
+      sel.onchange = () => {
+        currentGroup = sel.value;
+        loadPeople();
+      };
+    }
+
+    // ---------------- LOAD PEOPLE (FIXED JOIN) ----------------
+    async function loadPeople() {
+
+      const { data } = await db
+        .from("group_members")
+        .select("id, person_id, people:people(*)")
+        .eq("group_id", currentGroup);
+
+      members = data || [];
+
+      // map for fast lookup
+      peopleMap = {};
+      members.forEach(m => {
+        peopleMap[m.person_id] = m.people;
+      });
+
+      renderPeople();
+    }
+
+    // ---------------- RENDER PEOPLE ----------------
+    function renderPeople() {
+
+      const container = document.getElementById("peopleList");
+
+      container.innerHTML = members.map((m, i) => {
+
+        const p = m.people;
+
+        return `
+          <div class="person">
+            <b>${p?.name || "Unknown"}</b>
+
+            <div class="row">
+              <input id="a-${m.person_id}" placeholder="Attendance">
+              <input id="e-${m.person_id}" placeholder="Engagement">
+              <input id="p-${m.person_id}" placeholder="Participation">
+              <input id="l-${m.person_id}" placeholder="Alignment">
+
+              <button onclick="save('${m.person_id}')">Save</button>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    // ---------------- START VISIT ----------------
+    window.startVisit = async function () {
+
+      const date = document.getElementById("visitDate").value;
+      const notes = document.getElementById("notes").value;
+
+      const { data, error } = await db
+        .from("cell_visit_sessions")
+        .insert([{
+          group_id: currentGroup,
+          visit_date: date,
+          notes
+        }])
+        .select();
+
+      if (error) return alert(error.message);
+
+      currentVisit = data[0].id;
+
+      document.getElementById("visitStatus").innerText =
+        "Visit started ✔";
+    };
+
+    // ---------------- SAVE SCORE ----------------
+    window.save = async function (personId) {
+
+      const attendance = +document.getElementById(`a-${personId}`).value || 0;
+      const engagement = +document.getElementById(`e-${personId}`).value || 0;
+      const participation = +document.getElementById(`p-${personId}`).value || 0;
+      const alignment = +document.getElementById(`l-${personId}`).value || 0;
+
+      const { error } = await db
+        .from("cell_visit_person_scores")
+        .insert([{
+          visit_session_id: currentVisit,
+          person_id: personId,
+          attendance_score: attendance,
+          engagement_score: engagement,
+          participation_score: participation,
+          alignment_score: alignment
+        }]);
+
+      if (error) return alert(error.message);
+
+      calculateHealth();
+    };
+
+    // ---------------- HEALTH CALC ----------------
+    async function calculateHealth() {
+
+      const { data } = await db
+        .from("cell_visit_person_scores")
+        .select("*")
+        .eq("visit_session_id", currentVisit);
+
+      if (!data?.length) return;
+
+      let total = 0;
+
+      data.forEach(p => {
+        total += (
+          p.attendance_score +
+          p.engagement_score +
+          p.participation_score +
+          p.alignment_score
+        ) / 4;
+      });
+
+      const avg = total / data.length;
+      const percent = (avg * 25).toFixed(1); // max 4 per field
+
+      document.getElementById("health").innerText =
+        percent + "%";
+    }
+
+    // INIT
+    window.onload = loadGroups;
+
+  </script>
 
   <style>
     body {
@@ -14,20 +169,6 @@
       padding:20px;
     }
 
-    h2 { margin-bottom: 10px; }
-
-    select, input, textarea {
-      padding:10px;
-      margin:5px 0;
-      width:100%;
-      border-radius:6px;
-      border:none;
-    }
-
-    textarea {
-      height:60px;
-    }
-
     .card {
       background:#111827;
       padding:15px;
@@ -36,212 +177,70 @@
       border:1px solid #1f2937;
     }
 
-    .person {
-      border-bottom:1px solid #1f2937;
-      padding:10px 0;
+    input, select, textarea {
+      width:100%;
+      margin:5px 0;
+      padding:8px;
+      border-radius:6px;
+      background:#020617;
+      border:1px solid #334155;
+      color:white;
     }
 
     .row {
-      display:flex;
+      display:grid;
+      grid-template-columns:repeat(4,1fr) 80px;
       gap:5px;
-      flex-wrap:wrap;
+      margin-top:5px;
     }
 
-    .score {
-      width:50px;
+    .person {
+      border-bottom:1px solid #1f2937;
+      padding:8px 0;
     }
 
     button {
-      padding:10px;
-      border:none;
-      border-radius:6px;
+      padding:6px;
       background:#2563eb;
+      border:none;
       color:white;
+      border-radius:6px;
       cursor:pointer;
     }
 
-    button:hover {
-      background:#1d4ed8;
-    }
-
     .health {
-      font-size:18px;
+      font-size:20px;
       font-weight:bold;
       margin-top:10px;
     }
-
-    .small {
-      font-size:12px;
-      opacity:0.7;
-    }
   </style>
+
 </head>
 
 <body>
 
 <h2>🧭 Visit Cockpit</h2>
 
-<!-- GROUP SELECT -->
 <div class="card">
-  <label>Select Cell</label>
   <select id="groupSelect"></select>
 </div>
 
-<!-- VISIT SETUP -->
 <div class="card">
-  <label>Date</label>
   <input type="date" id="visitDate">
-
-  <label>Notes</label>
-  <textarea id="notes"></textarea>
-
+  <textarea id="notes" placeholder="Notes"></textarea>
   <button onclick="startVisit()">Start Visit</button>
-
-  <div class="small" id="visitStatus"></div>
+  <div id="visitStatus"></div>
 </div>
 
-<!-- PEOPLE LIST -->
 <div class="card">
   <h3>People</h3>
   <div id="peopleList"></div>
 </div>
 
-<!-- HEALTH -->
 <div class="card">
   <h3>Cell Health</h3>
   <div class="health" id="health">--</div>
 </div>
-
-<script>
-const SUPABASE_URL = "YOUR_SUPABASE_URL";
-const SUPABASE_KEY = "YOUR_SUPABASE_ANON_KEY";
-
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-let currentGroup = null;
-let currentVisit = null;
-let people = [];
-
-// LOAD GROUPS
-async function loadGroups() {
-  let { data } = await supabase.from('groups').select('*');
-
-  let sel = document.getElementById("groupSelect");
-
-  data.forEach(g => {
-    let opt = document.createElement("option");
-    opt.value = g.id;
-    opt.textContent = g.name;
-    sel.appendChild(opt);
-  });
-
-  sel.onchange = () => {
-    currentGroup = sel.value;
-    loadPeople();
-  };
-}
-
-// LOAD PEOPLE
-async function loadPeople() {
-  let { data } = await supabase
-    .from('group_members')
-    .select('person_id, people(name)')
-    .eq('group_id', currentGroup);
-
-  people = data;
-
-  let html = "";
-
-  data.forEach((p, i) => {
-    html += `
-      <div class="person">
-        <b>${p.people.name}</b>
-
-        <div class="row">
-          <input class="score" id="a${i}" placeholder="A">
-          <input class="score" id="e${i}" placeholder="E">
-          <input class="score" id="p${i}" placeholder="P">
-          <input class="score" id="l${i}" placeholder="L">
-
-          <button onclick="save(${i})">Save</button>
-        </div>
-      </div>
-    `;
-  });
-
-  document.getElementById("peopleList").innerHTML = html;
-}
-
-// START VISIT
-async function startVisit() {
-  let date = document.getElementById("visitDate").value;
-  let notes = document.getElementById("notes").value;
-
-  let { data } = await supabase
-    .from('cell_visit_sessions')
-    .insert([{
-      group_id: currentGroup,
-      visit_date: date,
-      notes: notes
-    }])
-    .select();
-
-  currentVisit = data[0].id;
-
-  document.getElementById("visitStatus").innerText =
-    "Visit started ✔";
-}
-
-// SAVE PERSON SCORE
-async function save(i) {
-  let scores = {
-    attendance: +document.getElementById(`a${i}`).value || 0,
-    engagement: +document.getElementById(`e${i}`).value || 0,
-    participation: +document.getElementById(`p${i}`).value || 0,
-    alignment: +document.getElementById(`l${i}`).value || 0
-  };
-
-  await supabase.from('cell_visit_person_scores').insert([{
-    visit_session_id: currentVisit,
-    person_id: people[i].person_id,
-    attendance_score: scores.attendance,
-    engagement_score: scores.engagement,
-    participation_score: scores.participation,
-    alignment_score: scores.alignment
-  }]);
-
-  calculateHealth();
-}
-
-// CALCULATE CELL HEALTH
-async function calculateHealth() {
-  let { data } = await supabase
-    .from('cell_visit_person_scores')
-    .select('*')
-    .eq('visit_session_id', currentVisit);
-
-  if (!data.length) return;
-
-  let total = 0;
-
-  data.forEach(p => {
-    total += (
-      p.attendance_score +
-      p.engagement_score +
-      p.participation_score +
-      p.alignment_score
-    ) / 8;
-  });
-
-  let avg = total / data.length;
-
-  document.getElementById("health").innerText =
-    (avg * 100).toFixed(1) + "%";
-}
-
-// INIT
-loadGroups();
-</script>
 
 </body>
 </html>
