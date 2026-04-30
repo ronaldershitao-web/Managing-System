@@ -115,44 +115,77 @@
     /* ---------------- GROUPS ---------------- */
     function renderGroups(groups, members) {
 
-      const enriched = groups.map(g => {
-        const size = members.filter(m => m.group_id === g.id).length;
-        const cap = getCapacity(size);
-        return { ...g, size, cap };
-      });
+  const enriched = groups.map(g => {
+    const size = members.filter(m => m.group_id === g.id).length;
+    return { ...g, size };
+  });
 
-      const under = enriched.filter(g => g.size < IDEAL_MIN);
-      const mid = enriched.filter(g => g.size >= 16 && g.size < 20);
-      const over = enriched.filter(g => g.size >= 20);
+  const underflow = enriched.filter(g => g.size < 8);
+  const prep = enriched.filter(g => g.size >= 16 && g.size < 20);
+  const mustMultiply = enriched.filter(g => g.size >= 20);
 
-      document.getElementById("groups").innerHTML = `
-        <div class="card">
+  document.getElementById("groups").innerHTML = `
+    <div class="card">
 
-          <h3>🏠 Group Intelligence</h3>
+      <h3>🏠 Group Intelligence Board</h3>
 
-          <p>Total Groups: <b>${groups.length}</b></p>
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
 
-          <p class="warn">⚠ Underflow (<8): ${under.length}</p>
-          <p class="warn">🟡 Multiplication Prep (16–19): ${mid.length}</p>
-          <p class="bad">🔴 Must Multiply (20+): ${over.length}</p>
+        <!-- 🔵 UNDERFLOW -->
+        <div style="background:#0b1220; padding:10px; border-radius:8px; border:1px solid #1f2937;">
+          <h4 class="warn">🔵 Underflow (<8)</h4>
 
-          <hr>
+          <p><b>${underflow.length}</b> groups</p>
 
-          ${enriched.map(g => `
-            <div class="group-box">
-
-              <b>${g.name}</b> (${g.size})
-
-              <div class="${g.cap.color}">
-                ${g.cap.label}
+          ${underflow.length === 0
+            ? `<small style="color:#94a3b8;">All healthy</small>`
+            : underflow.map(g => `
+              <div style="margin:6px 0; padding:6px; background:#111827; border-radius:6px;">
+                <b>${g.name}</b><br>
+                <small>Size: ${g.size}</small>
               </div>
-
-            </div>
-          `).join("")}
-
+            `).join("")
+          }
         </div>
-      `;
-    }
+
+        <!-- 🟡 MULTIPLICATION PREP -->
+        <div style="background:#0b1220; padding:10px; border-radius:8px; border:1px solid #1f2937;">
+          <h4 class="warn">🟡 Prep (16–19)</h4>
+
+          <p><b>${prep.length}</b> groups</p>
+
+          ${prep.length === 0
+            ? `<small style="color:#94a3b8;">No upcoming splits</small>`
+            : prep.map(g => `
+              <div style="margin:6px 0; padding:6px; background:#111827; border-radius:6px;">
+                <b>${g.name}</b><br>
+                <small>Size: ${g.size}</small>
+              </div>
+            `).join("")
+          }
+        </div>
+
+        <!-- 🔴 MUST MULTIPLY -->
+        <div style="background:#0b1220; padding:10px; border-radius:8px; border:1px solid #1f2937;">
+          <h4 class="bad">🔴 Must Multiply (20+)</h4>
+
+          <p><b>${mustMultiply.length}</b> groups</p>
+
+          ${mustMultiply.length === 0
+            ? `<small style="color:#94a3b8;">No urgent splits</small>`
+            : mustMultiply.map(g => `
+              <div style="margin:6px 0; padding:6px; background:#111827; border-radius:6px;">
+                <b>${g.name}</b><br>
+                <small>Size: ${g.size}</small>
+              </div>
+            `).join("")
+          }
+        </div>
+
+      </div>
+    </div>
+  `;
+}
 
     /* ---------------- LEADERSHIP ---------------- */
     function renderLeadership(groups, members) {
