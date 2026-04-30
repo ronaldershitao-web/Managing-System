@@ -3,124 +3,16 @@
 <head>
   <title>Command Center</title>
 
-  <script type="module">
-    import { db } from "./assets/app.js";
-
-    async function load() {
-
-      const [peopleRes, groupsRes, membersRes, priorityRes] = await Promise.all([
-        db.from("people").select("id, created_at, computed_priority_score"),
-        db.from("groups").select("*"),
-        db.from("group_members").select("id, group_id, reports_to"),
-        db.from("people_priority_engine").select("*")
-      ]);
-
-      const people = peopleRes.data || [];
-      const groups = groupsRes.data || [];
-      const members = membersRes.data || [];
-      const priority = priorityRes.data || [];
-
-      renderPeopleStats(people);
-      renderGroupStats(groups, members);
-      renderLeadershipStats(members);
-      renderPriority(priority);
-    }
-
-    /**
-     * PEOPLE STATS
-     */
-    function renderPeopleStats(people) {
-
-      const total = people.length;
-
-      const avgScore = people.length
-        ? people.reduce((a,b)=>a + (b.computed_priority_score || 0),0) / people.length
-        : 0;
-
-      const html = `
-        <div class="card">
-          <h3>🧍 People Intelligence</h3>
-          <p>Total People: ${total}</p>
-          <p>Avg Priority Score: ${avgScore.toFixed(2)}</p>
-        </div>
-      `;
-
-      document.getElementById("people").innerHTML = html;
-    }
-
-    /**
-     * GROUP STATS
-     */
-    function renderGroupStats(groups, members) {
-
-      const groupSizes = groups.map(g => {
-        const size = members.filter(m => m.group_id === g.id).length;
-        return size;
-      });
-
-      const avgGroupSize = groupSizes.length
-        ? (groupSizes.reduce((a,b)=>a+b,0) / groupSizes.length).toFixed(1)
-        : 0;
-
-      const overloaded = groupSizes.filter(s => s > 15).length;
-
-      document.getElementById("groups").innerHTML = `
-        <div class="card">
-          <h3>🏠 Group Health</h3>
-          <p>Total Groups: ${groups.length}</p>
-          <p>Avg Group Size: ${avgGroupSize}</p>
-          <p>Overloaded Groups (>15): ${overloaded}</p>
-        </div>
-      `;
-    }
-
-    /**
-     * LEADERSHIP STATS
-     */
-    function renderLeadershipStats(members) {
-
-      const roots = members.filter(m => !m.reports_to);
-      const orphan = members.filter(m => !m.reports_to).length;
-
-      document.getElementById("leaders").innerHTML = `
-        <div class="card">
-          <h3>🧭 Leadership Structure</h3>
-          <p>Top-Level Leaders: ${roots.length}</p>
-          <p>Orphan Nodes: ${orphan}</p>
-        </div>
-      `;
-    }
-
-    /**
-     * PRIORITY ENGINE
-     */
-    function renderPriority(priority) {
-
-      const top = priority
-        .sort((a,b)=>b.computed_priority_score - a.computed_priority_score)
-        .slice(0,10);
-
-      document.getElementById("priority").innerHTML = `
-        <div class="card">
-          <h3>🔥 Priority Engine</h3>
-
-          ${top.map(p => `
-            <div style="padding:5px; border-bottom:1px solid #1f2937;">
-              <b>${p.name}</b><br>
-              Score: ${Math.round(p.computed_priority_score)}
-            </div>
-          `).join("")}
-
-        </div>
-      `;
-    }
-
-    window.onload = load;
-  </script>
-
   <style>
     body { margin:0; font-family:Arial; background:#0f172a; color:white; }
-    header { padding:15px; background:#111827; }
+
+    header {
+      padding:15px;
+      background:#111827;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+    }
 
     .grid {
       display:grid;
@@ -134,15 +26,178 @@
       padding:12px;
       border-radius:8px;
       border:1px solid #1f2937;
-      margin:10px;
     }
+
+    h3 { margin-top:0; }
+    small { color:#94a3b8; }
+
+    .good { color:#22c55e; }
+    .warn { color:#f59e0b; }
+    .bad  { color:#ef4444; }
   </style>
+
+  <script type="module">
+    import { db } from "./assets/app.js";
+
+    async function load() {
+
+      const [peopleRes, groupsRes, membersRes, priorityRes] = await Promise.all([
+        db.from("people").select("id, created_at, computed_priority_score, name"),
+        db.from("groups").select("*"),
+        db.from("group_members").select("id, group_id, reports_to"),
+        db.from("people_priority_engine").select("*")
+      ]);
+
+      const people = peopleRes.data || [];
+      const groups = groupsRes.data || [];
+      const members = membersRes.data || [];
+      const priority = priorityRes.data || [];
+
+      renderPeople(people);
+      renderGroups(groups, members);
+      renderLeadership(members);
+      renderPriority(priority);
+    }
+
+    /* ---------------- PEOPLE ---------------- */
+    function renderPeople(people) {
+
+      const avg = people.length
+        ? people.reduce((a,b)=>a + (b.computed_priority_score||0),0) / people.length
+        : 0;
+
+      document.getElementById("people").innerHTML = `
+        <div class="card">
+          <h3>🧍 People Intelligence</h3>
+
+          <p>Total: <b>${people.length}</b></p>
+          <p>Avg Priority: <b>${avg.toFixed(2)}</b></p>
+
+          <p class="good">Top system health indicator</p>
+        </div>
+      `;
+    }
+
+    /* ---------------- GROUPS ---------------- */
+    function renderGroups(groups, members) {
+
+      const sizes = groups.map(g => {
+        return {
+          name: g.name,
+          size: members.filter(m => m.group_id === g.id).length
+        };
+      });
+
+      const avg = sizes.length
+        ? (sizes.reduce((a,b)=>a+b.size,0)/sizes.length).toFixed(1)
+        : 0;
+
+      const sorted = [...sizes].sort((a,b)=>b.size-a.size);
+
+      const largest = sorted[0];
+      const smallest = sorted[sorted.length - 1];
+
+      const overloaded = sizes.filter(s => s.size > 15);
+      const small = sizes.filter(s => s.size < 5);
+
+      document.getElementById("groups").innerHTML = `
+        <div class="card">
+
+          <h3>🏠 Group Health</h3>
+
+          <p>Total Groups: <b>${groups.length}</b></p>
+          <p>Avg Size: <b>${avg}</b></p>
+
+          <hr>
+
+          <h4>🔝 Topline</h4>
+          <p>Largest: <b>${largest?.name}</b> (${largest?.size})</p>
+          <p>Smallest: <b>${smallest?.name}</b> (${smallest?.size})</p>
+
+          <hr>
+
+          <h4>⚠️ Risk</h4>
+          <p class="warn">Overloaded Groups: ${overloaded.length}</p>
+          <p class="bad">Small Groups: ${small.length}</p>
+
+        </div>
+      `;
+    }
+
+    /* ---------------- LEADERSHIP ---------------- */
+    function renderLeadership(members) {
+
+      const orphans = members.filter(m => !m.reports_to);
+
+      const span = {};
+      members.forEach(m => {
+        if (m.reports_to) {
+          span[m.reports_to] = (span[m.reports_to] || 0) + 1;
+        }
+      });
+
+      const spans = Object.values(span).sort((a,b)=>b-a);
+      const max = spans[0] || 0;
+      const min = spans[spans.length-1] || 0;
+
+      document.getElementById("leaders").innerHTML = `
+        <div class="card">
+
+          <h3>🧭 Leadership Structure</h3>
+
+          <p>Orphan Nodes: <b class="bad">${orphans.length}</b></p>
+
+          <hr>
+
+          <h4>🔝 Topline</h4>
+          <p>Max Span of Control: <b>${max}</b></p>
+
+          <h4>🔻 Bottomline</h4>
+          <p>Min Span: <b>${min}</b></p>
+
+        </div>
+      `;
+    }
+
+    /* ---------------- PRIORITY ---------------- */
+    function renderPriority(priority) {
+
+      const sorted = [...priority]
+        .sort((a,b)=>b.computed_priority_score - a.computed_priority_score);
+
+      const top = sorted.slice(0,5);
+      const bottom = sorted.slice(-5);
+
+      document.getElementById("priority").innerHTML = `
+        <div class="card">
+
+          <h3>🔥 Priority Engine</h3>
+
+          <h4>🔝 Top 5</h4>
+          ${top.map(p => `
+            <div><b>${p.name}</b> — ${Math.round(p.computed_priority_score)}</div>
+          `).join("")}
+
+          <hr>
+
+          <h4>🔻 Bottom 5</h4>
+          ${bottom.map(p => `
+            <div>${p.name} — ${Math.round(p.computed_priority_score)}</div>
+          `).join("")}
+
+        </div>
+      `;
+    }
+
+    window.onload = load;
+  </script>
 </head>
 
 <body>
 
 <header>
   🔥 Command Center
+  <button onclick="location.href='index.html'">Home</button>
 </header>
 
 <div class="grid">
