@@ -26,6 +26,7 @@
       padding:12px;
       border-radius:8px;
       border:1px solid #1f2937;
+      margin-bottom:10px;
     }
 
     h3 { margin-top:0; }
@@ -34,17 +35,28 @@
     .good { color:#22c55e; }
     .warn { color:#f59e0b; }
     .bad  { color:#ef4444; }
+
+    .group-box {
+      padding:8px;
+      border-radius:6px;
+      margin:6px 0;
+      border:1px solid #1f2937;
+    }
   </style>
 
   <script type="module">
     import { db } from "./assets/app.js";
 
+    const IDEAL_MIN = 8;
+    const IDEAL_MAX = 12;
+    const CAPACITY_MAX = 20;
+
     async function load() {
 
       const [peopleRes, groupsRes, membersRes, priorityRes] = await Promise.all([
-        db.from("people").select("id, created_at, computed_priority_score, name"),
+        db.from("people").select("*"),
         db.from("groups").select("*"),
-        db.from("group_members").select("id, group_id, reports_to"),
+        db.from("group_members").select("id, group_id, person_id"),
         db.from("people_priority_engine").select("*")
       ]);
 
@@ -55,7 +67,7 @@
 
       renderPeople(people);
       renderGroups(groups, members);
-      renderLeadership(members);
+      renderLeadership(groups, members);
       renderPriority(priority);
     }
 
@@ -70,90 +82,103 @@
         <div class="card">
           <h3>🧍 People Intelligence</h3>
 
-          <p>Total: <b>${people.length}</b></p>
-          <p>Avg Priority: <b>${avg.toFixed(2)}</b></p>
+          <p>Total People: <b>${people.length}</b></p>
+          <p>Avg Priority Score: <b>${avg.toFixed(2)}</b></p>
 
-          <p class="good">Top system health indicator</p>
+          <p class="good">System-wide engagement baseline</p>
         </div>
       `;
+    }
+
+    /* ---------------- GROUP CAPACITY ---------------- */
+    function getCapacity(size) {
+
+      if (size < IDEAL_MIN) {
+        return { label:"🔵 Inject People", color:"warn" };
+      }
+
+      if (size <= IDEAL_MAX) {
+        return { label:"🟢 Healthy", color:"good" };
+      }
+
+      if (size < 16) {
+        return { label:"🟢 Stable", color:"good" };
+      }
+
+      if (size < CAPACITY_MAX) {
+        return { label:"🟡 Multiplication Planning", color:"warn" };
+      }
+
+      return { label:"🔴 MUST MULTIPLY", color:"bad" };
     }
 
     /* ---------------- GROUPS ---------------- */
     function renderGroups(groups, members) {
 
-      const sizes = groups.map(g => {
-        return {
-          name: g.name,
-          size: members.filter(m => m.group_id === g.id).length
-        };
+      const enriched = groups.map(g => {
+        const size = members.filter(m => m.group_id === g.id).length;
+        const cap = getCapacity(size);
+        return { ...g, size, cap };
       });
 
-      const avg = sizes.length
-        ? (sizes.reduce((a,b)=>a+b.size,0)/sizes.length).toFixed(1)
-        : 0;
-
-      const sorted = [...sizes].sort((a,b)=>b.size-a.size);
-
-      const largest = sorted[0];
-      const smallest = sorted[sorted.length - 1];
-
-      const overloaded = sizes.filter(s => s.size > 15);
-      const small = sizes.filter(s => s.size < 5);
+      const under = enriched.filter(g => g.size < IDEAL_MIN);
+      const mid = enriched.filter(g => g.size >= 16 && g.size < 20);
+      const over = enriched.filter(g => g.size >= 20);
 
       document.getElementById("groups").innerHTML = `
         <div class="card">
 
-          <h3>🏠 Group Health</h3>
+          <h3>🏠 Group Intelligence</h3>
 
           <p>Total Groups: <b>${groups.length}</b></p>
-          <p>Avg Size: <b>${avg}</b></p>
+
+          <p class="warn">⚠ Underflow (<8): ${under.length}</p>
+          <p class="warn">🟡 Multiplication Prep (16–19): ${mid.length}</p>
+          <p class="bad">🔴 Must Multiply (20+): ${over.length}</p>
 
           <hr>
 
-          <h4>🔝 Topline</h4>
-          <p>Largest: <b>${largest?.name}</b> (${largest?.size})</p>
-          <p>Smallest: <b>${smallest?.name}</b> (${smallest?.size})</p>
+          ${enriched.map(g => `
+            <div class="group-box">
 
-          <hr>
+              <b>${g.name}</b> (${g.size})
 
-          <h4>⚠️ Risk</h4>
-          <p class="warn">Overloaded Groups: ${overloaded.length}</p>
-          <p class="bad">Small Groups: ${small.length}</p>
+              <div class="${g.cap.color}">
+                ${g.cap.label}
+              </div>
+
+            </div>
+          `).join("")}
 
         </div>
       `;
     }
 
     /* ---------------- LEADERSHIP ---------------- */
-    function renderLeadership(members) {
+    function renderLeadership(groups, members) {
 
-      const orphans = members.filter(m => !m.reports_to);
+      const loadMap = {};
 
-      const span = {};
       members.forEach(m => {
-        if (m.reports_to) {
-          span[m.reports_to] = (span[m.reports_to] || 0) + 1;
-        }
+        loadMap[m.group_id] = (loadMap[m.group_id] || 0) + 1;
       });
 
-      const spans = Object.values(span).sort((a,b)=>b-a);
-      const max = spans[0] || 0;
-      const min = spans[spans.length-1] || 0;
+      const loads = Object.values(loadMap);
+      const max = loads.length ? Math.max(...loads) : 0;
+      const min = loads.length ? Math.min(...loads) : 0;
+      const avg = loads.length ? (loads.reduce((a,b)=>a+b,0)/loads.length).toFixed(1) : 0;
 
       document.getElementById("leaders").innerHTML = `
         <div class="card">
 
-          <h3>🧭 Leadership Structure</h3>
+          <h3>🧭 Leadership Load</h3>
 
-          <p>Orphan Nodes: <b class="bad">${orphans.length}</b></p>
+          <p>Max Load: <b>${max}</b></p>
+          <p>Avg Load: <b>${avg}</b></p>
 
-          <hr>
-
-          <h4>🔝 Topline</h4>
-          <p>Max Span of Control: <b>${max}</b></p>
-
-          <h4>🔻 Bottomline</h4>
-          <p>Min Span: <b>${min}</b></p>
+          <p class="warn">Groups without members: ${
+            groups.filter(g => !loadMap[g.id]).length
+          }</p>
 
         </div>
       `;
@@ -173,16 +198,16 @@
 
           <h3>🔥 Priority Engine</h3>
 
-          <h4>🔝 Top 5</h4>
+          <h4>Top 5</h4>
           ${top.map(p => `
-            <div><b>${p.name}</b> — ${Math.round(p.computed_priority_score)}</div>
+            <div><b>${p.name}</b> — ${Math.round(p.computed_priority_score||0)}</div>
           `).join("")}
 
           <hr>
 
-          <h4>🔻 Bottom 5</h4>
+          <h4>Bottom 5</h4>
           ${bottom.map(p => `
-            <div>${p.name} — ${Math.round(p.computed_priority_score)}</div>
+            <div>${p.name} — ${Math.round(p.computed_priority_score||0)}</div>
           `).join("")}
 
         </div>
