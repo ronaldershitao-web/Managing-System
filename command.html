@@ -121,65 +121,66 @@
   });
 
   const underflow = enriched.filter(g => g.size < 8);
+  const healthy = enriched.filter(g => g.size >= 8 && g.size <= 12);
+  const stable = enriched.filter(g => g.size >= 13 && g.size <= 15);
   const prep = enriched.filter(g => g.size >= 16 && g.size < 20);
   const mustMultiply = enriched.filter(g => g.size >= 20);
 
   document.getElementById("groups").innerHTML = `
     <div class="card">
 
-      <h3>🏠 Group Intelligence Board</h3>
+      <h3>🏠 Group Intelligence Spectrum</h3>
 
-      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
+      <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:10px;">
 
         <!-- 🔵 UNDERFLOW -->
-        <div style="background:#0b1220; padding:10px; border-radius:8px; border:1px solid #1f2937;">
-          <h4 class="warn">🔵 Underflow (<8)</h4>
-
-          <p><b>${underflow.length}</b> groups</p>
-
-          ${underflow.length === 0
-            ? `<small style="color:#94a3b8;">All healthy</small>`
-            : underflow.map(g => `
-              <div style="margin:6px 0; padding:6px; background:#111827; border-radius:6px;">
-                <b>${g.name}</b><br>
-                <small>Size: ${g.size}</small>
-              </div>
-            `).join("")
-          }
+        <div style="background:#0b1220; padding:10px; border-radius:8px;">
+          <h4 class="warn">🔵 Underflow</h4>
+          <small>&lt; 8</small>
+          <p><b>${underflow.length}</b></p>
+          ${underflow.map(g => `
+            <div>${g.name} (${g.size})</div>
+          `).join("") || "<small>None</small>"}
         </div>
 
-        <!-- 🟡 MULTIPLICATION PREP -->
-        <div style="background:#0b1220; padding:10px; border-radius:8px; border:1px solid #1f2937;">
-          <h4 class="warn">🟡 Prep (16–19)</h4>
+        <!-- 🟢 HEALTHY -->
+        <div style="background:#0b1220; padding:10px; border-radius:8px;">
+          <h4 class="good">🟢 Healthy</h4>
+          <small>8–12</small>
+          <p><b>${healthy.length}</b></p>
+          ${healthy.map(g => `
+            <div>${g.name} (${g.size})</div>
+          `).join("") || "<small>None</small>"}
+        </div>
 
-          <p><b>${prep.length}</b> groups</p>
+        <!-- 🟢 STABLE -->
+        <div style="background:#0b1220; padding:10px; border-radius:8px;">
+          <h4 class="good">🟢 Stable</h4>
+          <small>13–15</small>
+          <p><b>${stable.length}</b></p>
+          ${stable.map(g => `
+            <div>${g.name} (${g.size})</div>
+          `).join("") || "<small>None</small>"}
+        </div>
 
-          ${prep.length === 0
-            ? `<small style="color:#94a3b8;">No upcoming splits</small>`
-            : prep.map(g => `
-              <div style="margin:6px 0; padding:6px; background:#111827; border-radius:6px;">
-                <b>${g.name}</b><br>
-                <small>Size: ${g.size}</small>
-              </div>
-            `).join("")
-          }
+        <!-- 🟡 PREP -->
+        <div style="background:#0b1220; padding:10px; border-radius:8px;">
+          <h4 class="warn">🟡 Prep</h4>
+          <small>16–19</small>
+          <p><b>${prep.length}</b></p>
+          ${prep.map(g => `
+            <div>${g.name} (${g.size})</div>
+          `).join("") || "<small>None</small>"}
         </div>
 
         <!-- 🔴 MUST MULTIPLY -->
-        <div style="background:#0b1220; padding:10px; border-radius:8px; border:1px solid #1f2937;">
-          <h4 class="bad">🔴 Must Multiply (20+)</h4>
-
-          <p><b>${mustMultiply.length}</b> groups</p>
-
-          ${mustMultiply.length === 0
-            ? `<small style="color:#94a3b8;">No urgent splits</small>`
-            : mustMultiply.map(g => `
-              <div style="margin:6px 0; padding:6px; background:#111827; border-radius:6px;">
-                <b>${g.name}</b><br>
-                <small>Size: ${g.size}</small>
-              </div>
-            `).join("")
-          }
+        <div style="background:#0b1220; padding:10px; border-radius:8px;">
+          <h4 class="bad">🔴 Multiply</h4>
+          <small>20+</small>
+          <p><b>${mustMultiply.length}</b></p>
+          ${mustMultiply.map(g => `
+            <div>${g.name} (${g.size})</div>
+          `).join("") || "<small>None</small>"}
         </div>
 
       </div>
