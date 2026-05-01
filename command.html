@@ -46,39 +46,43 @@
   <script type="module">
     import { db } from "./assets/app.js";
 
-    async function load() {
-const peopleMap = {};
-people.forEach(p => {
-  peopleMap[String(p.id).trim()] = p.name;
-});
-      const normalize = (id) => String(id).trim();
-      const [
-        peopleRes,
-        groupsRes,
-        membersRes,
-        priorityRes,
-        scoresRes
-      ] = await Promise.all([
-        db.from("people").select("*"),
-        db.from("groups").select("*"),
-        db.from("group_members").select("group_id, person_id"),
-        db.from("people_priority_engine").select("*"),
-        db.from("cell_visit_person_scores")
-          .select("person_id, attendance_score, engagement_score, participation_score, alignment_score")
-      ]);
+   async function load() {
 
-      const people = peopleRes.data || [];
-      const groups = groupsRes.data || [];
-      const members = membersRes.data || [];
-      const priority = priorityRes.data || [];
-      const scores = scoresRes.data || [];
+  const normalize = (id) => String(id).trim();
 
-      renderPeople(scores, peopleMap);
-      renderCellIndicator(groups, members, scores);
-      renderGroups(groups, members, scores);
-      renderPriority(priority);
-    }
+  const [
+    peopleRes,
+    groupsRes,
+    membersRes,
+    priorityRes,
+    scoresRes
+  ] = await Promise.all([
+    db.from("people").select("*"),
+    db.from("groups").select("*"),
+    db.from("group_members").select("group_id, person_id"),
+    db.from("people_priority_engine").select("*"),
+    db.from("cell_visit_person_scores")
+      .select("person_id, attendance_score, engagement_score, participation_score, alignment_score")
+  ]);
 
+  const people = peopleRes.data || [];
+  const groups = groupsRes.data || [];
+  const members = membersRes.data || [];
+  const priority = priorityRes.data || [];
+  const scores = scoresRes.data || [];
+
+  // ✅ NOW people exists → safe to build map
+  const peopleMap = {};
+  people.forEach(p => {
+    peopleMap[normalize(p.id)] = p.name;
+  });
+
+  // ✅ pass normalize also (important)
+  renderPeople(scores, peopleMap, normalize);
+  renderCellIndicator(groups, members, scores, normalize);
+  renderGroups(groups, members, scores, normalize);
+  renderPriority(priority);
+}
     /* ---------------- 🧍 PEOPLE SPIRITUAL RISK (RESTORED) ---------------- */
     function renderPeople(scores, peopleMap) {
 
