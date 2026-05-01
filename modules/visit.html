@@ -104,28 +104,35 @@
     };
 
     // ---------------- SAVE SCORE ----------------
-    window.save = async function (personId) {
+   window.save = async function (personId) {
 
-      const attendance = +document.getElementById(`a-${personId}`).value || 0;
-      const engagement = +document.getElementById(`e-${personId}`).value || 0;
-      const participation = +document.getElementById(`p-${personId}`).value || 0;
-      const alignment = +document.getElementById(`l-${personId}`).value || 0;
+  if (!currentVisit) {
+    alert("Start visit first");
+    return;
+  }
 
-      const { error } = await db
-        .from("cell_visit_person_scores")
-        .insert([{
-          visit_session_id: currentVisit,
-          person_id: personId,
-          attendance_score: attendance,
-          engagement_score: engagement,
-          participation_score: participation,
-          alignment_score: alignment
-        }]);
+  const attendance = +document.getElementById(`a-${personId}`).value || 0;
+  const engagement = +document.getElementById(`e-${personId}`).value || 0;
+  const participation = +document.getElementById(`p-${personId}`).value || 0;
+  const alignment = +document.getElementById(`l-${personId}`).value || 0;
 
-      if (error) return alert(error.message);
+  const { error } = await db
+    .from("cell_visit_person_scores")
+    .upsert({
+      visit_session_id: currentVisit,
+      person_id: personId,
+      attendance_score: attendance,
+      engagement_score: engagement,
+      participation_score: participation,
+      alignment_score: alignment
+    }, {
+      onConflict: "visit_session_id,person_id"
+    });
 
-      calculateHealth();
-    };
+  if (error) return alert(error.message);
+
+  calculateHealth();
+};
 
     // ---------------- HEALTH CALC ----------------
     async function calculateHealth() {
