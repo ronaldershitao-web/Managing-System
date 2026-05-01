@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-
 <html>
 <head>
   <title>Command Center</title>
@@ -46,142 +45,151 @@
   <script type="module">
     import { db } from "./assets/app.js";
 
-   async function load() {
+    // ✅ GLOBAL helper (fixes your error)
+    const normalize = (id) => String(id).trim();
 
-  const normalize = (id) => String(id).trim();
+    async function load() {
 
-  const [
-    peopleRes,
-    groupsRes,
-    membersRes,
-    priorityRes,
-    scoresRes
-  ] = await Promise.all([
-    db.from("people").select("*"),
-    db.from("groups").select("*"),
-    db.from("group_members").select("group_id, person_id"),
-    db.from("people_priority_engine").select("*"),
-    db.from("cell_visit_person_scores")
-      .select("person_id, attendance_score, engagement_score, participation_score, alignment_score")
-  ]);
+      const [
+        peopleRes,
+        groupsRes,
+        membersRes,
+        priorityRes,
+        scoresRes
+      ] = await Promise.all([
+        db.from("people").select("*"),
+        db.from("groups").select("*"),
+        db.from("group_members").select("group_id, person_id"),
 
-  const people = peopleRes.data || [];
-  const groups = groupsRes.data || [];
-  const members = membersRes.data || [];
-  const priority = priorityRes.data || [];
-  const scores = scoresRes.data || [];
+        // ✅ fallback to avoid 404 crash
+        db.from("people_priority_engine").select("*")
+          .then(res => res)
+          .catch(() => ({ data: [] })),
 
-  // ✅ NOW people exists → safe to build map
-  const peopleMap = {};
-  people.forEach(p => {
-    peopleMap[normalize(p.id)] = p.name;
-  });
+        db.from("cell_visit_person_scores")
+          .select("person_id, attendance_score, engagement_score, participation_score, alignment_score")
+      ]);
 
-  // ✅ pass normalize also (important)
-  renderPeople(scores, peopleMap, normalize);
-  renderCellIndicator(groups, members, scores, normalize);
-  renderGroups(groups, members, scores, normalize);
-  renderPriority(priority);
-}
-    /* ---------------- 🧍 PEOPLE SPIRITUAL RISK (RESTORED) ---------------- */
-    function renderPeople(scores, peopleMap) {
+      const people = peopleRes.data || [];
+      const groups = groupsRes.data || [];
+      const members = membersRes.data || [];
+      const priority = priorityRes.data || [];
+      const scores = scoresRes.data || [];
 
-  if (!scores.length) return;
+      // ✅ Build people map
+      const peopleMap = {};
+      people.forEach(p => {
+        peopleMap[normalize(p.id)] = p.name;
+      });
 
-  const enriched = scores.map(p => {
-
-    const score =
-      (p.attendance_score * 0.25 +
-       p.engagement_score * 0.30 +
-       p.participation_score * 0.25 +
-       p.alignment_score * 0.20);
-
-    const percent = (score / 4) * 100;
-
-    return {
-      name: peopleMap[normalize(p.person_id)] || "Unknown",
-      percent
-    };
-  }).filter(p => !isNaN(p.percent));
-
-  enriched.sort((a,b)=>a.percent-b.percent);
-
-  document.getElementById("people").innerHTML = `
-    <div class="card">
-      <h3>🧍 People Spiritual Risk</h3>
-      <small>Bottom 5 individuals</small>
-
-      ${enriched.slice(0,5).map(p => `
-        <div style="display:flex;justify-content:space-between;margin-top:6px;">
-          <span>${p.name}</span>
-          <b class="${p.percent<60?'bad':p.percent<80?'warn':'good'}">
-            ${p.percent.toFixed(1)}%
-          </b>
-        </div>
-      `).join("")}
-    </div>
-  `;
-}
-
-    /* ---------------- 🧠 NEW: CELL SPIRITUAL HEALTH INDICATOR ---------------- */
-   function renderCellIndicator(groups, members, scores) {
-
-  const grouped = groups.map(g => {
-
-    const memberIds = members
-      .filter(m => normalize(m.group_id) === normalize(g.id))
-      .map(m => normalize(m.person_id));
-
-    const groupScores = scores.filter(s =>
-      memberIds.includes(normalize(s.person_id))
-    );
-
-    let health = null;
-
-    if (groupScores.length) {
-      health =
-        groupScores.reduce((sum, p) => {
-
-          const score =
-            (p.attendance_score * 0.25 +
-             p.engagement_score * 0.30 +
-             p.participation_score * 0.25 +
-             p.alignment_score * 0.20);
-
-          return sum + (score / 4) * 100;
-
-        }, 0) / groupScores.length;
+      renderPeople(scores, peopleMap);
+      renderCellIndicator(groups, members, scores);
+      renderGroups(groups, members, scores);
+      renderPriority(priority);
     }
 
-    return {
-      name: g.name,
-      health
-    };
-  });
+    /* ---------------- 🧍 PEOPLE SPIRITUAL RISK ---------------- */
+    function renderPeople(scores, peopleMap) {
 
-  document.getElementById("cellIndicator").innerHTML = `
-    <div class="card">
-      <h3>🧠 Cell Spiritual Health Indicator</h3>
-      <small>Per-cell diagnostic snapshot</small>
+      if (!scores.length) return;
 
-      ${grouped.map(g => `
-        <div style="display:flex;justify-content:space-between;margin-top:6px;">
-          <span>${g.name}</span>
-          <b class="${g.health<60?'bad':g.health<80?'warn':'good'}">
-            ${g.health ? g.health.toFixed(1)+'%' : 'No Data'}
-          </b>
+      const enriched = scores.map(p => {
+
+        const score =
+          (p.attendance_score * 0.25 +
+           p.engagement_score * 0.30 +
+           p.participation_score * 0.25 +
+           p.alignment_score * 0.20);
+
+        const percent = (score / 4) * 100;
+
+        return {
+          name: peopleMap[normalize(p.person_id)] || "Unknown",
+          percent
+        };
+      }).filter(p => !isNaN(p.percent));
+
+      enriched.sort((a,b)=>a.percent-b.percent);
+
+      document.getElementById("people").innerHTML = `
+        <div class="card">
+          <h3>🧍 People Spiritual Risk</h3>
+          <small>Bottom 5 individuals</small>
+
+          ${enriched.slice(0,5).map(p => `
+            <div style="display:flex;justify-content:space-between;margin-top:6px;">
+              <span>${p.name}</span>
+              <b class="${p.percent<60?'bad':p.percent<80?'warn':'good'}">
+                ${p.percent.toFixed(1)}%
+              </b>
+            </div>
+          `).join("")}
         </div>
-      `).join("")}
-    </div>
-  `;
-}
+      `;
+    }
 
-    /* ---------------- 🏠 5-COLUMN GROUP INTELLIGENCE (UNCHANGED) ---------------- */
+    /* ---------------- 🧠 CELL SPIRITUAL HEALTH ---------------- */
+    function renderCellIndicator(groups, members, scores) {
+
+      const grouped = groups.map(g => {
+
+        const memberIds = members
+          .filter(m => normalize(m.group_id) === normalize(g.id))
+          .map(m => normalize(m.person_id));
+
+        const groupScores = scores.filter(s =>
+          memberIds.includes(normalize(s.person_id))
+        );
+
+        let health = null;
+
+        if (groupScores.length) {
+          health =
+            groupScores.reduce((sum, p) => {
+
+              const score =
+                (p.attendance_score * 0.25 +
+                 p.engagement_score * 0.30 +
+                 p.participation_score * 0.25 +
+                 p.alignment_score * 0.20);
+
+              return sum + (score / 4) * 100;
+
+            }, 0) / groupScores.length;
+        }
+
+        return {
+          name: g.name,
+          health
+        };
+      });
+
+      document.getElementById("cellIndicator").innerHTML = `
+        <div class="card">
+          <h3>🧠 Cell Spiritual Health Indicator</h3>
+          <small>Per-cell diagnostic snapshot</small>
+
+          ${grouped.map(g => `
+            <div style="display:flex;justify-content:space-between;margin-top:6px;">
+              <span>${g.name}</span>
+              <b class="${g.health<60?'bad':g.health<80?'warn':'good'}">
+                ${g.health ? g.health.toFixed(1)+'%' : 'No Data'}
+              </b>
+            </div>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    /* ---------------- 🏠 GROUP INTELLIGENCE ---------------- */
     function renderGroups(groups, members, scores) {
 
       const enriched = groups.map(g => {
 
-        const groupMembers = members.filter(m => m.group_id === g.id);
+        const groupMembers = members.filter(m =>
+          normalize(m.group_id) === normalize(g.id)
+        );
+
         const size = groupMembers.length;
 
         let category = "";
@@ -194,7 +202,9 @@
         else { category="Multiply"; color="#ef4444"; }
 
         const groupScores = scores.filter(s =>
-          groupMembers.some(m => m.person_id === s.person_id)
+          groupMembers.some(m =>
+            normalize(m.person_id) === normalize(s.person_id)
+          )
         );
 
         let spiritualHealth = null;
@@ -202,6 +212,7 @@
         if (groupScores.length) {
           spiritualHealth =
             groupScores.reduce((sum, p) => {
+
               const score =
                 (p.attendance_score * 0.25 +
                  p.engagement_score * 0.30 +
@@ -209,6 +220,7 @@
                  p.alignment_score * 0.20);
 
               return sum + (score / 4) * 100;
+
             }, 0) / groupScores.length;
         }
 
@@ -216,7 +228,6 @@
       });
 
       function block(title, color, list) {
-
         return `
           <div style="border:1px solid ${color};border-radius:10px;padding:10px;background:#0b1220;min-height:250px;">
             <b style="color:${color};">${title}</b>
@@ -224,16 +235,13 @@
 
             ${list.map(g => `
               <div style="background:#111827;margin:6px 0;padding:6px;border-radius:6px;">
-
                 <div style="display:flex;justify-content:space-between;">
                   <span>${g.name}</span>
                   <b>${g.size}</b>
                 </div>
-
                 <div style="font-size:12px;">
                   🧠 ${g.spiritualHealth ? g.spiritualHealth.toFixed(1)+'%' : 'No Data'}
                 </div>
-
               </div>
             `).join("")}
           </div>
@@ -249,7 +257,6 @@
       document.getElementById("groups").innerHTML = `
         <div class="card">
           <h3>🏠 Group Intelligence</h3>
-
           <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">
             ${block("Underflow <8","#3b82f6",underflow)}
             ${block("Healthy 8–12","#22c55e",healthy)}
@@ -263,6 +270,16 @@
 
     /* ---------------- 🔥 PRIORITY ---------------- */
     function renderPriority(priority) {
+
+      if (!priority.length) {
+        document.getElementById("priority").innerHTML = `
+          <div class="card">
+            <h3>🔥 Priority Engine</h3>
+            <small>No data</small>
+          </div>
+        `;
+        return;
+      }
 
       const sorted = [...priority]
         .sort((a,b)=>b.computed_priority_score-a.computed_priority_score);
@@ -283,7 +300,6 @@
 
     window.onload = load;
   </script>
-
 </head>
 
 <body>
@@ -294,13 +310,10 @@
 </header>
 
 <div class="grid">
-
   <div id="people"></div>
   <div id="cellIndicator"></div>
-
   <div id="groups"></div>
   <div id="priority"></div>
-
 </div>
 
 </body>
