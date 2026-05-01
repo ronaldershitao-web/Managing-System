@@ -5,7 +5,12 @@
   <title>Command Center</title>
 
   <style>
-    body { margin:0; font-family:Arial; background:#0f172a; color:white; }
+    body {
+      margin:0;
+      font-family:Arial;
+      background:#0f172a;
+      color:white;
+    }
 
     header {
       padding:15px;
@@ -52,7 +57,7 @@
       ] = await Promise.all([
         db.from("people").select("*"),
         db.from("groups").select("*"),
-        db.from("group_members").select("id, group_id, person_id"),
+        db.from("group_members").select("group_id, person_id"),
         db.from("people_priority_engine").select("*"),
         db.from("cell_visit_person_scores")
           .select("person_id, group_id, attendance_score, engagement_score, participation_score, alignment_score, people(name)")
@@ -65,11 +70,12 @@
       const scores = scoresRes.data || [];
 
       renderPeople(scores);
+      renderCellIndicator(groups, members, scores);
       renderGroups(groups, members, scores);
       renderPriority(priority);
     }
 
-    /* ---------------- 🧍 PEOPLE INTELLIGENCE (RESTORED) ---------------- */
+    /* ---------------- 🧍 PEOPLE SPIRITUAL RISK (RESTORED) ---------------- */
     function renderPeople(scores) {
 
       if (!scores.length) return;
@@ -92,8 +98,8 @@
 
       document.getElementById("people").innerHTML = `
         <div class="card">
-          <h3>🧍 People Intelligence</h3>
-          <small>Spiritual risk (bottom 5)</small>
+          <h3>🧍 People Spiritual Risk</h3>
+          <small>Bottom 5 individuals</small>
 
           ${enriched.slice(0,5).map(p => `
             <div style="display:flex;justify-content:space-between;margin-top:6px;">
@@ -107,45 +113,21 @@
       `;
     }
 
-    /* ---------------- 🏠 GROUP INTELLIGENCE (RESTORED 5-COLUMN MODEL) ---------------- */
-    function renderGroups(groups, members, scores) {
+    /* ---------------- 🧠 NEW: CELL SPIRITUAL HEALTH INDICATOR ---------------- */
+    function renderCellIndicator(groups, members, scores) {
 
-      const enriched = groups.map(g => {
+      const grouped = groups.map(g => {
 
         const groupMembers = members.filter(m => m.group_id === g.id);
-        const size = groupMembers.length;
 
-        /* ---------- STRUCTURE CATEGORY ---------- */
-        let category = "";
-        let color = "";
-
-        if (size < 8) {
-          category = "Underflow";
-          color = "#3b82f6";
-        } else if (size <= 12) {
-          category = "Healthy";
-          color = "#22c55e";
-        } else if (size <= 15) {
-          category = "Stable";
-          color = "#16a34a";
-        } else if (size <= 19) {
-          category = "Growth Pressure";
-          color = "#f59e0b";
-        } else {
-          category = "Multiply Risk";
-          color = "#ef4444";
-        }
-
-        /* ---------- SPIRITUAL HEALTH (AVG PERSON SCORE) ---------- */
         const groupScores = scores.filter(s =>
           groupMembers.some(m => m.person_id === s.person_id)
         );
 
-        let spiritualHealth = null;
+        let health = null;
 
         if (groupScores.length) {
-
-          spiritualHealth =
+          health =
             groupScores.reduce((sum, p) => {
 
               const score =
@@ -160,69 +142,96 @@
         }
 
         return {
-          ...g,
-          size,
-          category,
-          color,
-          spiritualHealth
+          name: g.name,
+          health
         };
       });
 
-      function block(title, subtitle, color, list) {
+      document.getElementById("cellIndicator").innerHTML = `
+        <div class="card">
+          <h3>🧠 Cell Spiritual Health Indicator</h3>
+          <small>Per-cell diagnostic snapshot</small>
+
+          ${grouped.map(g => `
+            <div style="display:flex;justify-content:space-between;margin-top:6px;">
+              <span>${g.name}</span>
+              <b class="${g.health<60?'bad':g.health<80?'warn':'good'}">
+                ${g.health ? g.health.toFixed(1)+'%' : 'No Data'}
+              </b>
+            </div>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    /* ---------------- 🏠 5-COLUMN GROUP INTELLIGENCE (UNCHANGED) ---------------- */
+    function renderGroups(groups, members, scores) {
+
+      const enriched = groups.map(g => {
+
+        const groupMembers = members.filter(m => m.group_id === g.id);
+        const size = groupMembers.length;
+
+        let category = "";
+        let color = "";
+
+        if (size < 8) { category="Underflow"; color="#3b82f6"; }
+        else if (size <= 12) { category="Healthy"; color="#22c55e"; }
+        else if (size <= 15) { category="Stable"; color="#16a34a"; }
+        else if (size <= 19) { category="Growth"; color="#f59e0b"; }
+        else { category="Multiply"; color="#ef4444"; }
+
+        const groupScores = scores.filter(s =>
+          groupMembers.some(m => m.person_id === s.person_id)
+        );
+
+        let spiritualHealth = null;
+
+        if (groupScores.length) {
+          spiritualHealth =
+            groupScores.reduce((sum, p) => {
+              const score =
+                (p.attendance_score * 0.25 +
+                 p.engagement_score * 0.30 +
+                 p.participation_score * 0.25 +
+                 p.alignment_score * 0.20);
+
+              return sum + (score / 4) * 100;
+            }, 0) / groupScores.length;
+        }
+
+        return { ...g, size, category, color, spiritualHealth };
+      });
+
+      function block(title, color, list) {
+
         return `
-          <div style="
-            background:#0b1220;
-            border:1px solid ${color};
-            border-radius:10px;
-            padding:10px;
-            min-height:250px;
-          ">
-
+          <div style="border:1px solid ${color};border-radius:10px;padding:10px;background:#0b1220;min-height:250px;">
             <b style="color:${color};">${title}</b>
-            <small style="display:block;color:#94a3b8;">${subtitle}</small>
-
             <hr style="border-color:#1f2937;">
 
-            ${list.length === 0
-              ? `<i style="color:#64748b;">No groups</i>`
-              : list.map(g => `
-                  <div style="
-                    background:#111827;
-                    padding:6px;
-                    margin:6px 0;
-                    border-radius:6px;
-                  ">
+            ${list.map(g => `
+              <div style="background:#111827;margin:6px 0;padding:6px;border-radius:6px;">
 
-                    <div style="display:flex;justify-content:space-between;">
-                      <span>${g.name}</span>
-                      <b>${g.size}</b>
-                    </div>
+                <div style="display:flex;justify-content:space-between;">
+                  <span>${g.name}</span>
+                  <b>${g.size}</b>
+                </div>
 
-                    <!-- 🧠 SPIRITUAL HEALTH (NEW BUT SUBTLE) -->
-                    <div style="font-size:12px; margin-top:4px;">
-                      Spiritual:
-                      <b class="${
-                        g.spiritualHealth<60?'bad':
-                        g.spiritualHealth<80?'warn':'good'
-                      }">
-                        ${g.spiritualHealth
-                          ? g.spiritualHealth.toFixed(1)+'%'
-                          : 'No Data'}
-                      </b>
-                    </div>
+                <div style="font-size:12px;">
+                  🧠 ${g.spiritualHealth ? g.spiritualHealth.toFixed(1)+'%' : 'No Data'}
+                </div>
 
-                  </div>
-                `).join("")
-            }
-
+              </div>
+            `).join("")}
           </div>
         `;
       }
 
       const underflow = enriched.filter(g => g.size < 8);
-      const healthy = enriched.filter(g => g.size >= 8 && g.size <= 12);
-      const stable = enriched.filter(g => g.size >= 13 && g.size <= 15);
-      const growth = enriched.filter(g => g.size >= 16 && g.size <= 19);
+      const healthy = enriched.filter(g => g.size <= 12);
+      const stable = enriched.filter(g => g.size <= 15 && g.size > 12);
+      const growth = enriched.filter(g => g.size <= 19 && g.size > 15);
       const multiply = enriched.filter(g => g.size >= 20);
 
       document.getElementById("groups").innerHTML = `
@@ -230,13 +239,11 @@
           <h3>🏠 Group Intelligence</h3>
 
           <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">
-
-            ${block("🔵 Underflow","<8","#3b82f6",underflow)}
-            ${block("🟢 Healthy","8–12","#22c55e",healthy)}
-            ${block("🟢 Stable","13–15","#16a34a",stable)}
-            ${block("🟡 Growth","16–19","#f59e0b",growth)}
-            ${block("🔴 Multiply","20+","#ef4444",multiply)}
-
+            ${block("Underflow <8","#3b82f6",underflow)}
+            ${block("Healthy 8–12","#22c55e",healthy)}
+            ${block("Stable 13–15","#16a34a",stable)}
+            ${block("Growth 16–19","#f59e0b",growth)}
+            ${block("Multiply 20+","#ef4444",multiply)}
           </div>
         </div>
       `;
@@ -277,8 +284,9 @@
 <div class="grid">
 
   <div id="people"></div>
-  <div id="groups"></div>
+  <div id="cellIndicator"></div>
 
+  <div id="groups"></div>
   <div id="priority"></div>
 
 </div>
