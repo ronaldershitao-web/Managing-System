@@ -48,28 +48,23 @@
         groupsRes,
         membersRes,
         priorityRes,
-        cellHealthRes,
         scoresRes
       ] = await Promise.all([
         db.from("people").select("*"),
         db.from("groups").select("*"),
-        db.from("group_members").select("id, group_id, person_id"),
+        db.from("group_members").select("id, group_id, person_id, people:people(*)"),
         db.from("people_priority_engine").select("*"),
-        db.from("cell_spiritual_health").select("*"),
         db.from("cell_visit_person_scores")
-          .select("visit_session_id, person_id, people(name), attendance_score, engagement_score, participation_score, alignment_score")
+          .select("person_id, group_id, attendance_score, engagement_score, participation_score, alignment_score, people(name)")
       ]);
 
-      const people = peopleRes.data || [];
       const groups = groupsRes.data || [];
       const members = membersRes.data || [];
-      const priority = priorityRes.data || [];
-      const cellHealth = cellHealthRes.data || [];
       const scores = scoresRes.data || [];
+      const priority = priorityRes.data || [];
 
       renderPeople(scores);
-      renderGroups(groups, members, cellHealth);
-      renderLeadership(groups, members);
+      renderGroups(groups, members, scores);
       renderPriority(priority);
     }
 
@@ -78,14 +73,7 @@
 
       if (!scores.length) return;
 
-      const latestVisit = [...scores]
-        .map(s => s.visit_session_id)
-        .sort()
-        .reverse()[0];
-
-      const filtered = scores.filter(s => s.visit_session_id === latestVisit);
-
-      const enriched = filtered.map(p => {
+      const enriched = scores.map(p => {
 
         const score =
           (p.attendance_score * 0.25 +
@@ -99,108 +87,128 @@
         };
       });
 
-      enriched.sort((a,b) => a.percent - b.percent);
+      enriched.sort((a,b)=>a.percent-b.percent);
 
       document.getElementById("people").innerHTML = `
         <div class="card">
-          <h3>🧍 People Intelligence (Spiritual Risk)</h3>
+          <h3>🧍 People Intelligence</h3>
 
-          <small>Bottom 5 requiring pastoral attention</small>
+          <small>Spiritual risk (bottom 5)</small>
 
-          ${enriched.slice(0,5).map(p => {
-
-            let cls = "good";
-            if (p.percent < 60) cls = "bad";
-            else if (p.percent < 80) cls = "warn";
-
-            return `
-              <div style="display:flex;justify-content:space-between;margin-top:6px;">
-                <span>${p.name}</span>
-                <b class="${cls}">${p.percent.toFixed(1)}%</b>
-              </div>
-            `;
-          }).join("")}
+          ${enriched.slice(0,5).map(p => `
+            <div style="display:flex;justify-content:space-between;margin-top:6px;">
+              <span>${p.name}</span>
+              <b class="${p.percent<60?'bad':p.percent<80?'warn':'good'}">
+                ${p.percent.toFixed(1)}%
+              </b>
+            </div>
+          `).join("")}
         </div>
       `;
     }
 
-    /* ---------------- 🏠 CELL INTELLIGENCE (PER GROUP HEALTH) ---------------- */
-    function renderGroups(groups, members, cellHealth) {
+    /* ---------------- 🏠 GROUP INTELLIGENCE ---------------- */
+    function renderGroups(groups, members, scores) {
 
       const enriched = groups.map(g => {
-        const size = members.filter(m => m.group_id === g.id).length;
-        return { ...g, size };
-      });
 
-      function getCellHealth(groupId) {
+        const groupMembers = members.filter(m => m.group_id === g.id);
+        const size = groupMembers.length;
 
-        const records = cellHealth.filter(c => c.group_id === groupId);
+        /* ---------- STRUCTURAL CATEGORY ---------- */
+        let structure = "";
+        let structColor = "";
 
-        if (!records.length) return null;
+        if (size < 8) {
+          structure = "Underflow";
+          structColor = "#3b82f6";
+        } else if (size <= 12) {
+          structure = "Healthy";
+          structColor = "#22c55e";
+        } else if (size <= 15) {
+          structure = "Stable";
+          structColor = "#16a34a";
+        } else if (size <= 19) {
+          structure = "Growth Pressure";
+          structColor = "#f59e0b";
+        } else {
+          structure = "Multiply Risk";
+          structColor = "#ef4444";
+        }
 
-        return records.reduce((a,b)=>a + b.health_percent, 0) / records.length;
-      }
+        /* ---------- SPIRITUAL HEALTH (AVG PERSON SCORE) ---------- */
+        const groupPersonScores = scores.filter(s =>
+          groupMembers.some(m => m.person_id === s.person_id)
+        );
 
-      const blocks = enriched.map(g => {
+        let spiritualHealth = null;
 
-        const health = getCellHealth(g.id);
+        if (groupPersonScores.length) {
 
-        let cls = "good";
-        if (health !== null && health < 60) cls = "bad";
-        else if (health !== null && health < 80) cls = "warn";
+          spiritualHealth =
+            groupPersonScores.reduce((sum, p) => {
 
-        return `
-          <div class="card">
-            <b>${g.name}</b>
+              const score =
+                (p.attendance_score * 0.25 +
+                 p.engagement_score * 0.30 +
+                 p.participation_score * 0.25 +
+                 p.alignment_score * 0.20);
 
-            <div style="font-size:22px;" class="${cls}">
-              ${health ? health.toFixed(1) + "%" : "No Data"}
-            </div>
+              return sum + (score / 4) * 100;
 
-            <small>Cell Spiritual Health</small>
+            }, 0) / groupPersonScores.length;
+        }
 
-            <div>Size: ${g.size}</div>
-          </div>
-        `;
+        return {
+          ...g,
+          size,
+          structure,
+          structColor,
+          spiritualHealth
+        };
       });
 
       document.getElementById("groups").innerHTML = `
         <div class="card">
           <h3>🏠 Cell Intelligence</h3>
 
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
-            ${blocks.join("")}
+          <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
+
+            ${enriched.map(g => `
+              <div class="card">
+
+                <b>${g.name}</b>
+
+                <div>
+                  Size: <b>${g.size}</b>
+                </div>
+
+                <div style="color:${g.structColor};">
+                  ${g.structure}
+                </div>
+
+                <hr style="border-color:#1f2937;">
+
+                <div>
+                  🧠 Spiritual Health:
+                  <b class="${g.spiritualHealth<60?'bad':g.spiritualHealth<80?'warn':'good'}">
+                    ${g.spiritualHealth ? g.spiritualHealth.toFixed(1) + '%' : 'No Data'}
+                  </b>
+                </div>
+
+              </div>
+            `).join("")}
+
           </div>
         </div>
       `;
     }
 
-    /* ---------------- 🧭 LEADERSHIP ---------------- */
-    function renderLeadership(groups, members) {
-
-      const map = {};
-
-      members.forEach(m => {
-        map[m.group_id] = (map[m.group_id] || 0) + 1;
-      });
-
-      const loads = Object.values(map);
-
-      document.getElementById("leaders").innerHTML = `
-        <div class="card">
-          <h3>🧭 Leadership Load</h3>
-
-          <p>Max: <b>${Math.max(...loads || [0])}</b></p>
-          <p>Avg: <b>${(loads.reduce((a,b)=>a+b,0)/loads.length || 0).toFixed(1)}</b></p>
-        </div>
-      `;
-    }
-
-    /* ---------------- 🔥 PRIORITY ENGINE ---------------- */
+    /* ---------------- 🔥 PRIORITY ---------------- */
     function renderPriority(priority) {
 
       const sorted = [...priority]
-        .sort((a,b)=>b.computed_priority_score - a.computed_priority_score);
+        .sort((a,b)=>b.computed_priority_score-a.computed_priority_score);
 
       document.getElementById("priority").innerHTML = `
         <div class="card">
@@ -209,7 +217,7 @@
           ${sorted.slice(0,5).map(p => `
             <div style="display:flex;justify-content:space-between;">
               <span>${p.name}</span>
-              <b>${Math.round(p.computed_priority_score || 0)}</b>
+              <b>${Math.round(p.computed_priority_score||0)}</b>
             </div>
           `).join("")}
         </div>
@@ -233,7 +241,6 @@
   <div id="people"></div>
   <div id="groups"></div>
 
-  <div id="leaders"></div>
   <div id="priority"></div>
 
 </div>
