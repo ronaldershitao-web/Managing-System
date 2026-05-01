@@ -78,7 +78,7 @@
 
       if (!scores.length) return;
 
-      const latestVisit = scores
+      const latestVisit = [...scores]
         .map(s => s.visit_session_id)
         .sort()
         .reverse()[0];
@@ -95,7 +95,7 @@
 
         return {
           name: p.people?.name || "Unknown",
-          percent: (score / 4 * 100)
+          percent: (score / 4) * 100
         };
       });
 
@@ -105,7 +105,7 @@
         <div class="card">
           <h3>🧍 People Intelligence (Spiritual Risk)</h3>
 
-          <small>Bottom 5 requiring attention</small>
+          <small>Bottom 5 requiring pastoral attention</small>
 
           ${enriched.slice(0,5).map(p => {
 
@@ -124,7 +124,7 @@
       `;
     }
 
-    /* ---------------- 🏠 GROUP INTELLIGENCE (NOW INCLUDES CELL HEALTH) ---------------- */
+    /* ---------------- 🏠 CELL INTELLIGENCE (PER GROUP HEALTH) ---------------- */
     function renderGroups(groups, members, cellHealth) {
 
       const enriched = groups.map(g => {
@@ -132,75 +132,45 @@
         return { ...g, size };
       });
 
-      const underflow = enriched.filter(g => g.size < 8);
-      const healthy = enriched.filter(g => g.size >= 8 && g.size <= 12);
-      const stable = enriched.filter(g => g.size >= 13 && g.size <= 15);
-      const prep = enriched.filter(g => g.size >= 16 && g.size < 20);
-      const mustMultiply = enriched.filter(g => g.size >= 20);
+      function getCellHealth(groupId) {
 
-      /* ---------------- CELL HEALTH (INSIDE GROUP INTELLIGENCE) ---------------- */
+        const records = cellHealth.filter(c => c.group_id === groupId);
 
-      const grouped = {};
+        if (!records.length) return null;
 
-      cellHealth.forEach(c => {
-        if (!grouped[c.group_id]) grouped[c.group_id] = { total:0, count:0 };
-        grouped[c.group_id].total += c.health_percent;
-        grouped[c.group_id].count += 1;
-      });
+        return records.reduce((a,b)=>a + b.health_percent, 0) / records.length;
+      }
 
-      const averages = Object.values(grouped).map(v => v.total / v.count);
+      const blocks = enriched.map(g => {
 
-      const overallCellHealth =
-        averages.length
-          ? averages.reduce((a,b)=>a+b,0) / averages.length
-          : 0;
+        const health = getCellHealth(g.id);
 
-      let cellCls = "good";
-      if (overallCellHealth < 60) cellCls = "bad";
-      else if (overallCellHealth < 80) cellCls = "warn";
+        let cls = "good";
+        if (health !== null && health < 60) cls = "bad";
+        else if (health !== null && health < 80) cls = "warn";
 
-      function block(title, subtitle, color, list) {
         return `
-          <div style="background:#0b1220;border:1px solid ${color};border-radius:10px;padding:10px;min-height:180px;">
-            <b style="color:${color};">${title}</b>
-            <small style="display:block;color:#94a3b8;">${subtitle}</small>
-            <hr style="border-color:#1f2937;">
+          <div class="card">
+            <b>${g.name}</b>
 
-            ${list.length === 0
-              ? `<i style="color:#64748b;">No groups</i>`
-              : list.map(g => `
-                <div style="display:flex;justify-content:space-between;background:#111827;margin:5px 0;padding:6px;border-radius:6px;">
-                  <span>${g.name}</span>
-                  <b>${g.size}</b>
-                </div>
-              `).join("")
-            }
+            <div style="font-size:22px;" class="${cls}">
+              ${health ? health.toFixed(1) + "%" : "No Data"}
+            </div>
+
+            <small>Cell Spiritual Health</small>
+
+            <div>Size: ${g.size}</div>
           </div>
         `;
-      }
+      });
 
       document.getElementById("groups").innerHTML = `
         <div class="card">
+          <h3>🏠 Cell Intelligence</h3>
 
-          <h3>🏠 Group Intelligence</h3>
-
-          <!-- 🧠 CELL HEALTH NOW INSIDE GROUP INTELLIGENCE -->
-          <div style="margin-bottom:10px;">
-            <b>🧠 Cell Spiritual Health</b>
-            <div style="font-size:26px;" class="${cellCls}">
-              ${overallCellHealth.toFixed(1)}%
-            </div>
-            <small>Aggregated across visit snapshots</small>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+            ${blocks.join("")}
           </div>
-
-          <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">
-            ${block("🔵 Underflow","<8","#3b82f6",underflow)}
-            ${block("🟢 Healthy","8–12","#22c55e",healthy)}
-            ${block("🟢 Stable","13–15","#16a34a",stable)}
-            ${block("🟡 Prep","16–19","#f59e0b",prep)}
-            ${block("🔴 Multiply","20+","#ef4444",mustMultiply)}
-          </div>
-
         </div>
       `;
     }
