@@ -47,7 +47,11 @@
     import { db } from "./assets/app.js";
 
     async function load() {
-
+const peopleMap = {};
+people.forEach(p => {
+  peopleMap[String(p.id).trim()] = p.name;
+});
+      const normalize = (id) => String(id).trim();
       const [
         peopleRes,
         groupsRes,
@@ -60,7 +64,7 @@
         db.from("group_members").select("group_id, person_id"),
         db.from("people_priority_engine").select("*"),
         db.from("cell_visit_person_scores")
-          .select("person_id, group_id, attendance_score, engagement_score, participation_score, alignment_score, people(name)")
+          .select("person_id, attendance_score, engagement_score, participation_score, alignment_score")
       ]);
 
       const people = peopleRes.data || [];
@@ -69,100 +73,104 @@
       const priority = priorityRes.data || [];
       const scores = scoresRes.data || [];
 
-      renderPeople(scores);
+      renderPeople(scores, peopleMap);
       renderCellIndicator(groups, members, scores);
       renderGroups(groups, members, scores);
       renderPriority(priority);
     }
 
     /* ---------------- 🧍 PEOPLE SPIRITUAL RISK (RESTORED) ---------------- */
-    function renderPeople(scores) {
+    function renderPeople(scores, peopleMap) {
 
-      if (!scores.length) return;
+  if (!scores.length) return;
 
-      const enriched = scores.map(p => {
+  const enriched = scores.map(p => {
 
-        const score =
-          (p.attendance_score * 0.25 +
-           p.engagement_score * 0.30 +
-           p.participation_score * 0.25 +
-           p.alignment_score * 0.20);
+    const score =
+      (p.attendance_score * 0.25 +
+       p.engagement_score * 0.30 +
+       p.participation_score * 0.25 +
+       p.alignment_score * 0.20);
 
-        return {
-          name: p.people?.name || "Unknown",
-          percent: (score / 4) * 100
-        };
-      });
+    const percent = (score / 4) * 100;
 
-      enriched.sort((a,b)=>a.percent-b.percent);
+    return {
+      name: peopleMap[normalize(p.person_id)] || "Unknown",
+      percent
+    };
+  }).filter(p => !isNaN(p.percent));
 
-      document.getElementById("people").innerHTML = `
-        <div class="card">
-          <h3>🧍 People Spiritual Risk</h3>
-          <small>Bottom 5 individuals</small>
+  enriched.sort((a,b)=>a.percent-b.percent);
 
-          ${enriched.slice(0,5).map(p => `
-            <div style="display:flex;justify-content:space-between;margin-top:6px;">
-              <span>${p.name}</span>
-              <b class="${p.percent<60?'bad':p.percent<80?'warn':'good'}">
-                ${p.percent.toFixed(1)}%
-              </b>
-            </div>
-          `).join("")}
+  document.getElementById("people").innerHTML = `
+    <div class="card">
+      <h3>🧍 People Spiritual Risk</h3>
+      <small>Bottom 5 individuals</small>
+
+      ${enriched.slice(0,5).map(p => `
+        <div style="display:flex;justify-content:space-between;margin-top:6px;">
+          <span>${p.name}</span>
+          <b class="${p.percent<60?'bad':p.percent<80?'warn':'good'}">
+            ${p.percent.toFixed(1)}%
+          </b>
         </div>
-      `;
-    }
+      `).join("")}
+    </div>
+  `;
+}
 
     /* ---------------- 🧠 NEW: CELL SPIRITUAL HEALTH INDICATOR ---------------- */
-    function renderCellIndicator(groups, members, scores) {
+   function renderCellIndicator(groups, members, scores) {
 
-      const grouped = groups.map(g => {
+  const grouped = groups.map(g => {
 
-        const groupMembers = members.filter(m => m.group_id === g.id);
+    const memberIds = members
+      .filter(m => normalize(m.group_id) === normalize(g.id))
+      .map(m => normalize(m.person_id));
 
-        const groupScores = scores.filter(s =>
-          groupMembers.some(m => m.person_id === s.person_id)
-        );
+    const groupScores = scores.filter(s =>
+      memberIds.includes(normalize(s.person_id))
+    );
 
-        let health = null;
+    let health = null;
 
-        if (groupScores.length) {
-          health =
-            groupScores.reduce((sum, p) => {
+    if (groupScores.length) {
+      health =
+        groupScores.reduce((sum, p) => {
 
-              const score =
-                (p.attendance_score * 0.25 +
-                 p.engagement_score * 0.30 +
-                 p.participation_score * 0.25 +
-                 p.alignment_score * 0.20);
+          const score =
+            (p.attendance_score * 0.25 +
+             p.engagement_score * 0.30 +
+             p.participation_score * 0.25 +
+             p.alignment_score * 0.20);
 
-              return sum + (score / 4) * 100;
+          return sum + (score / 4) * 100;
 
-            }, 0) / groupScores.length;
-        }
-
-        return {
-          name: g.name,
-          health
-        };
-      });
-
-      document.getElementById("cellIndicator").innerHTML = `
-        <div class="card">
-          <h3>🧠 Cell Spiritual Health Indicator</h3>
-          <small>Per-cell diagnostic snapshot</small>
-
-          ${grouped.map(g => `
-            <div style="display:flex;justify-content:space-between;margin-top:6px;">
-              <span>${g.name}</span>
-              <b class="${g.health<60?'bad':g.health<80?'warn':'good'}">
-                ${g.health ? g.health.toFixed(1)+'%' : 'No Data'}
-              </b>
-            </div>
-          `).join("")}
-        </div>
-      `;
+        }, 0) / groupScores.length;
     }
+
+    return {
+      name: g.name,
+      health
+    };
+  });
+
+  document.getElementById("cellIndicator").innerHTML = `
+    <div class="card">
+      <h3>🧠 Cell Spiritual Health Indicator</h3>
+      <small>Per-cell diagnostic snapshot</small>
+
+      ${grouped.map(g => `
+        <div style="display:flex;justify-content:space-between;margin-top:6px;">
+          <span>${g.name}</span>
+          <b class="${g.health<60?'bad':g.health<80?'warn':'good'}">
+            ${g.health ? g.health.toFixed(1)+'%' : 'No Data'}
+          </b>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
 
     /* ---------------- 🏠 5-COLUMN GROUP INTELLIGENCE (UNCHANGED) ---------------- */
     function renderGroups(groups, members, scores) {
