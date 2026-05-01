@@ -101,7 +101,7 @@
            p.participation_score * 0.25 +
            p.alignment_score * 0.20);
 
-        const percent = (score / 8) * 100;
+        const percent = (score / 2) * 100;
 
         return {
           name: peopleMap[normalize(p.person_id)] || "Unknown",
@@ -153,7 +153,7 @@
                  p.participation_score * 0.25 +
                  p.alignment_score * 0.20);
 
-              return sum + (score / 4) * 100;
+              return sum + (score / 2) * 100;
 
             }, 0) / groupScores.length;
         }
