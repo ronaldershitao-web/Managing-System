@@ -52,23 +52,24 @@
       ] = await Promise.all([
         db.from("people").select("*"),
         db.from("groups").select("*"),
-        db.from("group_members").select("id, group_id, person_id, people:people(*)"),
+        db.from("group_members").select("id, group_id, person_id"),
         db.from("people_priority_engine").select("*"),
         db.from("cell_visit_person_scores")
           .select("person_id, group_id, attendance_score, engagement_score, participation_score, alignment_score, people(name)")
       ]);
 
+      const people = peopleRes.data || [];
       const groups = groupsRes.data || [];
       const members = membersRes.data || [];
-      const scores = scoresRes.data || [];
       const priority = priorityRes.data || [];
+      const scores = scoresRes.data || [];
 
       renderPeople(scores);
       renderGroups(groups, members, scores);
       renderPriority(priority);
     }
 
-    /* ---------------- 🧍 PEOPLE INTELLIGENCE ---------------- */
+    /* ---------------- 🧍 PEOPLE INTELLIGENCE (RESTORED) ---------------- */
     function renderPeople(scores) {
 
       if (!scores.length) return;
@@ -92,7 +93,6 @@
       document.getElementById("people").innerHTML = `
         <div class="card">
           <h3>🧍 People Intelligence</h3>
-
           <small>Spiritual risk (bottom 5)</small>
 
           ${enriched.slice(0,5).map(p => `
@@ -107,7 +107,7 @@
       `;
     }
 
-    /* ---------------- 🏠 GROUP INTELLIGENCE ---------------- */
+    /* ---------------- 🏠 GROUP INTELLIGENCE (RESTORED 5-COLUMN MODEL) ---------------- */
     function renderGroups(groups, members, scores) {
 
       const enriched = groups.map(g => {
@@ -115,38 +115,38 @@
         const groupMembers = members.filter(m => m.group_id === g.id);
         const size = groupMembers.length;
 
-        /* ---------- STRUCTURAL CATEGORY ---------- */
-        let structure = "";
-        let structColor = "";
+        /* ---------- STRUCTURE CATEGORY ---------- */
+        let category = "";
+        let color = "";
 
         if (size < 8) {
-          structure = "Underflow";
-          structColor = "#3b82f6";
+          category = "Underflow";
+          color = "#3b82f6";
         } else if (size <= 12) {
-          structure = "Healthy";
-          structColor = "#22c55e";
+          category = "Healthy";
+          color = "#22c55e";
         } else if (size <= 15) {
-          structure = "Stable";
-          structColor = "#16a34a";
+          category = "Stable";
+          color = "#16a34a";
         } else if (size <= 19) {
-          structure = "Growth Pressure";
-          structColor = "#f59e0b";
+          category = "Growth Pressure";
+          color = "#f59e0b";
         } else {
-          structure = "Multiply Risk";
-          structColor = "#ef4444";
+          category = "Multiply Risk";
+          color = "#ef4444";
         }
 
         /* ---------- SPIRITUAL HEALTH (AVG PERSON SCORE) ---------- */
-        const groupPersonScores = scores.filter(s =>
+        const groupScores = scores.filter(s =>
           groupMembers.some(m => m.person_id === s.person_id)
         );
 
         let spiritualHealth = null;
 
-        if (groupPersonScores.length) {
+        if (groupScores.length) {
 
           spiritualHealth =
-            groupPersonScores.reduce((sum, p) => {
+            groupScores.reduce((sum, p) => {
 
               const score =
                 (p.attendance_score * 0.25 +
@@ -156,48 +156,86 @@
 
               return sum + (score / 4) * 100;
 
-            }, 0) / groupPersonScores.length;
+            }, 0) / groupScores.length;
         }
 
         return {
           ...g,
           size,
-          structure,
-          structColor,
+          category,
+          color,
           spiritualHealth
         };
       });
 
+      function block(title, subtitle, color, list) {
+        return `
+          <div style="
+            background:#0b1220;
+            border:1px solid ${color};
+            border-radius:10px;
+            padding:10px;
+            min-height:250px;
+          ">
+
+            <b style="color:${color};">${title}</b>
+            <small style="display:block;color:#94a3b8;">${subtitle}</small>
+
+            <hr style="border-color:#1f2937;">
+
+            ${list.length === 0
+              ? `<i style="color:#64748b;">No groups</i>`
+              : list.map(g => `
+                  <div style="
+                    background:#111827;
+                    padding:6px;
+                    margin:6px 0;
+                    border-radius:6px;
+                  ">
+
+                    <div style="display:flex;justify-content:space-between;">
+                      <span>${g.name}</span>
+                      <b>${g.size}</b>
+                    </div>
+
+                    <!-- 🧠 SPIRITUAL HEALTH (NEW BUT SUBTLE) -->
+                    <div style="font-size:12px; margin-top:4px;">
+                      Spiritual:
+                      <b class="${
+                        g.spiritualHealth<60?'bad':
+                        g.spiritualHealth<80?'warn':'good'
+                      }">
+                        ${g.spiritualHealth
+                          ? g.spiritualHealth.toFixed(1)+'%'
+                          : 'No Data'}
+                      </b>
+                    </div>
+
+                  </div>
+                `).join("")
+            }
+
+          </div>
+        `;
+      }
+
+      const underflow = enriched.filter(g => g.size < 8);
+      const healthy = enriched.filter(g => g.size >= 8 && g.size <= 12);
+      const stable = enriched.filter(g => g.size >= 13 && g.size <= 15);
+      const growth = enriched.filter(g => g.size >= 16 && g.size <= 19);
+      const multiply = enriched.filter(g => g.size >= 20);
+
       document.getElementById("groups").innerHTML = `
         <div class="card">
-          <h3>🏠 Cell Intelligence</h3>
+          <h3>🏠 Group Intelligence</h3>
 
-          <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
+          <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">
 
-            ${enriched.map(g => `
-              <div class="card">
-
-                <b>${g.name}</b>
-
-                <div>
-                  Size: <b>${g.size}</b>
-                </div>
-
-                <div style="color:${g.structColor};">
-                  ${g.structure}
-                </div>
-
-                <hr style="border-color:#1f2937;">
-
-                <div>
-                  🧠 Spiritual Health:
-                  <b class="${g.spiritualHealth<60?'bad':g.spiritualHealth<80?'warn':'good'}">
-                    ${g.spiritualHealth ? g.spiritualHealth.toFixed(1) + '%' : 'No Data'}
-                  </b>
-                </div>
-
-              </div>
-            `).join("")}
+            ${block("🔵 Underflow","<8","#3b82f6",underflow)}
+            ${block("🟢 Healthy","8–12","#22c55e",healthy)}
+            ${block("🟢 Stable","13–15","#16a34a",stable)}
+            ${block("🟡 Growth","16–19","#f59e0b",growth)}
+            ${block("🔴 Multiply","20+","#ef4444",multiply)}
 
           </div>
         </div>
