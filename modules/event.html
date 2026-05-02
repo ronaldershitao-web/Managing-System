@@ -4,7 +4,7 @@
   <title>Event Cockpit</title>
 
   <script type="module">
-    import { db } from "../assets/app.js";
+    import { db } from "./assets/app.js";
 
     let events = [];
     let members = [];
@@ -24,7 +24,6 @@
       events = data || [];
 
       const sel = document.getElementById("eventSelect");
-
       sel.innerHTML = `<option value="">Select Event</option>`;
 
       events.forEach(e => {
@@ -46,7 +45,6 @@
       const { data } = await db.from("groups").select("*");
 
       const sel = document.getElementById("groupSelect");
-
       sel.innerHTML = `<option value="">All Groups</option>`;
 
       (data || []).forEach(g => {
@@ -78,7 +76,6 @@
       const { data } = await query;
 
       members = data || [];
-
       renderPeople();
       loadExistingScores();
     }
@@ -86,16 +83,14 @@
     // ---------------- LOAD EXISTING SCORES ----------------
     async function loadExistingScores() {
 
-      if (!currentEvent) return;
-
       const { data } = await db
         .from("event_attendance")
         .select("*")
         .eq("event_id", currentEvent);
 
       (data || []).forEach(r => {
-        const input = document.getElementById(`s-${r.person_id}`);
-        if (input) input.value = r.score;
+        const el = document.getElementById(`s-${r.person_id}`);
+        if (el) el.value = r.score;
       });
     }
 
@@ -114,15 +109,15 @@
 
             <div class="row">
               <input id="s-${m.person_id}" placeholder="0 / 1 / 2">
-              <button onclick="save('${m.person_id}')">Save</button>
+              <button onclick="saveScore('${m.person_id}')">Save</button>
             </div>
           </div>
         `;
       }).join("");
     }
 
-    // ---------------- SAVE SCORE (UPSERT) ----------------
-    window.save = async function (personId) {
+    // ---------------- SAVE SCORE (UPSERT SAFE) ----------------
+    window.saveScore = async function (personId) {
 
       if (!currentEvent) return alert("Select event first");
 
@@ -145,21 +140,17 @@
 
       if (error) return alert(error.message);
 
-      document.getElementById("status").innerText =
-        "Saved ✔";
+      document.getElementById("status").innerText = "Saved ✔";
     };
 
-    // ---------------- CREATE EVENT ----------------
-    window.createEvent = async function () {
+    // ---------------- CREATE EVENT (FIXED NAME) ----------------
+    window.createNewEvent = async function () {
 
       const name = document.getElementById("eventName").value;
       const date = document.getElementById("eventDate").value;
-      const isMinistry =
-        document.getElementById("isMinistry").checked;
+      const isMinistry = document.getElementById("isMinistry").checked;
 
-      if (!name || !date) {
-        return alert("Fill name & date");
-      }
+      if (!name || !date) return alert("Fill all fields");
 
       const { error } = await db
         .from("events")
@@ -171,13 +162,9 @@
 
       if (error) return alert(error.message);
 
-      document.getElementById("eventName").value = "";
-      document.getElementById("eventDate").value = "";
-
       loadEvents();
 
-      document.getElementById("status").innerText =
-        "Event created ✔";
+      document.getElementById("status").innerText = "Event created ✔";
     };
 
     // INIT
@@ -219,7 +206,6 @@
       display:grid;
       grid-template-columns:1fr 80px;
       gap:5px;
-      margin-top:5px;
     }
 
     .person {
@@ -251,7 +237,7 @@
     <input type="checkbox" id="isMinistry">
     Ministry Wide
   </label>
-  <button onclick="createEvent()">Create</button>
+  <button onclick="createNewEvent()">Create</button>
 </div>
 
 <div class="card">
@@ -265,7 +251,7 @@
 </div>
 
 <div class="card">
-  <h3>People Scoring</h3>
+  <h3>People</h3>
   <div id="peopleList"></div>
 </div>
 
