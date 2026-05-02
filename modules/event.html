@@ -96,7 +96,7 @@
 
             <div class="row">
               <input id="score-${m.person_id}" placeholder="2 / 1 / 0">
-              <button onclick="save('${m.person_id}')">Save</button>
+              <button onclick="saveScore('${m.person_id}')">Save</button>
             </div>
           </div>
         `;
@@ -121,8 +121,8 @@
       });
     }
 
-    // ---------------- SAVE (UPSERT LOGIC) ----------------
-    window.save = async function(personId) {
+    // ---------------- SAVE (UPSERT) ----------------
+    window.saveScore = async function(personId) {
 
       if (!currentEvent) {
         alert("Select Event first");
@@ -136,7 +136,7 @@
         return;
       }
 
-      // CHECK existing
+      // Check existing
       const { data: existing } = await db
         .from("event_attendance")
         .select("*")
@@ -147,7 +147,6 @@
       let error;
 
       if (existing) {
-        // UPDATE
         const res = await db
           .from("event_attendance")
           .update({ score })
@@ -156,7 +155,6 @@
         error = res.error;
 
       } else {
-        // INSERT
         const res = await db
           .from("event_attendance")
           .insert([{
@@ -176,8 +174,8 @@
       document.getElementById("status").innerText = "Saved ✔";
     };
 
-    // ---------------- CREATE EVENT ----------------
-    window.createEvent = async function() {
+    // ---------------- CREATE EVENT (FIXED NAME) ----------------
+    window.createNewEvent = async function() {
 
       const title = document.getElementById("title").value;
       const date = document.getElementById("date").value;
@@ -198,8 +196,14 @@
 
       if (error) return alert(error.message);
 
-      alert("Event Created ✔");
-      location.reload();
+      // Reset form (better UX than reload)
+      document.getElementById("title").value = "";
+      document.getElementById("date").value = "";
+      document.getElementById("ministry").checked = false;
+
+      document.getElementById("status").innerText = "Event Created ✔";
+
+      init(); // reload dropdowns
     };
 
     window.onload = init;
@@ -271,7 +275,7 @@
     <input type="checkbox" id="ministry"> Ministry Wide
   </label>
 
-  <button onclick="createEvent()">Create</button>
+  <button onclick="createNewEvent()">Create</button>
 </div>
 
 <!-- SELECT EVENT -->
