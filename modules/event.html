@@ -1,221 +1,298 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Events Cockpit</title>
+  <title>Event Cockpit</title>
 
   <script type="module">
-    import { db } from "./assets/app.js";
+    import { db } from "../assets/app.js";
 
     let events = [];
-    let people = [];
-    let selectedEvent = null;
+    let groups = [];
+    let members = [];
+    let currentEvent = null;
+    let currentGroup = null;
 
-    // ---------------- INIT ----------------
-    async function load() {
+    // ---------------- LOAD INITIAL ----------------
+    async function init() {
 
-      const [eventsRes, peopleRes] = await Promise.all([
-        db.from("events")
-          .select("*")
-          .order("event_date", { ascending: false }),
-
-        db.from("people").select("*")
+      const [eventRes, groupRes] = await Promise.all([
+        db.from("events").select("*").order("start_time", { ascending: false }),
+        db.from("groups").select("*")
       ]);
 
-      events = eventsRes.data || [];
-      people = peopleRes.data || [];
+      events = eventRes.data || [];
+      groups = groupRes.data || [];
 
-      renderEvents();
+      loadEventDropdown();
+      loadGroupDropdown();
     }
 
-    // ---------------- CREATE EVENT ----------------
-    window.createNewEvent = async function () {
+    // ---------------- EVENT DROPDOWN ----------------
+    function loadEventDropdown() {
+      const sel = document.getElementById("eventSelect");
 
-      const name = document.getElementById("name").value;
-      const date = document.getElementById("date").value;
-      const desc = document.getElementById("desc").value;
-      const ministryWide = document.getElementById("mw").checked;
+      sel.innerHTML = `<option value="">Select Event</option>`;
 
-      if (!name || !date) {
-        alert("Name and Date required");
-        return;
-      }
+      events.forEach(e => {
+        const opt = document.createElement("option");
+        opt.value = e.id;
+        opt.textContent = `${e.title} (${new Date(e.start_time).toLocaleDateString()})`;
+        sel.appendChild(opt);
+      });
 
-      const { data, error } = await db
-        .from("events")
-        .insert([{
-          name,
-          event_date: date,
-          description: desc,
-          is_ministry_wide: ministryWide
-        }])
-        .select();
+      sel.onchange = () => {
+        currentEvent = sel.value;
+        loadExistingScores();
+      };
+    }
 
-      if (error) return alert(error.message);
+    // ---------------- GROUP DROPDOWN ----------------
+    function loadGroupDropdown() {
+      const sel = document.getElementById("groupSelect");
 
-      events.unshift(data[0]);
-      renderEvents();
-    };
+      sel.innerHTML = `<option value="">Select Group</option>`;
 
-    // ---------------- SELECT EVENT ----------------
-    window.selectEvent = function (id) {
-      selectedEvent = id;
-      document.getElementById("selected").innerText =
-        "Selected Event: " + events.find(e => e.id === id)?.name;
+      groups.forEach(g => {
+        const opt = document.createElement("option");
+        opt.value = g.id;
+        opt.textContent = g.name;
+        sel.appendChild(opt);
+      });
+
+      sel.onchange = () => {
+        currentGroup = sel.value;
+        loadPeople();
+      };
+    }
+
+    // ---------------- LOAD PEOPLE ----------------
+    async function loadPeople() {
+
+      if (!currentGroup) return;
+
+      const { data } = await db
+        .from("group_members")
+        .select("person_id, people:people(*)")
+        .eq("group_id", currentGroup);
+
+      members = data || [];
 
       renderPeople();
-    };
-
-    // ---------------- RENDER EVENTS ----------------
-    function renderEvents() {
-
-      document.getElementById("eventList").innerHTML = events.map(e => `
-        <div class="card">
-          <b>${e.name}</b>
-          <div>${e.event_date}</div>
-          <small>${e.is_ministry_wide ? "Ministry Wide" : "Cell Event"}</small>
-
-          <button onclick="selectEvent('${e.id}')">
-            Open
-          </button>
-        </div>
-      `).join("");
+      loadExistingScores();
     }
 
     // ---------------- RENDER PEOPLE ----------------
     function renderPeople() {
 
-      if (!selectedEvent) return;
+      const container = document.getElementById("peopleList");
 
-      document.getElementById("peopleList").innerHTML = people.map(p => `
-        <div class="card">
+      container.innerHTML = members.map(m => {
 
-          <b>${p.name}</b>
+        const p = m.people;
 
-          <div class="row">
-            <button onclick="saveScore('${p.id}',2)">2</button>
-            <button onclick="saveScore('${p.id}',1)">1</button>
-            <button onclick="saveScore('${p.id}',0)">0</button>
+        return `
+          <div class="person">
+            <b>${p?.name || "Unknown"}</b>
+
+            <div class="row">
+              <input id="score-${m.person_id}" placeholder="2 / 1 / 0">
+              <button onclick="save('${m.person_id}')">Save</button>
+            </div>
           </div>
-
-        </div>
-      `).join("");
+        `;
+      }).join("");
     }
 
-    // ---------------- SAVE SCORE ----------------
-    window.saveScore = async function (personId, score) {
+    // ---------------- LOAD EXISTING SCORES ----------------
+    async function loadExistingScores() {
 
-      if (!selectedEvent) {
-        alert("Select event first");
+      if (!currentEvent) return;
+
+      const { data } = await db
+        .from("event_attendance")
+        .select("*")
+        .eq("event_id", currentEvent);
+
+      if (!data) return;
+
+      data.forEach(r => {
+        const input = document.getElementById(`score-${r.person_id}`);
+        if (input) input.value = r.score;
+      });
+    }
+
+    // ---------------- SAVE (UPSERT LOGIC) ----------------
+    window.save = async function(personId) {
+
+      if (!currentEvent) {
+        alert("Select Event first");
+        return;
+      }
+
+      const score = +document.getElementById(`score-${personId}`).value;
+
+      if (![0,1,2].includes(score)) {
+        alert("Score must be 0, 1 or 2");
+        return;
+      }
+
+      // CHECK existing
+      const { data: existing } = await db
+        .from("event_attendance")
+        .select("*")
+        .eq("event_id", currentEvent)
+        .eq("person_id", personId)
+        .maybeSingle();
+
+      let error;
+
+      if (existing) {
+        // UPDATE
+        const res = await db
+          .from("event_attendance")
+          .update({ score })
+          .eq("id", existing.id);
+
+        error = res.error;
+
+      } else {
+        // INSERT
+        const res = await db
+          .from("event_attendance")
+          .insert([{
+            event_id: currentEvent,
+            person_id: personId,
+            score
+          }]);
+
+        error = res.error;
+      }
+
+      if (error) {
+        alert(error.message);
+        return;
+      }
+
+      document.getElementById("status").innerText = "Saved ✔";
+    };
+
+    // ---------------- CREATE EVENT ----------------
+    window.createEvent = async function() {
+
+      const title = document.getElementById("title").value;
+      const date = document.getElementById("date").value;
+      const ministryWide = document.getElementById("ministry").checked;
+
+      if (!title || !date) {
+        alert("Missing fields");
         return;
       }
 
       const { error } = await db
-        .from("event_attendance")
-        .upsert([{
-          event_id: selectedEvent,
-          person_id: personId,
-          status: score
-        }], {
-          onConflict: "event_id,person_id"
-        });
+        .from("events")
+        .insert([{
+          title,
+          start_time: date,
+          is_ministry_wide: ministryWide
+        }]);
 
       if (error) return alert(error.message);
 
-      alert("Saved ✔");
+      alert("Event Created ✔");
+      location.reload();
     };
 
-    window.onload = load;
+    window.onload = init;
+
   </script>
 
   <style>
     body {
-      margin:0;
-      font-family:Arial;
+      font-family: Arial;
       background:#0f172a;
       color:white;
+      margin:0;
       padding:20px;
-    }
-
-    .grid {
-      display:grid;
-      grid-template-columns:1fr 1fr;
-      gap:10px;
     }
 
     .card {
       background:#111827;
-      padding:10px;
-      border-radius:8px;
+      padding:15px;
+      border-radius:10px;
+      margin-top:15px;
       border:1px solid #1f2937;
-      margin-bottom:10px;
     }
 
-    input, textarea {
+    input, select {
       width:100%;
-      padding:8px;
       margin:5px 0;
+      padding:8px;
       border-radius:6px;
       background:#020617;
       border:1px solid #334155;
       color:white;
     }
 
-    button {
-      padding:6px 10px;
+    .row {
+      display:grid;
+      grid-template-columns:1fr 80px;
+      gap:5px;
       margin-top:5px;
+    }
+
+    .person {
+      border-bottom:1px solid #1f2937;
+      padding:8px 0;
+    }
+
+    button {
+      padding:6px;
       background:#2563eb;
       border:none;
       color:white;
       border-radius:6px;
       cursor:pointer;
     }
-
-    .row {
-      display:flex;
-      gap:5px;
-    }
-
-    .row button {
-      flex:1;
-    }
-
-    h2 { margin-top:0; }
   </style>
 
 </head>
 
 <body>
 
-<h2>📅 Events Cockpit</h2>
+<h2>🎯 Event Cockpit</h2>
 
+<!-- CREATE EVENT -->
 <div class="card">
-  <input id="name" placeholder="Event Name">
-  <input type="date" id="date">
-  <textarea id="desc" placeholder="Description"></textarea>
-
+  <h3>Create Event</h3>
+  <input id="title" placeholder="Event Title">
+  <input id="date" type="datetime-local">
+  
   <label>
-    <input type="checkbox" id="mw">
-    Ministry Wide Event
+    <input type="checkbox" id="ministry"> Ministry Wide
   </label>
 
-  <button onclick="createNewEvent()">Create Event</button>
+  <button onclick="createEvent()">Create</button>
 </div>
 
-<div id="selected" class="card">No event selected</div>
-
-<div class="grid">
-
-  <div>
-    <h3>Events</h3>
-    <div id="eventList"></div>
-  </div>
-
-  <div>
-    <h3>People Scoring</h3>
-    <div id="peopleList"></div>
-  </div>
-
+<!-- SELECT EVENT -->
+<div class="card">
+  <h3>Select Event</h3>
+  <select id="eventSelect"></select>
 </div>
+
+<!-- SELECT GROUP -->
+<div class="card">
+  <h3>Select Group</h3>
+  <select id="groupSelect"></select>
+</div>
+
+<!-- PEOPLE -->
+<div class="card">
+  <h3>Attendance (2 / 1 / 0)</h3>
+  <div id="peopleList"></div>
+</div>
+
+<div id="status"></div>
 
 </body>
 </html>
