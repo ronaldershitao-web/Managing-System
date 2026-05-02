@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Event Cockpit</title>
+
+  <script type="module">
+    import { db } from "../assets/app.js";
+
+    let events = [];
+    let members = [];
+    let currentEvent = null;
+    let currentGroup = null;
+
+    const normalize = (id) => String(id).trim();
+
+    // ---------------- LOAD EVENTS ----------------
+    async function loadEvents() {
+
+      const { data } = await db
+        .from("events")
+        .select("*")
+        .order("event_date", { ascending: false });
+
+      events = data || [];
+
+      const sel = document.getElementById("eventSelect");
+
+      sel.innerHTML = `<option value="">Select Event</option>`;
+
+      events.forEach(e => {
+        const opt = document.createElement("option");
+        opt.value = e.id;
+        opt.textContent = `${e.name} (${e.event_date})`;
+        sel.appendChild(opt);
+      });
+
+      sel.onchange = () => {
+        currentEvent = sel.value;
+        loadPeople();
+      };
+    }
+
+    // ---------------- LOAD GROUPS ----------------
+    async function loadGroups() {
+
+      const { data } = await db.from("groups").select("*");
+
+      const sel = document.getElementById("groupSelect");
+
+      sel.innerHTML = `<option value="">All Groups</option>`;
+
+      (data || []).forEach(g => {
+        const opt = document.createElement("option");
+        opt.value = g.id;
+        opt.textContent = g.name;
+        sel.appendChild(opt);
+      });
+
+      sel.onchange = () => {
+        currentGroup = sel.value;
+        loadPeople();
+      };
+    }
+
+    // ---------------- LOAD PEOPLE ----------------
+    async function loadPeople() {
+
+      if (!currentEvent) return;
+
+      let query = db
+        .from("group_members")
+        .select("person_id, people:people(*)");
+
+      if (currentGroup) {
+        query = query.eq("group_id", currentGroup);
+      }
+
+      const { data } = await query;
+
+      members = data || [];
+
+      renderPeople();
+      loadExistingScores();
+    }
+
+    // ---------------- LOAD EXISTING SCORES ----------------
+    async function loadExistingScores() {
+
+      if (!currentEvent) return;
+
+      const { data } = await db
+        .from("event_attendance")
+        .select("*")
+        .eq("event_id", currentEvent);
+
+      (data || []).forEach(r => {
+        const input = document.getElementById(`s-${r.person_id}`);
+        if (input) input.value = r.score;
+      });
+    }
+
+    // ---------------- RENDER PEOPLE ----------------
+    function renderPeople() {
+
+      const container = document.getElementById("peopleList");
+
+      container.innerHTML = members.map(m => {
+
+        const p = m.people;
+
+        return `
+          <div class="person">
+            <b>${p?.name || "Unknown"}</b>
+
+            <div class="row">
+              <input id="s-${m.person_id}" placeholder="0 / 1 / 2">
+              <button onclick="save('${m.person_id}')">Save</button>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    // ---------------- SAVE SCORE (UPSERT) ----------------
+    window.save = async function (personId) {
+
+      if (!currentEvent) return alert("Select event first");
+
+      const score =
+        +document.getElementById(`s-${personId}`).value;
+
+      if (![0,1,2].includes(score)) {
+        return alert("Score must be 0, 1 or 2");
+      }
+
+      const { error } = await db
+        .from("event_attendance")
+        .upsert({
+          event_id: currentEvent,
+          person_id: personId,
+          score
+        }, {
+          onConflict: "event_id,person_id"
+        });
+
+      if (error) return alert(error.message);
+
+      document.getElementById("status").innerText =
+        "Saved ✔";
+    };
+
+    // ---------------- CREATE EVENT ----------------
+    window.createEvent = async function () {
+
+      const name = document.getElementById("eventName").value;
+      const date = document.getElementById("eventDate").value;
+      const isMinistry =
+        document.getElementById("isMinistry").checked;
+
+      if (!name || !date) {
+        return alert("Fill name & date");
+      }
+
+      const { error } = await db
+        .from("events")
+        .insert([{
+          name,
+          event_date: date,
+          is_ministry_wide: isMinistry
+        }]);
+
+      if (error) return alert(error.message);
+
+      document.getElementById("eventName").value = "";
+      document.getElementById("eventDate").value = "";
+
+      loadEvents();
+
+      document.getElementById("status").innerText =
+        "Event created ✔";
+    };
+
+    // INIT
+    window.onload = async () => {
+      await loadEvents();
+      await loadGroups();
+    };
+
+  </script>
+
+  <style>
+    body {
+      font-family: Arial;
+      background:#0f172a;
+      color:white;
+      margin:0;
+      padding:20px;
+    }
+
+    .card {
+      background:#111827;
+      padding:15px;
+      border-radius:10px;
+      margin-top:15px;
+      border:1px solid #1f2937;
+    }
+
+    input, select {
+      width:100%;
+      margin:5px 0;
+      padding:8px;
+      border-radius:6px;
+      background:#020617;
+      border:1px solid #334155;
+      color:white;
+    }
+
+    .row {
+      display:grid;
+      grid-template-columns:1fr 80px;
+      gap:5px;
+      margin-top:5px;
+    }
+
+    .person {
+      border-bottom:1px solid #1f2937;
+      padding:8px 0;
+    }
+
+    button {
+      padding:6px;
+      background:#2563eb;
+      border:none;
+      color:white;
+      border-radius:6px;
+      cursor:pointer;
+    }
+  </style>
+
+</head>
+
+<body>
+
+<h2>🎯 Event Cockpit</h2>
+
+<div class="card">
+  <h3>Create Event</h3>
+  <input id="eventName" placeholder="Event Name">
+  <input type="date" id="eventDate">
+  <label>
+    <input type="checkbox" id="isMinistry">
+    Ministry Wide
+  </label>
+  <button onclick="createEvent()">Create</button>
+</div>
+
+<div class="card">
+  <h3>Select Event</h3>
+  <select id="eventSelect"></select>
+</div>
+
+<div class="card">
+  <h3>Filter Group</h3>
+  <select id="groupSelect"></select>
+</div>
+
+<div class="card">
+  <h3>People Scoring</h3>
+  <div id="peopleList"></div>
+</div>
+
+<div id="status"></div>
+
+</body>
+</html>
