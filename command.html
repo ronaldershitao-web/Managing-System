@@ -244,42 +244,80 @@
     /* ---------------- 🏠 GROUP ---------------- */
     function renderGroups(groups, members, visitMap, eventMap) {
 
-      const enriched = groups.map(g => {
+  const enriched = groups.map(g => {
 
-        const memberIds = members
-          .filter(m => normalize(m.group_id) === normalize(g.id))
-          .map(m => normalize(m.person_id));
+    const groupMembers = members.filter(m =>
+      normalize(m.group_id) === normalize(g.id)
+    );
 
-        const scores = memberIds.map(pid =>
-          finalScore(
-            visitMap[pid] || 0,
-            eventMap[pid] || 0
-          )
-        ).filter(x => x > 0);
+    const memberIds = groupMembers.map(m => normalize(m.person_id));
 
-        const spiritualHealth = scores.length
-          ? scores.reduce((a,b)=>a+b,0)/scores.length
-          : null;
+    const scores = memberIds.map(pid =>
+      finalScore(
+        visitMap[pid] || 0,
+        eventMap[pid] || 0
+      )
+    ).filter(x => x > 0);
 
-        const size = memberIds.length;
+    const spiritualHealth = scores.length
+      ? scores.reduce((a,b)=>a+b,0)/scores.length
+      : null;
 
-        return { ...g, size, spiritualHealth };
-      });
+    const size = groupMembers.length;
 
-      document.getElementById("groups").innerHTML = `
-        <div class="card">
-          <h3>🏠 Group Intelligence</h3>
+    let category = "";
+    let color = "";
 
-          ${enriched.map(g => `
-            <div style="margin:6px 0;">
-              ${g.name} (${g.size})
-              → ${g.spiritualHealth ? g.spiritualHealth.toFixed(1)+'%' : 'No Data'}
+    if (size < 8) { category="Underflow"; color="#3b82f6"; }
+    else if (size <= 12) { category="Healthy"; color="#22c55e"; }
+    else if (size <= 15) { category="Stable"; color="#16a34a"; }
+    else if (size <= 19) { category="Growth"; color="#f59e0b"; }
+    else { category="Multiply"; color="#ef4444"; }
+
+    return { ...g, size, category, color, spiritualHealth };
+  });
+
+  function block(title, color, list) {
+    return `
+      <div style="border:1px solid ${color};border-radius:10px;padding:10px;background:#0b1220;min-height:250px;">
+        <b style="color:${color};">${title}</b>
+        <hr style="border-color:#1f2937;">
+
+        ${list.map(g => `
+          <div style="background:#111827;margin:6px 0;padding:6px;border-radius:6px;">
+            <div style="display:flex;justify-content:space-between;">
+              <span>${g.name}</span>
+              <b>${g.size}</b>
             </div>
-          `).join("")}
-        </div>
-      `;
-    }
+            <div style="font-size:12px;">
+              🧠 ${g.spiritualHealth ? g.spiritualHealth.toFixed(1)+'%' : 'No Data'}
+            </div>
+          </div>
+        `).join("")}
+      </div>
+    `;
+  }
 
+  const underflow = enriched.filter(g => g.size < 8);
+  const healthy   = enriched.filter(g => g.size >= 8 && g.size <= 12);
+  const stable    = enriched.filter(g => g.size >= 13 && g.size <= 15);
+  const growth    = enriched.filter(g => g.size >= 16 && g.size <= 19);
+  const multiply  = enriched.filter(g => g.size >= 20);
+
+  document.getElementById("groups").innerHTML = `
+    <div class="card">
+      <h3>🏠 Group Intelligence</h3>
+
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">
+        ${block("Underflow <8","#3b82f6",underflow)}
+        ${block("Healthy 8–12","#22c55e",healthy)}
+        ${block("Stable 13–15","#16a34a",stable)}
+        ${block("Growth 16–19","#f59e0b",growth)}
+        ${block("Multiply 20+","#ef4444",multiply)}
+      </div>
+    </div>
+  `;
+}
     /* ---------------- 🔥 PRIORITY ---------------- */
     function renderPriority(priority) {
 
