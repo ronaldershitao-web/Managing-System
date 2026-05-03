@@ -1,253 +1,324 @@
-<script type="module">
-import { db } from "./assets/app.js";
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Command Center</title>
 
-const normalize = (id) => String(id).trim();
-
-async function load() {
-
-  const [
-    peopleRes,
-    groupsRes,
-    membersRes,
-    priorityRes,
-    visitRes,
-    eventRes
-  ] = await Promise.all([
-    db.from("people").select("*"),
-    db.from("groups").select("*"),
-    db.from("group_members").select("group_id, person_id"),
-
-    db.from("people_priority_engine").select("*")
-      .then(res => res)
-      .catch(() => ({ data: [] })),
-
-    db.from("cell_visit_person_scores")
-      .select("person_id, attendance_score, engagement_score, participation_score, alignment_score"),
-
-    db.from("event_attendance")
-      .select("person_id, score")
-  ]);
-
-  const people = peopleRes.data || [];
-  const groups = groupsRes.data || [];
-  const members = membersRes.data || [];
-  const priority = priorityRes.data || [];
-  const visitScores = visitRes.data || [];
-  const eventScores = eventRes.data || [];
-
-  const peopleMap = {};
-  people.forEach(p => {
-    peopleMap[normalize(p.id)] = p.name;
-  });
-
-  const visitMap = computeVisitScore(visitScores);
-  const eventMap = computeEventScore(eventScores);
-
-  renderPeople(visitMap, eventMap, peopleMap);
-  renderCellIndicator(groups, members, visitMap, eventMap);
-  renderGroups(groups, members, visitMap, eventMap);
-  renderPriority(priority);
-}
-
-/* ---------------- VISIT SCORE ---------------- */
-function computeVisitScore(rows) {
-
-  const grouped = {};
-
-  rows.forEach(r => {
-
-    const pid = normalize(r.person_id);
-
-    const score =
-      (r.attendance_score * 0.25 +
-       r.engagement_score * 0.30 +
-       r.participation_score * 0.25 +
-       r.alignment_score * 0.20);
-
-    if (!grouped[pid]) {
-      grouped[pid] = { total: 0, count: 0 };
+  <style>
+    body {
+      margin:0;
+      font-family:Arial;
+      background:#0f172a;
+      color:white;
     }
 
-    grouped[pid].total += score;
-    grouped[pid].count += 1;
-  });
-
-  const result = {};
-
-  Object.keys(grouped).forEach(pid => {
-    const avg = grouped[pid].total / grouped[pid].count;
-    result[pid] = (avg / 2) * 100; // normalize
-  });
-
-  return result;
-}
-
-/* ---------------- EVENT SCORE ---------------- */
-function computeEventScore(rows) {
-
-  const grouped = {};
-
-  rows.forEach(r => {
-
-    const pid = normalize(r.person_id);
-
-    if (!grouped[pid]) {
-      grouped[pid] = { total: 0, count: 0 };
+    header {
+      padding:15px;
+      background:#111827;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
     }
 
-    grouped[pid].total += r.score;
-    grouped[pid].count += 1;
-  });
+    .grid {
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:10px;
+      padding:10px;
+    }
 
-  const result = {};
+    .card {
+      background:#111827;
+      padding:12px;
+      border-radius:8px;
+      border:1px solid #1f2937;
+      margin-bottom:10px;
+    }
 
-  Object.keys(grouped).forEach(pid => {
+    h3 { margin-top:0; }
+    small { color:#94a3b8; }
 
-    const g = grouped[pid];
-    const avg = g.total / g.count;
+    .good { color:#22c55e; }
+    .warn { color:#f59e0b; }
+    .bad  { color:#ef4444; }
+  </style>
 
-    result[pid] = (avg / 2) * 100; // normalize
-  });
+  <script type="module">
+    import { db } from "./assets/app.js";
 
-  return result;
-}
+    const normalize = (id) => String(id).trim();
 
-/* ---------------- FINAL SCORE ---------------- */
-function finalScore(visit, event) {
-  return (visit * 0.6) + (event * 0.4);
-}
+    async function load() {
 
-/* ---------------- 🧍 PEOPLE ---------------- */
-function renderPeople(visitMap, eventMap, peopleMap) {
+      const [
+        peopleRes,
+        groupsRes,
+        membersRes,
+        priorityRes,
+        visitRes,
+        eventRes
+      ] = await Promise.all([
+        db.from("people").select("*"),
+        db.from("groups").select("*"),
+        db.from("group_members").select("group_id, person_id"),
 
-  const enriched = Object.keys(peopleMap).map(pid => {
+        db.from("people_priority_engine").select("*")
+          .then(res => res)
+          .catch(() => ({ data: [] })),
 
-    const visit = visitMap[pid] || 0;
-    const event = eventMap[pid] || 0;
+        db.from("cell_visit_person_scores")
+          .select("person_id, attendance_score, engagement_score, participation_score, alignment_score"),
 
-    const percent = finalScore(visit, event);
+        db.from("event_attendance")
+          .select("person_id, score")
+      ]);
 
-    return {
-      name: peopleMap[pid],
-      percent
-    };
-  });
+      const people = peopleRes.data || [];
+      const groups = groupsRes.data || [];
+      const members = membersRes.data || [];
+      const priority = priorityRes.data || [];
+      const visitScores = visitRes.data || [];
+      const eventScores = eventRes.data || [];
 
-  enriched.sort((a,b)=>a.percent-b.percent);
+      const peopleMap = {};
+      people.forEach(p => {
+        peopleMap[normalize(p.id)] = p.name;
+      });
 
-  document.getElementById("people").innerHTML = `
-    <div class="card">
-      <h3>🧍 People Spiritual Risk</h3>
-      <small>Bottom 5 individuals</small>
+      const visitMap = computeVisitScore(visitScores);
+      const eventMap = computeEventScore(eventScores);
 
-      ${enriched.slice(0,5).map(p => `
-        <div style="display:flex;justify-content:space-between;margin-top:6px;">
-          <span>${p.name}</span>
-          <b class="${p.percent<60?'bad':p.percent<80?'warn':'good'}">
-            ${p.percent.toFixed(1)}%
-          </b>
+      renderPeople(visitMap, eventMap, peopleMap);
+      renderCellIndicator(groups, members, visitMap, eventMap);
+      renderGroups(groups, members, visitMap, eventMap);
+      renderPriority(priority);
+    }
+
+    /* ---------------- VISIT SCORE ---------------- */
+    function computeVisitScore(rows) {
+
+      const grouped = {};
+
+      rows.forEach(r => {
+
+        const pid = normalize(r.person_id);
+
+        const score =
+          (r.attendance_score * 0.25 +
+           r.engagement_score * 0.30 +
+           r.participation_score * 0.25 +
+           r.alignment_score * 0.20);
+
+        if (!grouped[pid]) {
+          grouped[pid] = { total: 0, count: 0 };
+        }
+
+        grouped[pid].total += score;
+        grouped[pid].count += 1;
+      });
+
+      const result = {};
+
+      Object.keys(grouped).forEach(pid => {
+        const avg = grouped[pid].total / grouped[pid].count;
+        result[pid] = (avg / 2) * 100;
+      });
+
+      return result;
+    }
+
+    /* ---------------- EVENT SCORE ---------------- */
+    function computeEventScore(rows) {
+
+      const grouped = {};
+
+      rows.forEach(r => {
+
+        const pid = normalize(r.person_id);
+
+        if (!grouped[pid]) {
+          grouped[pid] = { total: 0, count: 0 };
+        }
+
+        grouped[pid].total += r.score;
+        grouped[pid].count += 1;
+      });
+
+      const result = {};
+
+      Object.keys(grouped).forEach(pid => {
+
+        const g = grouped[pid];
+        const avg = g.total / g.count;
+
+        result[pid] = (avg / 2) * 100;
+      });
+
+      return result;
+    }
+
+    /* ---------------- FINAL SCORE ---------------- */
+    function finalScore(visit, event) {
+
+      // smarter blending:
+      if (visit && event) return (visit * 0.6) + (event * 0.4);
+      if (visit) return visit;
+      if (event) return event;
+
+      return 0;
+    }
+
+    /* ---------------- 🧍 PEOPLE ---------------- */
+    function renderPeople(visitMap, eventMap, peopleMap) {
+
+      const enriched = Object.keys(peopleMap).map(pid => {
+
+        const percent = finalScore(
+          visitMap[pid] || 0,
+          eventMap[pid] || 0
+        );
+
+        return {
+          name: peopleMap[pid],
+          percent
+        };
+      });
+
+      enriched.sort((a,b)=>a.percent-b.percent);
+
+      document.getElementById("people").innerHTML = `
+        <div class="card">
+          <h3>🧍 People Spiritual Risk</h3>
+          <small>Bottom 5 individuals</small>
+
+          ${enriched.slice(0,5).map(p => `
+            <div style="display:flex;justify-content:space-between;margin-top:6px;">
+              <span>${p.name}</span>
+              <b class="${p.percent<60?'bad':p.percent<80?'warn':'good'}">
+                ${p.percent.toFixed(1)}%
+              </b>
+            </div>
+          `).join("")}
         </div>
-      `).join("")}
-    </div>
-  `;
-}
+      `;
+    }
 
-/* ---------------- 🧠 CELL ---------------- */
-function renderCellIndicator(groups, members, visitMap, eventMap) {
+    /* ---------------- 🧠 CELL ---------------- */
+    function renderCellIndicator(groups, members, visitMap, eventMap) {
 
-  const grouped = groups.map(g => {
+      const grouped = groups.map(g => {
 
-    const memberIds = members
-      .filter(m => normalize(m.group_id) === normalize(g.id))
-      .map(m => normalize(m.person_id));
+        const memberIds = members
+          .filter(m => normalize(m.group_id) === normalize(g.id))
+          .map(m => normalize(m.person_id));
 
-    let scores = memberIds.map(pid => {
-      return finalScore(
-        visitMap[pid] || 0,
-        eventMap[pid] || 0
-      );
-    }).filter(x => x > 0);
+        const scores = memberIds.map(pid =>
+          finalScore(
+            visitMap[pid] || 0,
+            eventMap[pid] || 0
+          )
+        ).filter(x => x > 0);
 
-    const health = scores.length
-      ? scores.reduce((a,b)=>a+b,0)/scores.length
-      : null;
+        const health = scores.length
+          ? scores.reduce((a,b)=>a+b,0)/scores.length
+          : null;
 
-    return { name: g.name, health };
-  });
+        return { name: g.name, health };
+      });
 
-  document.getElementById("cellIndicator").innerHTML = `
-    <div class="card">
-      <h3>🧠 Cell Spiritual Health Indicator</h3>
+      document.getElementById("cellIndicator").innerHTML = `
+        <div class="card">
+          <h3>🧠 Cell Spiritual Health Indicator</h3>
 
-      ${grouped.map(g => `
-        <div style="display:flex;justify-content:space-between;margin-top:6px;">
-          <span>${g.name}</span>
-          <b class="${g.health<60?'bad':g.health<80?'warn':'good'}">
-            ${g.health ? g.health.toFixed(1)+'%' : 'No Data'}
-          </b>
+          ${grouped.map(g => `
+            <div style="display:flex;justify-content:space-between;margin-top:6px;">
+              <span>${g.name}</span>
+              <b class="${g.health<60?'bad':g.health<80?'warn':'good'}">
+                ${g.health ? g.health.toFixed(1)+'%' : 'No Data'}
+              </b>
+            </div>
+          `).join("")}
         </div>
-      `).join("")}
-    </div>
-  `;
-}
+      `;
+    }
 
-/* ---------------- 🏠 GROUP ---------------- */
-function renderGroups(groups, members, visitMap, eventMap) {
+    /* ---------------- 🏠 GROUP ---------------- */
+    function renderGroups(groups, members, visitMap, eventMap) {
 
-  const enriched = groups.map(g => {
+      const enriched = groups.map(g => {
 
-    const memberIds = members
-      .filter(m => normalize(m.group_id) === normalize(g.id))
-      .map(m => normalize(m.person_id));
+        const memberIds = members
+          .filter(m => normalize(m.group_id) === normalize(g.id))
+          .map(m => normalize(m.person_id));
 
-    const scores = memberIds.map(pid =>
-      finalScore(visitMap[pid] || 0, eventMap[pid] || 0)
-    ).filter(x => x > 0);
+        const scores = memberIds.map(pid =>
+          finalScore(
+            visitMap[pid] || 0,
+            eventMap[pid] || 0
+          )
+        ).filter(x => x > 0);
 
-    const spiritualHealth = scores.length
-      ? scores.reduce((a,b)=>a+b,0)/scores.length
-      : null;
+        const spiritualHealth = scores.length
+          ? scores.reduce((a,b)=>a+b,0)/scores.length
+          : null;
 
-    const size = memberIds.length;
+        const size = memberIds.length;
 
-    return { ...g, size, spiritualHealth };
-  });
+        return { ...g, size, spiritualHealth };
+      });
 
-  document.getElementById("groups").innerHTML = `
-    <div class="card">
-      <h3>🏠 Group Intelligence</h3>
+      document.getElementById("groups").innerHTML = `
+        <div class="card">
+          <h3>🏠 Group Intelligence</h3>
 
-      ${enriched.map(g => `
-        <div style="margin:6px 0;">
-          ${g.name} (${g.size})
-          → ${g.spiritualHealth ? g.spiritualHealth.toFixed(1)+'%' : 'No Data'}
+          ${enriched.map(g => `
+            <div style="margin:6px 0;">
+              ${g.name} (${g.size})
+              → ${g.spiritualHealth ? g.spiritualHealth.toFixed(1)+'%' : 'No Data'}
+            </div>
+          `).join("")}
         </div>
-      `).join("")}
-    </div>
-  `;
-}
+      `;
+    }
 
-/* ---------------- 🔥 PRIORITY ---------------- */
-function renderPriority(priority) {
+    /* ---------------- 🔥 PRIORITY ---------------- */
+    function renderPriority(priority) {
 
-  if (!priority.length) return;
+      if (!priority.length) return;
 
-  const sorted = [...priority]
-    .sort((a,b)=>b.computed_priority_score-a.computed_priority_score);
+      const sorted = [...priority]
+        .sort((a,b)=>b.computed_priority_score-a.computed_priority_score);
 
-  document.getElementById("priority").innerHTML = `
-    <div class="card">
-      <h3>🔥 Priority Engine</h3>
+      document.getElementById("priority").innerHTML = `
+        <div class="card">
+          <h3>🔥 Priority Engine</h3>
 
-      ${sorted.slice(0,5).map(p => `
-        <div style="display:flex;justify-content:space-between;">
-          <span>${p.name}</span>
-          <b>${Math.round(p.computed_priority_score||0)}</b>
+          ${sorted.slice(0,5).map(p => `
+            <div style="display:flex;justify-content:space-between;">
+              <span>${p.name}</span>
+              <b>${Math.round(p.computed_priority_score||0)}</b>
+            </div>
+          `).join("")}
         </div>
-      `).join("")}
-    </div>
-  `;
-}
+      `;
+    }
 
-window.onload = load;
-</script>
+    window.onload = load;
+  </script>
+</head>
+
+<body>
+
+<header>
+  🔥 Command Center
+  <button onclick="location.href='index.html'">Home</button>
+</header>
+
+<div class="grid">
+  <div id="people"></div>
+  <div id="cellIndicator"></div>
+  <div id="groups"></div>
+  <div id="priority"></div>
+</div>
+
+</body>
+</html>
