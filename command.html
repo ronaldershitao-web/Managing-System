@@ -337,47 +337,61 @@ function renderNewcomers(peopleMap, phoneMap, eventGrouped, visitMap, eventMap) 
 
   Object.keys(peopleMap).forEach(pid => {
 
-    const events = eventGrouped[pid] || [];
+    const key = String(pid).trim();
 
-    // 🔥 Define "newcomer logic"
-    // tweak this threshold anytime
-    const isNew = events.length <= 2 && events.length > 0;
+    const events = eventGrouped[key] || [];
 
-    if (!isNew) return;
+    const eventCount = events.length;
 
-    const visit = visitMap[pid] || 0;
-    const event = eventMap[pid] || 0;
+    // 🔥 NEW RULES (cleaner funnel logic)
+
+    const isFirstTimer = eventCount === 1;
+    const isEarlyStage = eventCount > 1 && eventCount <= 3;
+
+    if (!isFirstTimer && !isEarlyStage) return;
+
+    const visit = visitMap[key] || 0;
+    const event = eventMap[key] || 0;
 
     const score = finalScore(visit, event);
+
+    // 🔥 risk classification (better segmentation)
 
     let risk = "";
     let color = "";
 
     if (score < 25) {
-      risk = "🔥 High Follow-up";
+      risk = "🔥 Critical Follow-up";
       color = "#ef4444";
     } else if (score < 50) {
-      risk = "⚠️ Medium Follow-up";
+      risk = "⚠️ Needs Attention";
       color = "#f59e0b";
+    } else if (score < 75) {
+      risk = "🟡 Warm Follow-up";
+      color = "#eab308";
     } else {
-      risk = "🟢 Light Follow-up";
+      risk = "🟢 Healthy Newcomer";
       color = "#22c55e";
     }
 
     newcomers.push({
-      name: peopleMap[pid],
-      phone: phoneMap[pid] || "-",
-      events: events.length,
+      name: peopleMap[key] || "Unknown",
+      phone: phoneMap[key] || "No phone",
+      events: eventCount,
       score,
       risk,
-      color
+      color,
+      stage: isFirstTimer ? "First Visit" : "Early Engagement"
     });
   });
 
+  // 🔥 sort by urgency (most important first)
+  newcomers.sort((a, b) => a.score - b.score);
+
   const html = `
     <div class="card">
-      <h3>🆕 Newcomers (Follow-up Needed)</h3>
-      <small>Event-based first-time / early engagement tracking</small>
+      <h3>🆕 Newcomer Funnel (Follow-up Engine)</h3>
+      <small>First-time + early engagement tracking</small>
 
       <div style="margin-top:10px;">
 
@@ -393,13 +407,19 @@ function renderNewcomers(peopleMap, phoneMap, eventGrouped, visitMap, eventMap) 
           ">
 
             <div>
-              <b>${p.name}</b><br>
-              <small style="color:#94a3b8;">📞 ${p.phone}</small><br>
-              <small style="color:#64748b;">Events attended: ${p.events}</small><br>
+              <b>${p.name}</b>
 
-              <small style="color:${p.color};">
+              <div style="font-size:12px;color:#94a3b8;">
+                📞 ${p.phone}
+              </div>
+
+              <div style="font-size:12px;color:#64748b;">
+                Events: ${p.events} • ${p.stage}
+              </div>
+
+              <div style="font-size:12px;color:${p.color};font-weight:bold;">
                 ${p.risk}
-              </small>
+              </div>
             </div>
 
             <div style="text-align:right;">
