@@ -313,9 +313,11 @@ function computeEventGrouped(eventRows) {
 
   const grouped = {};
 
-  eventRows.forEach(r => {
+  (eventRows || []).forEach(r => {
 
-    const pid = normalize(r.person_id);
+    if (!r.person_id) return;
+
+    const pid = String(r.person_id).trim();
 
     if (!grouped[pid]) {
       grouped[pid] = [];
@@ -329,7 +331,6 @@ function computeEventGrouped(eventRows) {
 
   return grouped;
 }
-
 function renderNewcomers(peopleMap, phoneMap, eventGrouped, visitMap, eventMap) {
 
   const newcomers = [];
