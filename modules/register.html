@@ -57,7 +57,7 @@
         score: 2
       }]);
 
-      window.location.href = `success.html`;
+      window.location.href = `checkin.html?event_id=${eventId}&success=1&name=${encodeURIComponent(payload.name)}`;
     };
 
     window.onload = init;
