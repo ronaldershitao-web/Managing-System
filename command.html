@@ -307,51 +307,113 @@ function renderGroups(groups, members, visitMap, eventMap) {
 }
     
     /* ---------------- 🆕 NEWCOMERS ---------------- */
-    function renderNewcomers(peopleMap, members, eventScores) {
+   /* ---------------- 🆕 NEWCOMERS (FOLLOW-UP) ---------------- */
 
-      const groupedMembers = new Set(
-        members.map(m => normalize(m.person_id))
-      );
+function computeEventGrouped(eventRows) {
 
-      const newcomers = {};
+  const grouped = {};
 
-      eventScores.forEach(e => {
-        const pid = normalize(e.person_id);
+  eventRows.forEach(r => {
 
-        // NOT in any group → newcomer
-        if (!groupedMembers.has(pid)) {
-          if (!newcomers[pid]) {
-            newcomers[pid] = {
-              name: peopleMap[pid]?.name || "Unknown",
-              count: 0
-            };
-          }
-          newcomers[pid].count += 1;
-        }
-      });
+    const pid = normalize(r.person_id);
 
-      const list = Object.values(newcomers)
-        .sort((a,b)=>b.count-a.count);
-
-      document.getElementById("newcomers").innerHTML = `
-        <div class="card">
-          <h3>🆕 Newcomers (Follow-up Needed)</h3>
-          <small>Attended event but not in any cell</small>
-
-          ${list.length === 0
-            ? "<p>No newcomers 🎉</p>"
-            : list.slice(0,10).map(p => `
-              <div style="display:flex;justify-content:space-between;">
-                <span>${p.name}</span>
-                <span>${p.count} visits</span>
-              </div>
-            `).join("")
-          }
-
-        </div>
-      `;
+    if (!grouped[pid]) {
+      grouped[pid] = [];
     }
 
+    grouped[pid].push({
+      event_id: r.event_id,
+      score: r.score
+    });
+  });
+
+  return grouped;
+}
+
+function renderNewcomers(peopleMap, phoneMap, eventGrouped, visitMap, eventMap) {
+
+  const newcomers = [];
+
+  Object.keys(peopleMap).forEach(pid => {
+
+    const events = eventGrouped[pid] || [];
+
+    // 🔥 Define "newcomer logic"
+    // tweak this threshold anytime
+    const isNew = events.length <= 2 && events.length > 0;
+
+    if (!isNew) return;
+
+    const visit = visitMap[pid] || 0;
+    const event = eventMap[pid] || 0;
+
+    const score = finalScore(visit, event);
+
+    let risk = "";
+    let color = "";
+
+    if (score < 25) {
+      risk = "🔥 High Follow-up";
+      color = "#ef4444";
+    } else if (score < 50) {
+      risk = "⚠️ Medium Follow-up";
+      color = "#f59e0b";
+    } else {
+      risk = "🟢 Light Follow-up";
+      color = "#22c55e";
+    }
+
+    newcomers.push({
+      name: peopleMap[pid],
+      phone: phoneMap[pid] || "-",
+      events: events.length,
+      score,
+      risk,
+      color
+    });
+  });
+
+  const html = `
+    <div class="card">
+      <h3>🆕 Newcomers (Follow-up Needed)</h3>
+      <small>Event-based first-time / early engagement tracking</small>
+
+      <div style="margin-top:10px;">
+
+        ${newcomers.length === 0 ? `
+          <p style="color:#94a3b8;">No newcomers detected</p>
+        ` : newcomers.map(p => `
+          <div style="
+            border-bottom:1px solid #1f2937;
+            padding:10px 0;
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+          ">
+
+            <div>
+              <b>${p.name}</b><br>
+              <small style="color:#94a3b8;">📞 ${p.phone}</small><br>
+              <small style="color:#64748b;">Events attended: ${p.events}</small><br>
+
+              <small style="color:${p.color};">
+                ${p.risk}
+              </small>
+            </div>
+
+            <div style="text-align:right;">
+              <b>${p.score.toFixed(0)}%</b>
+            </div>
+
+          </div>
+        `).join("")}
+
+      </div>
+    </div>
+  `;
+
+  document.getElementById("newcomers").innerHTML = html;
+}
     window.onload = load;
   </script>
 </head>
