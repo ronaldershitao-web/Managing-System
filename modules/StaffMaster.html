@@ -143,22 +143,25 @@
 
   /* ---------------- STAFF ---------------- */
 
-  async function loadStaff() {
-    const { data } = await db.from("staff").select("*");
+async function loadStaff() {
+  const { data, error } = await db.from("staff").select("*");
 
-    const box = document.getElementById("staffList");
-    box.innerHTML = "";
-
-    data.forEach(s => {
-      box.innerHTML += `
-        <div class="card" onclick="selectStaff('${s.id}','${s.name}')">
-          <b>${s.name}</b><br>
-          <span class="tag">${s.role || "-"}</span>
-        </div>
-      `;
-    });
+  if (error || !data) {
+    console.error("Staff load error:", error);
+    return;
   }
 
+  const box = document.getElementById("staffList");
+  box.innerHTML = "";
+
+  data.forEach(s => {
+    box.innerHTML += `
+      <div class="card">
+        <b>${s.name}</b>
+      </div>
+    `;
+  });
+}
   window.selectStaff = (id, name) => {
     selectedStaff = { id, name };
     alert("Selected: " + name);
