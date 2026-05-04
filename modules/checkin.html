@@ -57,28 +57,12 @@
     // 2. IF NOT FOUND → CREATE PROPER PROFILE
     if (!person) {
 
-      isNew = true;
+  // redirect to registration page
+  const url = `register.html?event_id=${eventId}&phone=${phone}&name=${encodeURIComponent(name || "")}`;
 
-      const { data: newPerson, error } = await db
-        .from("people")
-        .insert([{
-          name: name || "New Member",
-          phone: phone,
-
-          // 🧠 IMPORTANT: lifecycle tracking
-          engagement_status: "NEW",
-          relationship_stage: 1,
-          discipleship_stage: 1,
-
-          leader_id: null
-        }])
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      person = newPerson;
-    }
+  window.location.href = url;
+  return;
+}
 
     // 3. UPDATE RETURNING STATUS (if not new)
     if (!isNew) {
