@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Event Check-in</title>
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <script type="module">
+    import { db } from "./assets/app.js";
+
+    const eventId = new URLSearchParams(window.location.search).get("event_id");
+
+    let eventName = "";
+
+    async function init() {
+
+      if (!eventId) {
+        document.body.innerHTML = "<h2 style='color:white'>Invalid Check-in Link</h2>";
+        return;
+      }
+
+      // load event info
+      const { data } = await db
+        .from("events")
+        .select("*")
+        .eq("id", eventId)
+        .maybeSingle();
+
+      eventName = data?.title || "Event Check-in";
+
+      document.getElementById("eventTitle").innerText = eventName;
+    }
+
+    async function checkIn() {
+
+      const phone = document.getElementById("phone").value.trim();
+      const name = document.getElementById("name").value.trim();
+
+      if (!phone) {
+        showMsg("Please enter your phone number");
+        return;
+      }
+
+      setLoading(true);
+
+      try {
+
+        // 1. find person
+        let { data: person } = await db
+          .from("people")
+          .select("*")
+          .eq("phone", phone)
+          .maybeSingle();
+
+        // 2. auto create if not found
+        if (!person) {
+
+          const { data: newPerson, error } = await db
+            .from("people")
+            .insert([{
+              phone,
+              name: name || "New Member",
+              source: "event_checkin"
+            }])
+            .select()
+            .single();
+
+          if (error) throw error;
+
+          person = newPerson;
+        }
+
+        // 3. insert attendance
+        const { error: attError } = await db
+          .from("event_attendance")
+          .insert([{
+            event_id: eventId,
+            person_id: person.id,
+            score: 2
+          }]);
+
+        if (attError) throw attError;
+
+        showSuccess("Check-in successful 🎉");
+
+      } catch (err) {
+        showMsg(err.message || "Error occurred");
+      }
+
+      setLoading(false);
+    }
+
+    function setLoading(state) {
+      document.getElementById("btn").disabled = state;
+      document.getElementById("btn").innerText = state ? "Checking in..." : "Check In";
+    }
+
+    function showMsg(msg) {
+      const el = document.getElementById("msg");
+      el.style.color = "#f87171";
+      el.innerText = msg;
+    }
+
+    function showSuccess(msg) {
+      const el = document.getElementById("msg");
+      el.style.color = "#34d399";
+      el.innerText = msg;
+
+      document.getElementById("form").style.display = "none";
+    }
+
+    window.checkIn = checkIn;
+    window.onload = init;
+
+  </script>
+
+  <style>
+    body {
+      margin:0;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(180deg, #0f172a, #020617);
+      color:white;
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      height:100vh;
+    }
+
+    .card {
+      width:90%;
+      max-width:420px;
+      background:#111827;
+      padding:25px;
+      border-radius:16px;
+      box-shadow:0 10px 30px rgba(0,0,0,0.4);
+      text-align:center;
+    }
+
+    h2 {
+      margin:0 0 5px 0;
+      font-size:20px;
+    }
+
+    p {
+      color:#94a3b8;
+      font-size:13px;
+      margin-bottom:20px;
+    }
+
+    input {
+      width:100%;
+      padding:12px;
+      margin:8px 0;
+      border-radius:10px;
+      border:1px solid #334155;
+      background:#0b1220;
+      color:white;
+      outline:none;
+    }
+
+    input:focus {
+      border-color:#3b82f6;
+    }
+
+    button {
+      width:100%;
+      padding:12px;
+      margin-top:10px;
+      border:none;
+      border-radius:10px;
+      background:#2563eb;
+      color:white;
+      font-weight:bold;
+      cursor:pointer;
+      transition:0.2s;
+    }
+
+    button:hover {
+      background:#1d4ed8;
+    }
+
+    button:disabled {
+      background:#334155;
+      cursor:not-allowed;
+    }
+
+    #msg {
+      margin-top:15px;
+      font-size:14px;
+      min-height:20px;
+    }
+
+    .hint {
+      font-size:12px;
+      color:#64748b;
+      margin-top:10px;
+    }
+
+  </style>
+
+</head>
+
+<body>
+
+  <div class="card">
+
+    <h2 id="eventTitle">Loading Event...</h2>
+    <p>Please check in to continue</p>
+
+    <div id="form">
+
+      <input id="phone" placeholder="Phone Number (required)">
+      <input id="name" placeholder="Name (optional)">
+
+      <button id="btn" onclick="checkIn()">Check In</button>
+
+      <div class="hint">
+        If you're new, we’ll automatically register you.
+      </div>
+
+    </div>
+
+    <div id="msg"></div>
+
+  </div>
+
+</body>
+</html>
