@@ -188,7 +188,7 @@ function renderQR(eventId) {
   const event = events.find(e => e.id === eventId);
   if (!event) return;
 
-  const url = `${window.location.origin}/checkin.html?event_id=${eventId}`;
+  const url = `${window.location.origin}/modules/checkin.html?event_id=${eventId}`;
   currentLink = url;
 
   document.getElementById("title").innerText = event.title;
