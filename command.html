@@ -53,35 +53,27 @@
         peopleRes,
         groupsRes,
         membersRes,
-        priorityRes,
         visitRes,
         eventRes
       ] = await Promise.all([
         db.from("people").select("*"),
         db.from("groups").select("*"),
         db.from("group_members").select("group_id, person_id"),
-
-        db.from("people_priority_engine").select("*")
-          .then(res => res)
-          .catch(() => ({ data: [] })),
-
         db.from("cell_visit_person_scores")
           .select("person_id, attendance_score, engagement_score, participation_score, alignment_score"),
-
         db.from("event_attendance")
-          .select("person_id, score")
+          .select("person_id, score, created_at")
       ]);
 
       const people = peopleRes.data || [];
       const groups = groupsRes.data || [];
       const members = membersRes.data || [];
-      const priority = priorityRes.data || [];
       const visitScores = visitRes.data || [];
       const eventScores = eventRes.data || [];
 
       const peopleMap = {};
       people.forEach(p => {
-        peopleMap[normalize(p.id)] = p.name;
+        peopleMap[normalize(p.id)] = p;
       });
 
       const visitMap = computeVisitScore(visitScores);
@@ -90,16 +82,14 @@
       renderPeople(visitMap, eventMap, peopleMap);
       renderCellIndicator(groups, members, visitMap, eventMap);
       renderGroups(groups, members, visitMap, eventMap);
-      renderPriority(priority);
+      renderNewcomers(peopleMap, members, eventScores);
     }
 
     /* ---------------- VISIT SCORE ---------------- */
     function computeVisitScore(rows) {
-
       const grouped = {};
 
       rows.forEach(r => {
-
         const pid = normalize(r.person_id);
 
         const score =
@@ -108,16 +98,13 @@
            r.participation_score * 0.25 +
            r.alignment_score * 0.20);
 
-        if (!grouped[pid]) {
-          grouped[pid] = { total: 0, count: 0 };
-        }
+        if (!grouped[pid]) grouped[pid] = { total: 0, count: 0 };
 
         grouped[pid].total += score;
         grouped[pid].count += 1;
       });
 
       const result = {};
-
       Object.keys(grouped).forEach(pid => {
         const avg = grouped[pid].total / grouped[pid].count;
         result[pid] = (avg / 2) * 100;
@@ -128,28 +115,21 @@
 
     /* ---------------- EVENT SCORE ---------------- */
     function computeEventScore(rows) {
-
       const grouped = {};
 
       rows.forEach(r => {
-
         const pid = normalize(r.person_id);
 
-        if (!grouped[pid]) {
-          grouped[pid] = { total: 0, count: 0 };
-        }
+        if (!grouped[pid]) grouped[pid] = { total: 0, count: 0 };
 
         grouped[pid].total += r.score;
         grouped[pid].count += 1;
       });
 
       const result = {};
-
       Object.keys(grouped).forEach(pid => {
-
         const g = grouped[pid];
         const avg = g.total / g.count;
-
         result[pid] = (avg / 2) * 100;
       });
 
@@ -158,83 +138,63 @@
 
     /* ---------------- FINAL SCORE ---------------- */
     function finalScore(visit, event) {
-
-      // smarter blending:
       if (visit && event) return (visit * 0.6) + (event * 0.4);
       if (visit) return visit;
       if (event) return event;
-
       return 0;
     }
 
-    /* ---------------- 🧍 PEOPLE ---------------- */
+    /* ---------------- 🧍 PEOPLE DISTRIBUTION ---------------- */
     function renderPeople(visitMap, eventMap, peopleMap) {
 
-  const buckets = {
-    P1: [],
-    P2: [],
-    P3: [],
-    P4: []
-  };
+      const buckets = { P1: [], P2: [], P3: [], P4: [] };
 
-  Object.keys(peopleMap).forEach(pid => {
+      Object.keys(peopleMap).forEach(pid => {
 
-    const visit = visitMap[pid] || 0;
-    const event = eventMap[pid] || 0;
+        const visit = visitMap[pid] || 0;
+        const event = eventMap[pid] || 0;
+        const percent = finalScore(visit, event);
 
-    const percent = finalScore(visit, event);
+        const person = {
+          name: peopleMap[pid].name,
+          percent
+        };
 
-    const person = {
-      name: peopleMap[pid],
-      percent
-    };
+        if (percent < 25) buckets.P1.push(person);
+        else if (percent < 50) buckets.P2.push(person);
+        else if (percent < 75) buckets.P3.push(person);
+        else buckets.P4.push(person);
+      });
 
-    if (percent < 25) buckets.P1.push(person);
-    else if (percent < 50) buckets.P2.push(person);
-    else if (percent < 75) buckets.P3.push(person);
-    else buckets.P4.push(person);
-  });
-
-  function block(title, color, list) {
-    return `
-      <div style="
-        border:1px solid ${color};
-        border-radius:10px;
-        padding:10px;
-        background:#0b1220;
-        min-height:150px;
-      ">
-        <b style="color:${color};">${title} (${list.length})</b>
-        <hr style="border-color:#1f2937;">
-
-        ${list.slice(0,5).map(p => `
-          <div style="display:flex;justify-content:space-between;font-size:12px;">
-            <span>${p.name}</span>
-            <span>${p.percent.toFixed(0)}%</span>
+      function block(title, color, list) {
+        return `
+          <div style="border:1px solid ${color};border-radius:10px;padding:10px;background:#0b1220;">
+            <b style="color:${color};">${title} (${list.length})</b>
+            <hr style="border-color:#1f2937;">
+            ${list.slice(0,5).map(p => `
+              <div style="display:flex;justify-content:space-between;font-size:12px;">
+                <span>${p.name}</span>
+                <span>${p.percent.toFixed(0)}%</span>
+              </div>
+            `).join("")}
           </div>
-        `).join("")}
+        `;
+      }
 
-        ${list.length > 5 ? `<small>+${list.length - 5} more</small>` : ""}
-      </div>
-    `;
-  }
+      document.getElementById("people").innerHTML = `
+        <div class="card">
+          <h3>🧍 People Spiritual Distribution</h3>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
+            ${block("🔴 P1","#ef4444",buckets.P1)}
+            ${block("🟠 P2","#f97316",buckets.P2)}
+            ${block("🟡 P3","#eab308",buckets.P3)}
+            ${block("🟢 P4","#22c55e",buckets.P4)}
+          </div>
+        </div>
+      `;
+    }
 
-  document.getElementById("people").innerHTML = `
-    <div class="card">
-      <h3>🧍 People Spiritual Distribution</h3>
-      <small>Population segmentation</small>
-
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px;">
-        ${block("🔴 P1 (0–25%)","#ef4444",buckets.P1)}
-        ${block("🟠 P2 (25–50%)","#f97316",buckets.P2)}
-        ${block("🟡 P3 (50–75%)","#eab308",buckets.P3)}
-        ${block("🟢 P4 (75–100%)","#22c55e",buckets.P4)}
-      </div>
-    </div>
-  `;
-}
-
-    /* ---------------- 🧠 CELL ---------------- */
+    /* ---------------- 🧠 CELL INDICATOR ---------------- */
     function renderCellIndicator(groups, members, visitMap, eventMap) {
 
       const grouped = groups.map(g => {
@@ -244,10 +204,7 @@
           .map(m => normalize(m.person_id));
 
         const scores = memberIds.map(pid =>
-          finalScore(
-            visitMap[pid] || 0,
-            eventMap[pid] || 0
-          )
+          finalScore(visitMap[pid] || 0, eventMap[pid] || 0)
         ).filter(x => x > 0);
 
         const health = scores.length
@@ -260,9 +217,8 @@
       document.getElementById("cellIndicator").innerHTML = `
         <div class="card">
           <h3>🧠 Cell Spiritual Health Indicator</h3>
-
           ${grouped.map(g => `
-            <div style="display:flex;justify-content:space-between;margin-top:6px;">
+            <div style="display:flex;justify-content:space-between;">
               <span>${g.name}</span>
               <b class="${g.health<60?'bad':g.health<80?'warn':'good'}">
                 ${g.health ? g.health.toFixed(1)+'%' : 'No Data'}
@@ -273,101 +229,48 @@
       `;
     }
 
-    /* ---------------- 🏠 GROUP ---------------- */
-    function renderGroups(groups, members, visitMap, eventMap) {
+    /* ---------------- 🆕 NEWCOMERS ---------------- */
+    function renderNewcomers(peopleMap, members, eventScores) {
 
-  const enriched = groups.map(g => {
+      const groupedMembers = new Set(
+        members.map(m => normalize(m.person_id))
+      );
 
-    const groupMembers = members.filter(m =>
-      normalize(m.group_id) === normalize(g.id)
-    );
+      const newcomers = {};
 
-    const memberIds = groupMembers.map(m => normalize(m.person_id));
+      eventScores.forEach(e => {
+        const pid = normalize(e.person_id);
 
-    const scores = memberIds.map(pid =>
-      finalScore(
-        visitMap[pid] || 0,
-        eventMap[pid] || 0
-      )
-    ).filter(x => x > 0);
+        // NOT in any group → newcomer
+        if (!groupedMembers.has(pid)) {
+          if (!newcomers[pid]) {
+            newcomers[pid] = {
+              name: peopleMap[pid]?.name || "Unknown",
+              count: 0
+            };
+          }
+          newcomers[pid].count += 1;
+        }
+      });
 
-    const spiritualHealth = scores.length
-      ? scores.reduce((a,b)=>a+b,0)/scores.length
-      : null;
+      const list = Object.values(newcomers)
+        .sort((a,b)=>b.count-a.count);
 
-    const size = groupMembers.length;
-
-    let category = "";
-    let color = "";
-
-    if (size < 8) { category="Underflow"; color="#3b82f6"; }
-    else if (size <= 12) { category="Healthy"; color="#22c55e"; }
-    else if (size <= 15) { category="Stable"; color="#16a34a"; }
-    else if (size <= 19) { category="Growth"; color="#f59e0b"; }
-    else { category="Multiply"; color="#ef4444"; }
-
-    return { ...g, size, category, color, spiritualHealth };
-  });
-
-  function block(title, color, list) {
-    return `
-      <div style="border:1px solid ${color};border-radius:10px;padding:10px;background:#0b1220;min-height:250px;">
-        <b style="color:${color};">${title}</b>
-        <hr style="border-color:#1f2937;">
-
-        ${list.map(g => `
-          <div style="background:#111827;margin:6px 0;padding:6px;border-radius:6px;">
-            <div style="display:flex;justify-content:space-between;">
-              <span>${g.name}</span>
-              <b>${g.size}</b>
-            </div>
-            <div style="font-size:12px;">
-              🧠 ${g.spiritualHealth ? g.spiritualHealth.toFixed(1)+'%' : 'No Data'}
-            </div>
-          </div>
-        `).join("")}
-      </div>
-    `;
-  }
-
-  const underflow = enriched.filter(g => g.size < 8);
-  const healthy   = enriched.filter(g => g.size >= 8 && g.size <= 12);
-  const stable    = enriched.filter(g => g.size >= 13 && g.size <= 15);
-  const growth    = enriched.filter(g => g.size >= 16 && g.size <= 19);
-  const multiply  = enriched.filter(g => g.size >= 20);
-
-  document.getElementById("groups").innerHTML = `
-    <div class="card">
-      <h3>🏠 Group Intelligence</h3>
-
-      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">
-        ${block("Underflow <8","#3b82f6",underflow)}
-        ${block("Healthy 8–12","#22c55e",healthy)}
-        ${block("Stable 13–15","#16a34a",stable)}
-        ${block("Growth 16–19","#f59e0b",growth)}
-        ${block("Multiply 20+","#ef4444",multiply)}
-      </div>
-    </div>
-  `;
-}
-    /* ---------------- 🔥 PRIORITY ---------------- */
-    function renderPriority(priority) {
-
-      if (!priority.length) return;
-
-      const sorted = [...priority]
-        .sort((a,b)=>b.computed_priority_score-a.computed_priority_score);
-
-      document.getElementById("priority").innerHTML = `
+      document.getElementById("newcomers").innerHTML = `
         <div class="card">
-          <h3>🔥 Priority Engine</h3>
+          <h3>🆕 Newcomers (Follow-up Needed)</h3>
+          <small>Attended event but not in any cell</small>
 
-          ${sorted.slice(0,5).map(p => `
-            <div style="display:flex;justify-content:space-between;">
-              <span>${p.name}</span>
-              <b>${Math.round(p.computed_priority_score||0)}</b>
-            </div>
-          `).join("")}
+          ${list.length === 0
+            ? "<p>No newcomers 🎉</p>"
+            : list.slice(0,10).map(p => `
+              <div style="display:flex;justify-content:space-between;">
+                <span>${p.name}</span>
+                <span>${p.count} visits</span>
+              </div>
+            `).join("")
+          }
+
         </div>
       `;
     }
@@ -387,7 +290,7 @@
   <div id="people"></div>
   <div id="cellIndicator"></div>
   <div id="groups"></div>
-  <div id="priority"></div>
+  <div id="newcomers"></div>
 </div>
 
 </body>
