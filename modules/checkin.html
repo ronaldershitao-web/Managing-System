@@ -8,35 +8,32 @@
   <script type="module">
     import { db } from "../assets/app.js";
 
-    const eventId = new URLSearchParams(window.location.search).get("event_id");
+    const params = new URLSearchParams(window.location.search);
+    const eventId = params.get("event_id");
+    const success = params.get("success");
+    const successName = params.get("name");
 
     let eventName = "";
 
-    const params = new URLSearchParams(window.location.search);
-const success = params.get("success");
-const successName = params.get("name");
-
     async function init() {
 
+      // 🟢 SUCCESS STATE (after register redirect)
       if (success) {
-
-  document.getElementById("form").style.display = "none";
-
-  showSuccess(
-    successName
-      ? `🎉 Welcome ${successName}! You are checked in`
-      : "🎉 Check-in successful"
-  );
-
-  return;
-}
+        showFullScreen(
+          "success",
+          successName
+            ? `🎉 Welcome ${successName}!`
+            : "🎉 Check-in Successful"
+        );
+        autoReset();
+        return;
+      }
 
       if (!eventId) {
         document.body.innerHTML = "<h2 style='color:white'>Invalid Check-in Link</h2>";
         return;
       }
 
-      // load event info
       const { data } = await db
         .from("events")
         .select("*")
@@ -44,95 +41,105 @@ const successName = params.get("name");
         .maybeSingle();
 
       eventName = data?.title || "Event Check-in";
-
       document.getElementById("eventTitle").innerText = eventName;
     }
 
     async function checkIn() {
 
-  const phone = document.getElementById("phone").value.trim();
-  const name = document.getElementById("name").value.trim();
+      const phone = document.getElementById("phone").value.trim();
+      const name = document.getElementById("name").value.trim();
 
-  if (!phone) {
-    showMsg("Please enter your phone number");
-    return;
-  }
+      if (!phone) {
+        showInlineError("Please enter your phone number");
+        return;
+      }
 
-  setLoading(true);
+      setLoading(true);
 
-  try {
+      try {
 
-    // 1. FIND PERSON
-    let { data: person } = await db
-      .from("people")
-      .select("*")
-      .eq("phone", phone)
-      .maybeSingle();
+        // 1. FIND PERSON
+        let { data: person } = await db
+          .from("people")
+          .select("*")
+          .eq("phone", phone)
+          .maybeSingle();
 
-    let isNew = false;
+        // 2. NEW → REDIRECT TO REGISTER
+        if (!person) {
+          const url = `register.html?event_id=${eventId}&phone=${phone}&name=${encodeURIComponent(name || "")}`;
+          window.location.href = url;
+          return;
+        }
 
-    // 2. IF NOT FOUND → CREATE PROPER PROFILE
-    if (!person) {
+        // 3. UPDATE RETURNING STATUS
+        await db
+          .from("people")
+          .update({
+            engagement_status: "RETURNING",
+            last_contact_date: new Date().toISOString()
+          })
+          .eq("id", person.id);
 
-  // redirect to registration page
-  const url = `register.html?event_id=${eventId}&phone=${phone}&name=${encodeURIComponent(name || "")}`;
+        // 4. INSERT ATTENDANCE
+        const { error: attError } = await db
+          .from("event_attendance")
+          .insert([{
+            event_id: eventId,
+            person_id: person.id,
+            score: 2
+          }]);
 
-  window.location.href = url;
-  return;
-}
+        if (attError) {
+          if (attError.message.toLowerCase().includes("duplicate")) {
+            showFullScreen("error", "❌ Already Checked In");
+          } else {
+            showFullScreen("error", "❌ Error Occurred");
+          }
+          autoReset();
+          return;
+        }
 
-    // 3. UPDATE RETURNING STATUS (if not new)
-    if (!isNew) {
-      await db
-        .from("people")
-        .update({
-          engagement_status: "RETURNING",
-          last_contact_date: new Date().toISOString()
-        })
-        .eq("id", person.id);
+        // 🟢 SUCCESS
+        showFullScreen("success", "✅ Check-in Successful");
+        autoReset();
+
+      } catch (err) {
+        showFullScreen("error", err.message || "❌ System Error");
+        autoReset();
+      }
+
+      setLoading(false);
     }
-
-    // 4. INSERT EVENT ATTENDANCE
-    const { error: attError } = await db
-      .from("event_attendance")
-      .insert([{
-        event_id: eventId,
-        person_id: person.id,
-        score: 2
-      }]);
-
-    if (attError) throw attError;
-
-    showSuccess(
-      isNew
-        ? "Welcome! You are registered 🎉"
-        : "Check-in successful 🎉"
-    );
-
-  } catch (err) {
-    showMsg(err.message || "Error occurred");
-  }
-
-  setLoading(false);
-}
 
     function setLoading(state) {
-      document.getElementById("btn").disabled = state;
-      document.getElementById("btn").innerText = state ? "Checking in..." : "Check In";
+      const btn = document.getElementById("btn");
+      btn.disabled = state;
+      btn.innerText = state ? "Checking in..." : "Check In";
     }
 
-    function showMsg(msg) {
+    function showInlineError(msg) {
       const el = document.getElementById("msg");
       el.style.color = "#f87171";
       el.innerText = msg;
     }
 
-    function showSuccess(msg) {
-      const el = document.getElementById("msg");
-      el.style.color = "#34d399";
-      el.innerText = msg;
+    function showFullScreen(type, message) {
 
-      document.getElementById("form").style.display = "none";
+      document.getElementById("formCard").style.display = "none";
+
+      const screen = document.getElementById("statusScreen");
+      const text = document.getElementById("statusText");
+
+      screen.style.display = "flex";
+      screen.className = type;
+      text.innerText = message;
+    }
+
+    function autoReset() {
+      setTimeout(() => {
+        window.location.href = `checkin.html?event_id=${eventId}`;
+      }, 4000);
     }
 
     window.checkIn = checkIn;
@@ -162,10 +169,7 @@ const successName = params.get("name");
       text-align:center;
     }
 
-    h2 {
-      margin:0 0 5px 0;
-      font-size:20px;
-    }
+    h2 { margin:0 0 5px 0; }
 
     p {
       color:#94a3b8;
@@ -181,11 +185,6 @@ const successName = params.get("name");
       border:1px solid #334155;
       background:#0b1220;
       color:white;
-      outline:none;
-    }
-
-    input:focus {
-      border-color:#3b82f6;
     }
 
     button {
@@ -198,22 +197,15 @@ const successName = params.get("name");
       color:white;
       font-weight:bold;
       cursor:pointer;
-      transition:0.2s;
-    }
-
-    button:hover {
-      background:#1d4ed8;
     }
 
     button:disabled {
       background:#334155;
-      cursor:not-allowed;
     }
 
     #msg {
-      margin-top:15px;
+      margin-top:10px;
       font-size:14px;
-      min-height:20px;
     }
 
     .hint {
@@ -222,32 +214,60 @@ const successName = params.get("name");
       margin-top:10px;
     }
 
-  </style>
+    /* 🔥 FULL SCREEN STATES */
+    #statusScreen {
+      position:fixed;
+      top:0;
+      left:0;
+      width:100%;
+      height:100%;
+      display:none;
+      justify-content:center;
+      align-items:center;
+      font-size:28px;
+      font-weight:bold;
+      text-align:center;
+      padding:20px;
+    }
 
+    .success {
+      background:#16a34a;
+      color:white;
+    }
+
+    .error {
+      background:#dc2626;
+      color:white;
+    }
+
+  </style>
 </head>
 
 <body>
 
-  <div class="card">
+  <!-- FORM -->
+  <div class="card" id="formCard">
 
     <h2 id="eventTitle">Loading Event...</h2>
     <p>Please check in to continue</p>
 
     <div id="form">
-
       <input id="phone" placeholder="Phone Number (required)">
       <input id="name" placeholder="Name (optional)">
-
       <button id="btn" onclick="checkIn()">Check In</button>
 
       <div class="hint">
-        If you're new, we’ll automatically register you.
+        New here? We’ll guide you through 🙌
       </div>
-
     </div>
 
     <div id="msg"></div>
 
+  </div>
+
+  <!-- FULLSCREEN STATUS -->
+  <div id="statusScreen">
+    <div id="statusText"></div>
   </div>
 
 </body>
