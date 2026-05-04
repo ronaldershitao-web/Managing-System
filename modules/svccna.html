@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Service Builder + Assignment</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <style>
+    body {
+      margin:0;
+      font-family: Arial;
+      background:#0b1220;
+      color:white;
+    }
+
+    header {
+      padding:12px;
+      background:#111827;
+      font-weight:bold;
+    }
+
+    .grid {
+      display:grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap:10px;
+      padding:10px;
+    }
+
+    .panel {
+      background:#111827;
+      border:1px solid #1f2937;
+      border-radius:10px;
+      padding:10px;
+      height:85vh;
+      overflow-y:auto;
+    }
+
+    input, select {
+      width:100%;
+      padding:8px;
+      margin:5px 0;
+      border-radius:6px;
+      border:1px solid #334155;
+      background:#0f172a;
+      color:white;
+    }
+
+    button {
+      width:100%;
+      padding:8px;
+      margin-top:6px;
+      border:none;
+      border-radius:6px;
+      cursor:pointer;
+      background:#3b82f6;
+      color:white;
+    }
+
+    .card {
+      background:#0f172a;
+      border:1px solid #334155;
+      padding:10px;
+      border-radius:8px;
+      margin-bottom:8px;
+      cursor:pointer;
+    }
+
+    .selected {
+      border:2px solid #3b82f6;
+    }
+
+    .slot {
+      background:#1f2937;
+      padding:8px;
+      border-radius:6px;
+      margin-top:5px;
+      font-size:13px;
+    }
+
+    .warn {
+      color:#fbbf24;
+      font-size:12px;
+    }
+  </style>
+</head>
+
+<body>
+
+<header>
+  ⛪ Service Builder + Role Assignment
+</header>
+
+<div class="grid">
+
+  <!-- SERVICE CREATION -->
+  <div class="panel">
+    <h3>Create Service</h3>
+
+    <select id="templateSelect"></select>
+    <input type="date" id="serviceDate">
+    <input type="time" id="startTime">
+    <input type="time" id="endTime">
+
+    <input type="text" id="location" placeholder="Location">
+
+    <button onclick="createService()">+ Create Service</button>
+
+    <hr style="border:1px solid #1f2937">
+
+    <h3>Services</h3>
+    <div id="serviceList"></div>
+  </div>
+
+  <!-- STAFF -->
+  <div class="panel">
+    <h3>Staff</h3>
+    <div id="staffList"></div>
+  </div>
+
+  <!-- ROLES -->
+  <div class="panel">
+    <h3>Roles</h3>
+    <div id="roleList"></div>
+  </div>
+
+</div>
+
+<script type="module">
+import { db } from "../assets/app.js";
+
+let selectedService = null;
+let selectedStaff = null;
+
+/* ---------------- LOAD TEMPLATES ---------------- */
+
+async function loadTemplates() {
+  const { data } = await db.from("service_templates").select("*");
+
+  const box = document.getElementById("templateSelect");
+  box.innerHTML = "";
+
+  (data || []).forEach(t => {
+    box.innerHTML += `<option value="${t.id}">${t.name}</option>`;
+  });
+}
+
+/* ---------------- CREATE SERVICE ---------------- */
+
+window.createService = async () => {
+
+  const template_id = document.getElementById("templateSelect").value;
+  const service_date = document.getElementById("serviceDate").value;
+  const start_time = document.getElementById("startTime").value;
+  const end_time = document.getElementById("endTime").value;
+  const location = document.getElementById("location").value;
+
+  if (!template_id || !service_date) {
+    alert("Fill required fields");
+    return;
+  }
+
+  const { data } = await db.from("services").insert([{
+    title: "Service",
+    service_date,
+    start_time,
+    end_time,
+    location
+  }]).select();
+
+  selectedService = data[0];
+
+  loadServices();
+  loadRoles();
+};
+
+/* ---------------- LOAD SERVICES ---------------- */
+
+async function loadServices() {
+
+  const { data } = await db.from("services").select("*").order("service_date", { ascending:false });
+
+  const box = document.getElementById("serviceList");
+  box.innerHTML = "";
+
+  (data || []).forEach(s => {
+    box.innerHTML += `
+      <div class="card ${selectedService?.id === s.id ? 'selected':''}"
+           onclick="selectService('${s.id}')">
+        <b>${s.service_date}</b><br>
+        ${s.location || ''}
+      </div>
+    `;
+  });
+}
+
+window.selectService = async (id) => {
+  const { data } = await db.from("services").select("*").eq("id", id).single();
+  selectedService = data;
+
+  loadRoles();
+};
+
+/* ---------------- LOAD STAFF ---------------- */
+
+async function loadStaff() {
+
+  const { data } = await db.from("staff").select("*");
+
+  const box = document.getElementById("staffList");
+  box.innerHTML = "";
+
+  (data || []).forEach(s => {
+
+    const label = s.communion_eligible ? "✔ Communion" : "Standard";
+
+    box.innerHTML += `
+      <div class="card ${selectedStaff?.id === s.id ? 'selected':''}"
+           onclick="selectStaff('${s.id}','${s.name}',${s.communion_eligible})">
+        <b>${s.name}</b><br>
+        <span class="warn">${label}</span>
+      </div>
+    `;
+  });
+}
+
+window.selectStaff = (id, name, communion) => {
+  selectedStaff = { id, name, communion };
+};
+
+/* ---------------- LOAD ROLES ---------------- */
+
+async function loadRoles() {
+
+  if (!selectedService) return;
+
+  const { data } = await db
+    .from("service_template_roles")
+    .select("*")
+    .eq("template_id", selectedService.template_id);
+
+  const assignments = await db
+    .from("service_assignments")
+    .select("*, staff(name, communion_eligible)")
+    .eq("service_id", selectedService.id);
+
+  const box = document.getElementById("roleList");
+  box.innerHTML = "";
+
+  (data || []).forEach(r => {
+
+    const assigned = assignments.data?.filter(a => a.role === r.role) || [];
+
+    box.innerHTML += `
+      <div class="slot">
+        <b>${r.role}</b>
+
+        ${assigned.map(a => `
+          <div>👤 ${a.staff?.name || '-'}</div>
+        `).join("")}
+
+        <button onclick="assignRole('${r.role}')">
+          Assign
+        </button>
+      </div>
+    `;
+  });
+}
+
+/* ---------------- ASSIGN ROLE ---------------- */
+
+window.assignRole = async (role) => {
+
+  if (!selectedService || !selectedStaff) {
+    alert("Select service + staff");
+    return;
+  }
+
+  // 🚨 RULE 1: 1 role per staff (except communion)
+  const { data: existing } = await db
+    .from("service_assignments")
+    .select("*")
+    .eq("service_id", selectedService.id)
+    .eq("staff_id", selectedStaff.id);
+
+  if (existing.length > 0 && !role.includes("HC")) {
+    alert("Staff already assigned to a role");
+    return;
+  }
+
+  // 🚨 RULE 2: communion check
+  if (role.includes("HC") && !selectedStaff.communion) {
+    alert("Not eligible for communion");
+    return;
+  }
+
+  await db.from("service_assignments").insert([{
+    service_id: selectedService.id,
+    staff_id: selectedStaff.id,
+    role,
+    status: "ASSIGNED"
+  }]);
+
+  loadRoles();
+};
+
+/* ---------------- INIT ---------------- */
+
+loadTemplates();
+loadServices();
+loadStaff();
+
+</script>
+
+</body>
+</html>
