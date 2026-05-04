@@ -70,6 +70,7 @@
 
     .selected {
       border:2px solid #3b82f6;
+      background:#111c33;
     }
 
     .slot {
@@ -78,6 +79,12 @@
       border-radius:6px;
       margin-top:5px;
       font-size:13px;
+    }
+
+    .hint {
+      font-size:12px;
+      color:#94a3b8;
+      margin-bottom:10px;
     }
 
     h3 { margin-top:0; }
@@ -92,7 +99,7 @@
 
 <div class="grid">
 
-  <!-- TEMPLATE LIST -->
+  <!-- LEFT: TEMPLATES -->
   <div class="panel">
     <h3>Templates</h3>
 
@@ -102,14 +109,17 @@
     <div id="templateList"></div>
   </div>
 
-  <!-- TEMPLATE DETAILS -->
+  <!-- RIGHT: TEMPLATE EDITOR -->
   <div class="panel">
-    <h3>Template Roles</h3>
+
+    <h3 id="title">Template Roles</h3>
+    <div class="hint">Select a template to edit its roles</div>
 
     <input id="roleName" placeholder="Role Name">
     <button onclick="addRole()">+ Add Role</button>
 
     <div id="roleList"></div>
+
   </div>
 
 </div>
@@ -119,15 +129,17 @@
 
   let selectedTemplate = null;
 
-  /* ---------------- LOAD ---------------- */
+  /* ---------------- LOAD TEMPLATES ---------------- */
 
   async function loadTemplates() {
+
     const { data } = await db.from("service_templates").select("*");
 
     const box = document.getElementById("templateList");
     box.innerHTML = "";
 
     (data || []).forEach(t => {
+
       box.innerHTML += `
         <div class="card ${selectedTemplate?.id === t.id ? 'selected' : ''}"
              onclick="selectTemplate('${t.id}','${t.name}')">
@@ -137,12 +149,17 @@
     });
   }
 
-  /* ---------------- SELECT ---------------- */
+  /* ---------------- SELECT TEMPLATE ---------------- */
 
   window.selectTemplate = async (id, name) => {
+
     selectedTemplate = { id, name };
+
+    document.getElementById("title").innerText =
+      "Editing: " + name;
+
     await loadRoles();
-    loadTemplates();
+    loadTemplates(); // refresh highlight
   };
 
   /* ---------------- CREATE TEMPLATE ---------------- */
@@ -176,7 +193,7 @@
     }]);
 
     document.getElementById("roleName").value = "";
-    loadRoles();
+    await loadRoles();
   };
 
   /* ---------------- LOAD ROLES ---------------- */
@@ -186,7 +203,10 @@
     const box = document.getElementById("roleList");
     box.innerHTML = "";
 
-    if (!selectedTemplate) return;
+    if (!selectedTemplate) {
+      box.innerHTML = `<div class="hint">No template selected</div>`;
+      return;
+    }
 
     const { data } = await db
       .from("service_template_roles")
@@ -194,7 +214,12 @@
       .eq("template_id", selectedTemplate.id)
       .order("created_at", { ascending: true });
 
-    (data || []).forEach(r => {
+    if (!data || data.length === 0) {
+      box.innerHTML = `<div class="hint">No roles yet</div>`;
+      return;
+    }
+
+    data.forEach(r => {
       box.innerHTML += `
         <div class="slot">
           ${r.role}
