@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Event QR Poster</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+
+  <style>
+    body {
+      font-family: Arial;
+      margin: 0;
+      background: #0f172a;
+      color: white;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    .container {
+      width: 800px;
+      background: #111827;
+      padding: 40px;
+      border-radius: 12px;
+      border: 1px solid #1f2937;
+      text-align: center;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 28px;
+    }
+
+    .subtitle {
+      color: #94a3b8;
+      margin-top: 5px;
+      margin-bottom: 20px;
+    }
+
+    select {
+      width: 100%;
+      padding: 10px;
+      border-radius: 8px;
+      background: #020617;
+      border: 1px solid #334155;
+      color: white;
+      margin-bottom: 20px;
+    }
+
+    #qrBox {
+      margin: 20px auto;
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      display: inline-block;
+    }
+
+    .event-title {
+      font-size: 22px;
+      margin-top: 20px;
+    }
+
+    .event-date {
+      color: #94a3b8;
+      margin-bottom: 20px;
+    }
+
+    .link {
+      font-size: 12px;
+      color: #94a3b8;
+      margin-top: 10px;
+      word-break: break-all;
+    }
+
+    .actions {
+      margin-top: 20px;
+    }
+
+    button {
+      padding: 10px 14px;
+      background: #2563eb;
+      border: none;
+      border-radius: 8px;
+      color: white;
+      cursor: pointer;
+      margin: 5px;
+    }
+
+    button:hover {
+      opacity: 0.9;
+    }
+
+    @media print {
+      body {
+        background: white;
+        color: black;
+      }
+
+      .container {
+        border: none;
+        width: 100%;
+        box-shadow: none;
+      }
+
+      select, .actions {
+        display: none;
+      }
+
+      #qrBox {
+        border: 2px solid black;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="container">
+
+  <h1>📌 Event Check-in QR</h1>
+  <div class="subtitle">Scan to register attendance</div>
+
+  <select id="eventSelect"></select>
+
+  <div class="event-title" id="title"></div>
+  <div class="event-date" id="date"></div>
+
+  <div id="qrBox"></div>
+
+  <div class="link" id="link"></div>
+
+  <div class="actions">
+    <button onclick="window.print()">🖨 Print Poster</button>
+    <button onclick="copyLink()">📋 Copy Link</button>
+  </div>
+
+</div>
+
+<script type="module">
+import { db } from "./assets/app.js";
+
+let events = [];
+let currentLink = "";
+
+async function init() {
+
+  const { data } = await db
+    .from("events")
+    .select("*")
+    .order("start_time", { ascending: false });
+
+  events = data || [];
+
+  const sel = document.getElementById("eventSelect");
+  sel.innerHTML = `<option value="">Select Event</option>`;
+
+  events.forEach(e => {
+    const opt = document.createElement("option");
+    opt.value = e.id;
+    opt.textContent = `${e.title}`;
+    sel.appendChild(opt);
+  });
+
+  sel.onchange = () => renderQR(sel.value);
+}
+
+function renderQR(eventId) {
+
+  const event = events.find(e => e.id === eventId);
+  if (!event) return;
+
+  const url = `${window.location.origin}/checkin.html?event_id=${eventId}`;
+  currentLink = url;
+
+  document.getElementById("title").innerText = event.title;
+
+  document.getElementById("date").innerText =
+    new Date(event.start_time).toLocaleString();
+
+  document.getElementById("qrBox").innerHTML = "";
+
+  new QRCode(document.getElementById("qrBox"), {
+    text: url,
+    width: 220,
+    height: 220
+  });
+
+  document.getElementById("link").innerText = url;
+}
+
+window.copyLink = async function () {
+  if (!currentLink) return;
+  await navigator.clipboard.writeText(currentLink);
+  alert("Link copied ✔");
+};
+
+window.onload = init;
+
+</script>
+
+</body>
+</html>
