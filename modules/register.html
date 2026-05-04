@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>New Member Registration</title>
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <script type="module">
+    import { db } from "../assets/app.js";
+
+    const params = new URLSearchParams(window.location.search);
+    const eventId = params.get("event_id");
+    const phone = params.get("phone") || "";
+    const prefillName = params.get("name") || "";
+
+    function set(val, id) {
+      document.getElementById(id).value = val || "";
+    }
+
+    async function init() {
+      set(phone, "phone");
+      set(prefillName, "name");
+    }
+
+    window.register = async function () {
+
+      const payload = {
+        name: document.getElementById("name").value,
+        phone: document.getElementById("phone").value,
+        email: document.getElementById("email").value,
+        gender: document.getElementById("gender").value,
+        date_of_birth: document.getElementById("dob").value,
+        marital_status: document.getElementById("marital").value,
+        ministry: document.getElementById("ministry").value,
+
+        engagement_status: "NEW",
+        relationship_stage: 1,
+        discipleship_stage: 1,
+        leader_id: null
+      };
+
+      const { data: person, error } = await db
+        .from("people")
+        .insert([payload])
+        .select()
+        .single();
+
+      if (error) {
+        alert(error.message);
+        return;
+      }
+
+      // auto check-in after registration
+      await db.from("event_attendance").insert([{
+        event_id: eventId,
+        person_id: person.id,
+        score: 2
+      }]);
+
+      window.location.href = `success.html`;
+    };
+
+    window.onload = init;
+  </script>
+
+  <style>
+    body {
+      margin:0;
+      font-family: Arial;
+      background: #0f172a;
+      color: white;
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      min-height:100vh;
+    }
+
+    .card {
+      width:90%;
+      max-width:420px;
+      background:#111827;
+      padding:20px;
+      border-radius:12px;
+    }
+
+    input, select {
+      width:100%;
+      padding:10px;
+      margin:6px 0;
+      border-radius:8px;
+      border:1px solid #334155;
+      background:#020617;
+      color:white;
+    }
+
+    button {
+      width:100%;
+      padding:12px;
+      margin-top:10px;
+      background:#2563eb;
+      border:none;
+      color:white;
+      border-radius:10px;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="card">
+
+  <h2>👋 Welcome!</h2>
+  <p>Let’s set up your profile</p>
+
+  <input id="name" placeholder="Full Name">
+  <input id="phone" placeholder="Phone">
+  <input id="email" placeholder="Email">
+
+  <select id="gender">
+    <option>Male</option>
+    <option>Female</option>
+  </select>
+
+  <input id="dob" type="date">
+  <input id="marital" placeholder="Marital Status">
+  <input id="ministry" placeholder="Ministry (optional)">
+
+  <button onclick="register()">Create Profile & Check In</button>
+
+</div>
+
+</body>
+</html>
