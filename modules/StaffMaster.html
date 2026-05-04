@@ -1,110 +1,15 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Worship Ops - Staff Master</title>
+  <title>Worship Ops Command Center</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <script type="module">
-    import { db } from "../assets/app.js";
-
-    let staff = [];
-    let editing = null;
-
-    async function load() {
-      const res = await db
-        .from("staff")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      staff = res.data || [];
-      render();
-    }
-
-    /* ---------------- OPEN FORM ---------------- */
-
-    function openForm(s = null) {
-      editing = s;
-
-      document.getElementById("formTitle").innerText =
-        s ? "Edit Staff" : "Add Staff";
-
-      document.getElementById("name").value = s?.name || "";
-      document.getElementById("phone").value = s?.phone || "";
-      document.getElementById("role").value = s?.role || "";
-      document.getElementById("department").value = s?.department || "Worship Service";
-      document.getElementById("isActive").checked = s?.is_active ?? true;
-      document.getElementById("communion").checked = s?.communion_eligible ?? false;
-
-      document.getElementById("form").style.display = "block";
-    }
-
-    /* ---------------- SAVE ---------------- */
-
-    async function save() {
-
-      const payload = {
-        name: name.value,
-        phone: phone.value,
-        role: role.value,
-        department: department.value,
-        is_active: isActive.checked,
-        communion_eligible: communion.checked
-      };
-
-      if (editing) {
-        await db.from("staff")
-          .update(payload)
-          .eq("id", editing.id);
-      } else {
-        await db.from("staff").insert([payload]);
-      }
-
-      closeForm();
-      load();
-    }
-
-    function closeForm() {
-      document.getElementById("form").style.display = "none";
-      editing = null;
-    }
-
-    /* ---------------- RENDER ---------------- */
-
-    function render() {
-
-      const container = document.getElementById("list");
-
-      container.innerHTML = staff.map(s => `
-        <div class="card" onclick='openForm(${JSON.stringify(s)})'>
-
-          <b>${s.name || "Unnamed"}</b>
-
-          <div class="sub">
-            📞 ${s.phone || "-"}
-          </div>
-
-          <div class="meta">
-            🧭 ${s.role || "-"} <br>
-            🏢 ${s.department || "-"} <br>
-            🍷 Communion: ${s.communion_eligible ? "YES" : "NO"} <br>
-            ${s.is_active ? "🟢 Active" : "🔴 Inactive"}
-          </div>
-
-        </div>
-      `).join("");
-    }
-
-    window.openForm = openForm;
-    window.save = save;
-    window.closeForm = closeForm;
-    window.onload = load;
-
-  </script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <style>
     body {
       margin:0;
-      font-family:Arial;
+      font-family: Arial;
       background:#0b1220;
       color:white;
     }
@@ -117,18 +22,28 @@
       align-items:center;
     }
 
-    .layout {
+    .grid {
       display:grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr 1.2fr 1fr;
       gap:10px;
       padding:10px;
     }
 
-    .card {
+    .panel {
       background:#111827;
       border:1px solid #1f2937;
-      padding:12px;
       border-radius:10px;
+      padding:10px;
+      height:85vh;
+      overflow-y:auto;
+    }
+
+    .card {
+      background:#0f172a;
+      border:1px solid #334155;
+      padding:10px;
+      border-radius:8px;
+      margin-bottom:8px;
       cursor:pointer;
     }
 
@@ -136,128 +51,248 @@
       border-color:#3b82f6;
     }
 
-    .sub {
-      font-size:12px;
-      color:#94a3b8;
-      margin-top:4px;
-    }
-
-    .meta {
-      font-size:12px;
-      margin-top:6px;
-      color:#cbd5e1;
-    }
-
-    /* FORM PANEL */
-    .form {
-      background:#0f172a;
-      border:1px solid #1f2937;
-      padding:12px;
-      border-radius:10px;
-      display:none;
-      position:sticky;
-      top:10px;
-      height: fit-content;
-    }
-
-    input, select {
-      width:100%;
-      padding:8px;
-      margin-top:6px;
+    .tag {
+      font-size:11px;
+      padding:2px 6px;
+      background:#1f2937;
       border-radius:6px;
-      border:1px solid #334155;
-      background:#0b1220;
-      color:white;
-    }
-
-    .row {
-      display:grid;
-      grid-template-columns:1fr 1fr;
-      gap:8px;
-    }
-
-    .switch {
-      display:flex;
-      justify-content:space-between;
-      margin-top:10px;
-      font-size:13px;
+      margin-left:4px;
     }
 
     button {
-      padding:8px;
-      margin-top:10px;
       width:100%;
+      padding:8px;
+      margin-top:6px;
       border:none;
       border-radius:6px;
       cursor:pointer;
     }
 
-    .save {
+    .assign {
       background:#3b82f6;
       color:white;
     }
 
-    .close {
-      background:#ef4444;
+    .assign:hover {
+      background:#2563eb;
+    }
+
+    .service-btn {
+      background:#10b981;
       color:white;
     }
 
-  </style>
+    .service-btn:hover {
+      background:#059669;
+    }
 
+    h3 {
+      margin-top:0;
+    }
+
+    .role-block {
+      border:1px solid #334155;
+      padding:8px;
+      margin-bottom:8px;
+      border-radius:8px;
+    }
+
+    .slot {
+      background:#1f2937;
+      padding:5px;
+      margin-top:5px;
+      border-radius:6px;
+      font-size:13px;
+    }
+  </style>
 </head>
 
 <body>
 
 <header>
-  👥 Worship Ops Staff Master
-  <button onclick="openForm()">+ Add Staff</button>
+  🎛️ Worship Ops Command Center
+  <button onclick="loadAll()">Refresh</button>
 </header>
 
-<div class="layout">
+<div class="grid">
 
-  <!-- LIST -->
-  <div id="list"></div>
+  <!-- STAFF -->
+  <div class="panel">
+    <h3>Staff Pool</h3>
+    <div id="staffList"></div>
+  </div>
 
-  <!-- FORM -->
-  <div class="form" id="form">
+  <!-- SERVICES -->
+  <div class="panel">
+    <h3>Services</h3>
+    <div id="serviceList"></div>
 
-    <h3 id="formTitle">Add Staff</h3>
+    <hr style="border:1px solid #1f2937">
 
-    <input id="name" placeholder="Name" />
-    <input id="phone" placeholder="Phone" />
+    <h3>Roles</h3>
+    <div id="roles"></div>
+  </div>
 
-    <select id="role">
-      <option value="">Role</option>
-      <option>Worship Leader</option>
-      <option>Vocalist</option>
-      <option>Musician</option>
-      <option>Sound</option>
-      <option>Media</option>
-      <option>Usher</option>
-    </select>
-
-    <select id="department">
-      <option>Worship Service</option>
-      <option>Youth Ministry</option>
-      <option>Technical Team</option>
-    </select>
-
-    <div class="switch">
-      Active
-      <input type="checkbox" id="isActive" />
-    </div>
-
-    <div class="switch">
-      Communion Eligible
-      <input type="checkbox" id="communion" />
-    </div>
-
-    <button class="save" onclick="save()">Save</button>
-    <button class="close" onclick="closeForm()">Close</button>
-
+  <!-- ASSIGNMENTS -->
+  <div class="panel">
+    <h3>Live Assignments</h3>
+    <div id="assignments"></div>
   </div>
 
 </div>
+
+<script>
+  const supabaseUrl = "YOUR_SUPABASE_URL";
+  const supabaseKey = "YOUR_SUPABASE_ANON_KEY";
+  const db = supabase.createClient(supabaseUrl, supabaseKey);
+
+  let selectedStaff = null;
+  let selectedService = null;
+
+  /* ---------------- LOAD EVERYTHING ---------------- */
+
+  async function loadAll() {
+    loadStaff();
+    loadServices();
+  }
+
+  /* ---------------- STAFF ---------------- */
+
+  async function loadStaff() {
+    const { data } = await db.from("staff").select("*");
+
+    const box = document.getElementById("staffList");
+    box.innerHTML = "";
+
+    data.forEach(s => {
+      box.innerHTML += `
+        <div class="card" onclick="selectStaff('${s.id}','${s.name}')">
+          <b>${s.name}</b><br>
+          <span class="tag">${s.role || "-"}</span>
+        </div>
+      `;
+    });
+  }
+
+  function selectStaff(id, name) {
+    selectedStaff = { id, name };
+    alert("Selected Staff: " + name);
+  }
+
+  /* ---------------- SERVICES ---------------- */
+
+  async function loadServices() {
+    const { data } = await db.from("services").select("*");
+
+    const box = document.getElementById("serviceList");
+    box.innerHTML = "";
+
+    data.forEach(s => {
+      box.innerHTML += `
+        <div class="card" onclick="selectService('${s.id}','${s.title}')">
+          <b>${s.title}</b><br>
+          <span class="tag">${s.service_date}</span>
+        </div>
+      `;
+    });
+  }
+
+  function selectService(id, title) {
+    selectedService = { id, title };
+    loadAssignments();
+    loadRoles();
+    alert("Selected Service: " + title);
+  }
+
+  /* ---------------- ROLES ---------------- */
+
+  async function loadRoles() {
+
+    if (!selectedService) return;
+
+    const { data: roles } = await db
+      .from("service_assignments")
+      .select("*, staff(name)")
+      .eq("service_id", selectedService.id);
+
+    const box = document.getElementById("roles");
+    box.innerHTML = "";
+
+    const roleMap = {};
+
+    roles.forEach(r => {
+      if (!roleMap[r.role]) roleMap[r.role] = [];
+      roleMap[r.role].push(r);
+    });
+
+    Object.keys(roleMap).forEach(role => {
+
+      const members = roleMap[role];
+
+      box.innerHTML += `
+        <div class="role-block">
+          <b>${role}</b>
+
+          ${members.map(m => `
+            <div class="slot">
+              ${m.staff?.name || "Unknown"}
+            </div>
+          `).join("")}
+
+          <button class="assign" onclick="assign('${role}')">
+            Assign to ${role}
+          </button>
+        </div>
+      `;
+    });
+  }
+
+  /* ---------------- ASSIGN ---------------- */
+
+  async function assign(role) {
+
+    if (!selectedStaff || !selectedService) {
+      alert("Select staff and service first");
+      return;
+    }
+
+    await db.from("service_assignments").insert([{
+      service_id: selectedService.id,
+      staff_id: selectedStaff.id,
+      role: role,
+      status: "ASSIGNED"
+    }]);
+
+    loadRoles();
+    loadAssignments();
+  }
+
+  /* ---------------- LIVE VIEW ---------------- */
+
+  async function loadAssignments() {
+
+    if (!selectedService) return;
+
+    const { data } = await db
+      .from("service_assignments")
+      .select("*, staff(name)")
+      .eq("service_id", selectedService.id);
+
+    const box = document.getElementById("assignments");
+    box.innerHTML = "";
+
+    data.forEach(a => {
+      box.innerHTML += `
+        <div class="card">
+          <b>${a.role}</b><br>
+          ${a.staff?.name || "-"}
+        </div>
+      `;
+    });
+  }
+
+  loadAll();
+</script>
 
 </body>
 </html>
