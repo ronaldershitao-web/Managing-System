@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Staff Master - Worship Ops</title>
+  <title>Staff Master (Simple)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <style>
@@ -16,9 +16,6 @@
       padding:12px;
       background:#111827;
       font-weight:bold;
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
     }
 
     .grid {
@@ -75,15 +72,6 @@
       border:2px solid #3b82f6;
     }
 
-    .tag {
-      font-size:11px;
-      padding:2px 6px;
-      background:#1f2937;
-      border-radius:6px;
-      margin-top:4px;
-      display:inline-block;
-    }
-
     .slot {
       background:#1f2937;
       padding:6px;
@@ -91,50 +79,39 @@
       margin-top:5px;
       font-size:13px;
     }
-
-    h3 { margin-top:0; }
   </style>
 </head>
 
 <body>
 
 <header>
-  👥 Staff Master (Worship Ops)
-  <button onclick="loadAll()">Refresh</button>
+  👥 Staff Master (Simple)
 </header>
 
 <div class="grid">
 
-  <!-- CREATE STAFF -->
+  <!-- STAFF -->
   <div class="panel">
-    <h3>Create Staff</h3>
+    <h3>Staff</h3>
 
-    <input id="name" placeholder="Name">
-    <input id="phone" placeholder="Phone">
-    <input id="role" placeholder="Role (Worship Leader / HC / etc)">
-
+    <input id="name" placeholder="Staff Name">
     <button onclick="createStaff()">+ Add Staff</button>
 
-    <hr style="border:1px solid #1f2937">
-
-    <h3>Staff List</h3>
     <div id="staffList"></div>
   </div>
 
-  <!-- STAFF ASSIGNMENT -->
+  <!-- TEMPLATES -->
   <div class="panel">
-    <h3>Assign Weekly Service Template</h3>
-
+    <h3>Service Templates</h3>
     <div id="templateList"></div>
 
-    <button onclick="assignTemplate()">Assign Selected Template</button>
+    <button onclick="assign()">Assign Staff → Template</button>
   </div>
 
-  <!-- STAFF DETAILS -->
+  <!-- ASSIGNMENTS -->
   <div class="panel">
-    <h3>Staff Weekly Serving</h3>
-
-    <div id="assignmentView"></div>
+    <h3>Assigned Services</h3>
+    <div id="assignmentList"></div>
   </div>
 
 </div>
@@ -145,38 +122,25 @@
   let selectedStaff = null;
   let selectedTemplate = null;
 
-  /* ---------------- LOAD ALL ---------------- */
+  /* ---------------- LOAD ---------------- */
 
   async function loadAll() {
     loadStaff();
     loadTemplates();
   }
 
-  /* ---------------- CREATE STAFF ---------------- */
+  /* ---------------- STAFF ---------------- */
 
   window.createStaff = async () => {
 
     const name = document.getElementById("name").value;
-    const phone = document.getElementById("phone").value;
-    const role = document.getElementById("role").value;
-
     if (!name) return;
 
-    await db.from("staff").insert([{
-      name,
-      phone,
-      role,
-      is_active: true
-    }]);
+    await db.from("staff").insert([{ name }]);
 
     document.getElementById("name").value = "";
-    document.getElementById("phone").value = "";
-    document.getElementById("role").value = "";
-
     loadStaff();
   };
-
-  /* ---------------- LOAD STAFF ---------------- */
 
   async function loadStaff() {
 
@@ -190,22 +154,19 @@
       box.innerHTML += `
         <div class="card ${selectedStaff?.id === s.id ? 'selected' : ''}"
              onclick="selectStaff('${s.id}','${s.name}')">
-          <b>${s.name}</b><br>
-          <span class="tag">${s.role || '-'}</span>
+          <b>${s.name}</b>
         </div>
       `;
     });
   }
 
   window.selectStaff = async (id, name) => {
-
     selectedStaff = { id, name };
-
-    await loadStaffAssignments();
+    loadStaffAssignments();
     loadStaff();
   };
 
-  /* ---------------- LOAD TEMPLATES ---------------- */
+  /* ---------------- TEMPLATES ---------------- */
 
   async function loadTemplates() {
 
@@ -230,9 +191,9 @@
     loadTemplates();
   };
 
-  /* ---------------- ASSIGN STAFF → TEMPLATE ---------------- */
+  /* ---------------- ASSIGN ---------------- */
 
-  window.assignTemplate = async () => {
+  window.assign = async () => {
 
     if (!selectedStaff || !selectedTemplate) {
       alert("Select staff + template");
@@ -241,18 +202,17 @@
 
     await db.from("staff_service_templates").insert([{
       staff_id: selectedStaff.id,
-      template_id: selectedTemplate.id,
-      is_fixed: false
+      template_id: selectedTemplate.id
     }]);
 
     loadStaffAssignments();
   };
 
-  /* ---------------- VIEW STAFF ASSIGNMENTS ---------------- */
+  /* ---------------- VIEW ---------------- */
 
   async function loadStaffAssignments() {
 
-    const box = document.getElementById("assignmentView");
+    const box = document.getElementById("assignmentList");
     box.innerHTML = "";
 
     if (!selectedStaff) return;
@@ -266,7 +226,7 @@
 
       box.innerHTML += `
         <div class="slot">
-          📅 ${a.service_templates?.name || '-'}
+          ${a.service_templates?.name || '-'}
         </div>
       `;
     });
