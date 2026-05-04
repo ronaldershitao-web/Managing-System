@@ -319,13 +319,11 @@ function computeEventGrouped(eventRows) {
 
     const pid = String(r.person_id).trim();
 
-    if (!grouped[pid]) {
-      grouped[pid] = [];
-    }
+    if (!grouped[pid]) grouped[pid] = [];
 
     grouped[pid].push({
       event_id: r.event_id,
-      score: r.score
+      score: r.score || 0
     });
   });
 
