@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Staff Availability</title>
+  <title>Staff Service Availability</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <style>
@@ -20,7 +20,7 @@
 
     .grid {
       display:grid;
-      grid-template-columns: 1fr 2fr;
+      grid-template-columns: 1fr 1fr 1fr;
       gap:10px;
       padding:10px;
     }
@@ -32,27 +32,6 @@
       padding:10px;
       height:85vh;
       overflow-y:auto;
-    }
-
-    input, select {
-      width:100%;
-      padding:8px;
-      margin:5px 0;
-      border-radius:6px;
-      border:1px solid #334155;
-      background:#0f172a;
-      color:white;
-    }
-
-    button {
-      width:100%;
-      padding:8px;
-      margin-top:6px;
-      border:none;
-      border-radius:6px;
-      cursor:pointer;
-      background:#3b82f6;
-      color:white;
     }
 
     .card {
@@ -76,6 +55,17 @@
       font-size:13px;
     }
 
+    button {
+      width:100%;
+      padding:8px;
+      margin-top:6px;
+      border:none;
+      border-radius:6px;
+      cursor:pointer;
+      background:#3b82f6;
+      color:white;
+    }
+
     .danger {
       background:#ef4444;
     }
@@ -85,37 +75,30 @@
 <body>
 
 <header>
-  📅 Staff Availability Manager
+  📅 Staff Service Availability (Service-Level Engine)
 </header>
 
 <div class="grid">
 
-  <!-- STAFF LIST -->
+  <!-- STAFF -->
   <div class="panel">
     <h3>Staff</h3>
     <div id="staffList"></div>
   </div>
 
+  <!-- SERVICES -->
+  <div class="panel">
+    <h3>Services</h3>
+    <div id="serviceList"></div>
+
+    <button onclick="markUnavailable()">
+      Mark Unavailable for Selected Service
+    </button>
+  </div>
+
   <!-- AVAILABILITY -->
   <div class="panel">
-    <h3>Availability</h3>
-
-    <input type="date" id="startDate">
-    <input type="date" id="endDate">
-
-    <select id="type">
-      <option value="AL">Annual Leave</option>
-      <option value="OFF">Off Day</option>
-      <option value="MINISTRY">Ministry</option>
-      <option value="TRAINING">Training</option>
-    </select>
-
-    <input id="reason" placeholder="Reason (optional)">
-
-    <button onclick="addAvailability()">+ Add Availability</button>
-
-    <hr style="border:1px solid #1f2937">
-
+    <h3>Unavailable Records</h3>
     <div id="availabilityList"></div>
   </div>
 
@@ -125,6 +108,7 @@
 import { db } from "../assets/app.js";
 
 let selectedStaff = null;
+let selectedService = null;
 
 /* ---------------- LOAD STAFF ---------------- */
 
@@ -150,38 +134,62 @@ window.selectStaff = (id, name) => {
   loadAvailability();
 };
 
-/* ---------------- ADD ---------------- */
+/* ---------------- LOAD SERVICES ---------------- */
 
-window.addAvailability = async () => {
+async function loadServices() {
+  const { data } = await db.from("services").select("*");
 
-  if (!selectedStaff) {
-    alert("Select staff first");
+  const box = document.getElementById("serviceList");
+  box.innerHTML = "";
+
+  (data || []).forEach(s => {
+    box.innerHTML += `
+      <div class="card ${selectedService?.id === s.id ? 'selected' : ''}"
+           onclick="selectService('${s.id}','${s.title}')">
+        <b>${s.title}</b><br>
+        ${s.service_date || ''}
+      </div>
+    `;
+  });
+}
+
+window.selectService = (id, title) => {
+  selectedService = { id, title };
+  loadServices();
+};
+
+/* ---------------- MARK UNAVAILABLE ---------------- */
+
+window.markUnavailable = async () => {
+
+  if (!selectedStaff || !selectedService) {
+    alert("Select staff + service first");
     return;
   }
 
-  const start_date = document.getElementById("startDate").value;
-  const end_date = document.getElementById("endDate").value;
-  const type = document.getElementById("type").value;
-  const reason = document.getElementById("reason").value;
+  // prevent duplicate
+  const { data: existing } = await db
+    .from("staff_service_unavailability")
+    .select("*")
+    .eq("staff_id", selectedStaff.id)
+    .eq("service_id", selectedService.id);
 
-  if (!start_date || !end_date) {
-    alert("Select dates");
+  if (existing && existing.length > 0) {
+    alert("Already marked unavailable");
     return;
   }
 
-  await db.from("staff_availability").insert([{
+  await db.from("staff_service_unavailability").insert([{
     staff_id: selectedStaff.id,
-    start_date,
-    end_date,
-    type,
-    status: "OFF",
-    reason
+    service_id: selectedService.id,
+    type: "UNAVAILABLE",
+    reason: "Marked via UI"
   }]);
 
   loadAvailability();
 };
 
-/* ---------------- LOAD AVAILABILITY ---------------- */
+/* ---------------- LOAD UNAVAILABLE ---------------- */
 
 async function loadAvailability() {
 
@@ -191,21 +199,19 @@ async function loadAvailability() {
   if (!selectedStaff) return;
 
   const { data } = await db
-    .from("staff_availability")
-    .select("*")
-    .eq("staff_id", selectedStaff.id)
-    .order("start_date", { ascending: false });
+    .from("staff_service_unavailability")
+    .select("*, services(title, service_date)")
+    .eq("staff_id", selectedStaff.id);
 
   (data || []).forEach(a => {
     box.innerHTML += `
       <div class="slot">
-        <b>${a.type}</b><br>
-        ${a.start_date} → ${a.end_date}<br>
-        ${a.reason || ''}
+        <b>${a.services?.title || '-'}</b><br>
+        ${a.services?.service_date || ''}
 
         <button class="danger"
-          onclick="removeAvailability('${a.id}')">
-          Delete
+          onclick="remove('${a.id}')">
+          Remove
         </button>
       </div>
     `;
@@ -214,12 +220,14 @@ async function loadAvailability() {
 
 /* ---------------- DELETE ---------------- */
 
-window.removeAvailability = async (id) => {
-  await db.from("staff_availability").delete().eq("id", id);
+window.remove = async (id) => {
+  await db.from("staff_service_unavailability").delete().eq("id", id);
   loadAvailability();
 };
 
 loadStaff();
+loadServices();
+
 </script>
 
 </body>
