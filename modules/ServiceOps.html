@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Worship Ops Center</title>
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <script type="module">
+    import { db } from "./assets/app.js";
+
+    let people = [];
+    let staff = [];
+    let services = [];
+    let assignments = [];
+
+    async function load() {
+
+      const res = await Promise.all([
+        db.from("people").select("*"),
+        db.from("staff").select("*"),
+        db.from("services").select("*"),
+        db.from("service_assignments").select("*")
+      ]);
+
+      people = res[0].data || [];
+      staff = res[1].data || [];
+      services = res[2].data || [];
+      assignments = res[3].data || [];
+
+      renderStaff();
+      renderServices();
+    }
+
+    /* ---------------- STAFF ---------------- */
+
+    async function addStaff(personId) {
+
+      const role = prompt("Role (e.g. Worship Leader, Media, Usher)");
+
+      if (!role) return;
+
+      const communion = confirm("Eligible for Communion serving?");
+
+      await db.from("staff").insert([{
+        person_id: personId,
+        role,
+        department: "Worship Service",
+        is_active: true,
+        communion_eligible: communion
+      }]);
+
+      load();
+    }
+
+    /* ---------------- SERVICE ---------------- */
+
+    async function createService() {
+
+      const title = prompt("Service Title (e.g. Sunday Service 1)");
+      const date = prompt("Service Date (YYYY-MM-DD)");
+
+      if (!title || !date) return;
+
+      await db.from("services").insert([{
+        title,
+        service_date: date
+      }]);
+
+      load();
+    }
+
+    /* ---------------- ASSIGN STAFF ---------------- */
+
+    async function assignStaff(serviceId, staffId) {
+
+      const communion = confirm("Is this assignment for Communion service role?");
+
+      const role = prompt("Role for this service (optional override)");
+
+      await db.from("service_assignments").insert([{
+        service_id: serviceId,
+        staff_id: staffId,
+        role: role || null,
+        status: "ASSIGNED",
+        communion_role: communion
+      }]);
+
+      load();
+    }
+
+    /* ---------------- HELPERS ---------------- */
+
+    function getStaff(personId) {
+      return staff.find(s => s.person_id === personId);
+    }
+
+    function getAssignments(serviceId) {
+      return assignments.filter(a => a.service_id === serviceId);
+    }
+
+    /* ---------------- RENDER STAFF ---------------- */
+
+    function renderStaff() {
+
+      const container = document.getElementById("staff");
+
+      container.innerHTML = people.map(p => {
+
+        const s = getStaff(p.id);
+
+        return `
+          <div class="card">
+
+            <b>${p.name}</b>
+            <div style="font-size:12px;color:#94a3b8;">📞 ${p.phone || "-"}</div>
+
+            ${s ? `
+              <div style="margin-top:6px;font-size:12px;">
+                🧭 Role: <b>${s.role}</b><br>
+                🍷 Communion: <b>${s.communion_eligible ? "YES" : "NO"}</b>
+              </div>
+            ` : `
+              <button onclick="addStaff('${p.id}')" style="margin-top:8px;">
+                + Add as Staff
+              </button>
+            `}
+          </div>
+        `;
+      }).join("");
+    }
+
+    /* ---------------- RENDER SERVICES ---------------- */
+
+    function renderServices() {
+
+      const container = document.getElementById("services");
+
+      container.innerHTML = services.map(s => {
+
+        const assigned = getAssignments(s.id);
+
+        return `
+          <div class="card">
+
+            <b>${s.title}</b>
+            <div style="font-size:12px;color:#94a3b8;">
+              📅 ${s.service_date || "-"}
+            </div>
+
+            <hr style="border-color:#1f2937;">
+
+            <b>Assignments</b>
+
+            ${assigned.length === 0 ? `<p style="color:#64748b;">No assignments</p>` : ""}
+
+            ${assigned.map(a => {
+
+              const staffMember = staff.find(st => st.id === a.staff_id);
+
+              return `
+                <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:5px;">
+                  <span>
+                    ${staffMember?.role || "Staff"} (${staffMember?.person_id})
+                  </span>
+
+                  <span style="color:${a.communion_role ? '#22c55e' : '#94a3b8'};">
+                    ${a.communion_role ? "🍷 Communion" : "Normal"}
+                  </span>
+                </div>
+              `;
+            }).join("")}
+
+            <hr style="border-color:#1f2937;">
+
+            <b>Assign Staff</b>
+
+            ${staff.map(st => {
+
+              const person = people.find(p => p.id === st.person_id);
+
+              return `
+                <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:12px;">
+                  <span>${person?.name || "Unknown"} - ${st.role}</span>
+
+                  <button onclick="assignStaff('${s.id}','${st.id}')">
+                    Assign
+                  </button>
+                </div>
+              `;
+            }).join("")}
+
+          </div>
+        `;
+      }).join("");
+    }
+
+    window.addStaff = addStaff;
+    window.createService = createService;
+    window.assignStaff = assignStaff;
+    window.onload = load;
+  </script>
+
+  <style>
+    body {
+      margin:0;
+      font-family:Arial;
+      background:#0f172a;
+      color:white;
+    }
+
+    header {
+      padding:12px;
+      background:#111827;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+    }
+
+    .grid {
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:10px;
+      padding:10px;
+    }
+
+    .card {
+      background:#111827;
+      padding:12px;
+      border-radius:10px;
+      border:1px solid #1f2937;
+      margin-bottom:10px;
+    }
+
+    button {
+      padding:6px 10px;
+      border:none;
+      border-radius:6px;
+      background:#2563eb;
+      color:white;
+      cursor:pointer;
+      font-size:12px;
+    }
+  </style>
+</head>
+
+<body>
+
+<header>
+  🧭 Worship Ops Center
+
+  <div>
+    <button onclick="createService()">+ Service</button>
+  </div>
+</header>
+
+<div class="grid">
+
+  <div>
+    <h3>👥 Staff</h3>
+    <div id="staff"></div>
+  </div>
+
+  <div>
+    <h3>⛪ Services</h3>
+    <div id="services"></div>
+  </div>
+
+</div>
+
+</body>
+</html>
