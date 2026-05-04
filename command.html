@@ -170,37 +170,69 @@
     /* ---------------- 🧍 PEOPLE ---------------- */
     function renderPeople(visitMap, eventMap, peopleMap) {
 
-      const enriched = Object.keys(peopleMap).map(pid => {
+  const buckets = {
+    P1: [],
+    P2: [],
+    P3: [],
+    P4: []
+  };
 
-        const percent = finalScore(
-          visitMap[pid] || 0,
-          eventMap[pid] || 0
-        );
+  Object.keys(peopleMap).forEach(pid => {
 
-        return {
-          name: peopleMap[pid],
-          percent
-        };
-      });
+    const visit = visitMap[pid] || 0;
+    const event = eventMap[pid] || 0;
 
-      enriched.sort((a,b)=>a.percent-b.percent);
+    const percent = finalScore(visit, event);
 
-      document.getElementById("people").innerHTML = `
-        <div class="card">
-          <h3>🧍 People Spiritual Risk</h3>
-          <small>Bottom 5 individuals</small>
+    const person = {
+      name: peopleMap[pid],
+      percent
+    };
 
-          ${enriched.slice(0,5).map(p => `
-            <div style="display:flex;justify-content:space-between;margin-top:6px;">
-              <span>${p.name}</span>
-              <b class="${p.percent<60?'bad':p.percent<80?'warn':'good'}">
-                ${p.percent.toFixed(1)}%
-              </b>
-            </div>
-          `).join("")}
-        </div>
-      `;
-    }
+    if (percent < 25) buckets.P1.push(person);
+    else if (percent < 50) buckets.P2.push(person);
+    else if (percent < 75) buckets.P3.push(person);
+    else buckets.P4.push(person);
+  });
+
+  function block(title, color, list) {
+    return `
+      <div style="
+        border:1px solid ${color};
+        border-radius:10px;
+        padding:10px;
+        background:#0b1220;
+        min-height:150px;
+      ">
+        <b style="color:${color};">${title} (${list.length})</b>
+        <hr style="border-color:#1f2937;">
+
+        ${list.slice(0,5).map(p => `
+          <div style="display:flex;justify-content:space-between;font-size:12px;">
+            <span>${p.name}</span>
+            <span>${p.percent.toFixed(0)}%</span>
+          </div>
+        `).join("")}
+
+        ${list.length > 5 ? `<small>+${list.length - 5} more</small>` : ""}
+      </div>
+    `;
+  }
+
+  document.getElementById("people").innerHTML = `
+    <div class="card">
+      <h3>🧍 People Spiritual Distribution</h3>
+      <small>Population segmentation</small>
+
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px;">
+        ${block("🔴 P1 (0–25%)","#ef4444",buckets.P1)}
+        ${block("🟠 P2 (25–50%)","#f97316",buckets.P2)}
+        ${block("🟡 P3 (50–75%)","#eab308",buckets.P3)}
+        ${block("🟢 P4 (75–100%)","#22c55e",buckets.P4)}
+      </div>
+    </div>
+  `;
+}
 
     /* ---------------- 🧠 CELL ---------------- */
     function renderCellIndicator(groups, members, visitMap, eventMap) {
