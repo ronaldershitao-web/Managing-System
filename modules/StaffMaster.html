@@ -8,35 +8,37 @@
   <script type="module">
     import { db } from "../assets/app.js";
 
-    let people = [];
     let staff = [];
 
     async function load() {
 
-      const [p, s] = await Promise.all([
-        db.from("people").select("*"),
-        db.from("staff").select("*")
-      ]);
+      const res = await db
+        .from("staff")
+        .select("*")
+        .order("created_at", { ascending: false });
 
-      people = p.data || [];
-      staff = s.data || [];
+      staff = res.data || [];
 
       render();
     }
 
     /* ---------------- CREATE STAFF ---------------- */
 
-    async function createStaff(personId) {
+    async function createStaff() {
+
+      const name = prompt("Staff Name");
+      const phone = prompt("Phone Number");
+
+      if (!name) return;
 
       const role = prompt("Role (Worship Leader / Media / Usher / etc.)");
-      if (!role) return;
-
       const department = prompt("Department (default: Worship Service)") || "Worship Service";
 
       const communion = confirm("Eligible for Communion serving?");
 
       await db.from("staff").insert([{
-        person_id: personId,
+        name,
+        phone,
         role,
         department,
         is_active: true,
@@ -46,19 +48,23 @@
       load();
     }
 
-    /* ---------------- UPDATE STAFF ---------------- */
+    /* ---------------- EDIT STAFF ---------------- */
 
-    async function updateStaff(id) {
+    async function editStaff(s) {
 
-      const role = prompt("New role?");
-      const communion = confirm("Toggle Communion eligibility?");
+      const role = prompt("Role", s.role || "");
+      const department = prompt("Department", s.department || "");
+      const active = confirm("Should this staff remain ACTIVE?");
+      const communion = confirm("Eligible for Communion?");
 
       await db.from("staff")
         .update({
           role,
+          department,
+          is_active: active,
           communion_eligible: communion
         })
-        .eq("id", id);
+        .eq("id", s.id);
 
       load();
     }
@@ -69,33 +75,27 @@
 
       const container = document.getElementById("list");
 
-      container.innerHTML = people.map(p => {
-
-        const s = staff.find(x => x.person_id === p.id);
+      container.innerHTML = staff.map(s => {
 
         return `
           <div class="card">
 
-            <b>${p.name}</b>
-            <div style="font-size:12px;color:#94a3b8;">📞 ${p.phone || "-"}</div>
+            <b>${s.name || "Unnamed"}</b>
 
-            ${s ? `
-              <div style="margin-top:8px;font-size:12px;">
-                🧭 Role: <b>${s.role}</b><br>
-                🏢 Dept: ${s.department}<br>
-                🍷 Communion: <b>${s.communion_eligible ? "YES" : "NO"}</b><br>
-                Status: ${s.is_active ? "Active" : "Inactive"}
-              </div>
+            <div style="font-size:12px;color:#94a3b8;">
+              📞 ${s.phone || "-"}
+            </div>
 
-              <button onclick="updateStaff('${s.id}')" style="margin-top:8px;">
-                Edit Staff
-              </button>
+            <div style="margin-top:6px;font-size:12px;">
+              🧭 Role: <b>${s.role || "-"}</b><br>
+              🏢 Dept: ${s.department || "-"}<br>
+              🍷 Communion: <b>${s.communion_eligible ? "YES" : "NO"}</b><br>
+              Status: ${s.is_active ? "Active" : "Inactive"}
+            </div>
 
-            ` : `
-              <button onclick="createStaff('${p.id}')" style="margin-top:8px;">
-                + Add to Staff
-              </button>
-            `}
+            <button onclick='editStaff(${JSON.stringify(s)})' style="margin-top:8px;">
+              Edit Staff
+            </button>
 
           </div>
         `;
@@ -103,7 +103,7 @@
     }
 
     window.createStaff = createStaff;
-    window.updateStaff = updateStaff;
+    window.editStaff = editStaff;
     window.onload = load;
 
   </script>
@@ -119,12 +119,9 @@
     header {
       padding:12px;
       background:#111827;
-      font-size:16px;
-      font-weight:bold;
-    }
-
-    .grid {
-      padding:10px;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
     }
 
     .card {
@@ -133,6 +130,10 @@
       padding:12px;
       border-radius:10px;
       margin-bottom:10px;
+    }
+
+    .grid {
+      padding:10px;
     }
 
     button {
@@ -151,7 +152,8 @@
 <body>
 
 <header>
-  👥 Staff Master Data
+  👥 Staff Master
+  <button onclick="createStaff()">+ Add Staff</button>
 </header>
 
 <div class="grid">
