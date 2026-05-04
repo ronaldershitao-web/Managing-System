@@ -134,60 +134,63 @@
   let selectedStaff = null;
   let selectedService = null;
 
-  /* ---------------- LOAD ---------------- */
+  /* ---------------- LOAD ALL ---------------- */
 
   async function loadAll() {
-    loadStaff();
-    loadServices();
+    await loadStaff();
+    await loadServices();
   }
 
   /* ---------------- STAFF ---------------- */
 
-async function loadStaff() {
-  const { data, error } = await db.from("staff").select("*");
+  async function loadStaff() {
+    const { data, error } = await db.from("staff").select("*");
 
-  if (error || !data) {
-    console.error("Staff load error:", error);
-    return;
+    if (error || !data) {
+      console.error("Staff load error:", error);
+      return;
+    }
+
+    const box = document.getElementById("staffList");
+    box.innerHTML = "";
+
+    (data || []).forEach(s => {
+      box.innerHTML += `
+        <div class="card" onclick="selectStaff('${s.id}','${s.name}')">
+          <b>${s.name}</b>
+          <div class="tag">${s.role || "-"}</div>
+        </div>
+      `;
+    });
   }
 
-  const box = document.getElementById("staffList");
-  box.innerHTML = "";
-
-  data.forEach(s => {
-    box.innerHTML += `
-      <div class="card">
-        <b>${s.name}</b>
-      </div>
-    `;
-  });
-}
   window.selectStaff = (id, name) => {
     selectedStaff = { id, name };
-    alert("Selected: " + name);
+    alert("Selected Staff: " + name);
   };
 
   /* ---------------- SERVICES ---------------- */
 
   async function loadServices() {
-  const { data, error } = await db.from("services").select("*");
+    const { data, error } = await db.from("services").select("*");
 
-  if (error || !data) {
-    console.error("Services load error:", error);
-    return;
+    if (error || !data) {
+      console.error("Services load error:", error);
+      return;
+    }
+
+    const box = document.getElementById("serviceList");
+    box.innerHTML = "";
+
+    (data || []).forEach(s => {
+      box.innerHTML += `
+        <div class="card" onclick="selectService('${s.id}','${s.title}')">
+          <b>${s.title}</b><br>
+          <span class="tag">${s.service_date || "-"}</span>
+        </div>
+      `;
+    });
   }
-
-  const box = document.getElementById("serviceList");
-  box.innerHTML = "";
-
-  data.forEach(s => {
-    box.innerHTML += `
-      <div class="card">
-        <b>${s.title}</b>
-      </div>
-    `;
-  });
-}
 
   window.selectService = (id, title) => {
     selectedService = { id, title };
@@ -202,17 +205,22 @@ async function loadStaff() {
 
     if (!selectedService) return;
 
-    const { data } = await db
+    const { data, error } = await db
       .from("service_assignments")
       .select("*, staff(name)")
       .eq("service_id", selectedService.id);
+
+    if (error || !data) {
+      console.error("Roles load error:", error);
+      return;
+    }
 
     const box = document.getElementById("roles");
     box.innerHTML = "";
 
     const grouped = {};
 
-    data.forEach(r => {
+    (data || []).forEach(r => {
       if (!grouped[r.role]) grouped[r.role] = [];
       grouped[r.role].push(r);
     });
@@ -244,32 +252,42 @@ async function loadStaff() {
       return;
     }
 
-    await db.from("service_assignments").insert([{
+    const { error } = await db.from("service_assignments").insert([{
       service_id: selectedService.id,
       staff_id: selectedStaff.id,
       role: role,
       status: "ASSIGNED"
     }]);
 
+    if (error) {
+      console.error("Assign error:", error);
+      return;
+    }
+
     loadRoles();
     loadAssignments();
   };
 
-  /* ---------------- LIVE ---------------- */
+  /* ---------------- ASSIGNMENTS ---------------- */
 
   async function loadAssignments() {
 
     if (!selectedService) return;
 
-    const { data } = await db
+    const { data, error } = await db
       .from("service_assignments")
       .select("*, staff(name)")
       .eq("service_id", selectedService.id);
 
+    if (error || !data) {
+      console.error("Assignments error:", error);
+      return;
+    }
+
     const box = document.getElementById("assignments");
     box.innerHTML = "";
 
-    data.forEach(a => {
+    (data || []).forEach(a => {
       box.innerHTML += `
         <div class="card">
           <b>${a.role}</b><br>
