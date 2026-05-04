@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Staff Master - Worship Ops</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <style>
+    body {
+      margin:0;
+      font-family: Arial;
+      background:#0b1220;
+      color:white;
+    }
+
+    header {
+      padding:12px;
+      background:#111827;
+      font-weight:bold;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+    }
+
+    .grid {
+      display:grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap:10px;
+      padding:10px;
+    }
+
+    .panel {
+      background:#111827;
+      border:1px solid #1f2937;
+      border-radius:10px;
+      padding:10px;
+      height:85vh;
+      overflow-y:auto;
+    }
+
+    input {
+      width:100%;
+      padding:8px;
+      margin:5px 0;
+      border-radius:6px;
+      border:1px solid #334155;
+      background:#0f172a;
+      color:white;
+    }
+
+    button {
+      width:100%;
+      padding:8px;
+      margin-top:6px;
+      border:none;
+      border-radius:6px;
+      cursor:pointer;
+      background:#3b82f6;
+      color:white;
+    }
+
+    button:hover {
+      background:#2563eb;
+    }
+
+    .card {
+      background:#0f172a;
+      border:1px solid #334155;
+      padding:10px;
+      border-radius:8px;
+      margin-bottom:8px;
+      cursor:pointer;
+    }
+
+    .selected {
+      border:2px solid #3b82f6;
+    }
+
+    .tag {
+      font-size:11px;
+      padding:2px 6px;
+      background:#1f2937;
+      border-radius:6px;
+      margin-top:4px;
+      display:inline-block;
+    }
+
+    .slot {
+      background:#1f2937;
+      padding:6px;
+      border-radius:6px;
+      margin-top:5px;
+      font-size:13px;
+    }
+
+    h3 { margin-top:0; }
+  </style>
+</head>
+
+<body>
+
+<header>
+  👥 Staff Master (Worship Ops)
+  <button onclick="loadAll()">Refresh</button>
+</header>
+
+<div class="grid">
+
+  <!-- CREATE STAFF -->
+  <div class="panel">
+    <h3>Create Staff</h3>
+
+    <input id="name" placeholder="Name">
+    <input id="phone" placeholder="Phone">
+    <input id="role" placeholder="Role (Worship Leader / HC / etc)">
+
+    <button onclick="createStaff()">+ Add Staff</button>
+
+    <hr style="border:1px solid #1f2937">
+
+    <h3>Staff List</h3>
+    <div id="staffList"></div>
+  </div>
+
+  <!-- STAFF ASSIGNMENT -->
+  <div class="panel">
+    <h3>Assign Weekly Service Template</h3>
+
+    <div id="templateList"></div>
+
+    <button onclick="assignTemplate()">Assign Selected Template</button>
+  </div>
+
+  <!-- STAFF DETAILS -->
+  <div class="panel">
+    <h3>Staff Weekly Serving</h3>
+
+    <div id="assignmentView"></div>
+  </div>
+
+</div>
+
+<script type="module">
+  import { db } from "../assets/app.js";
+
+  let selectedStaff = null;
+  let selectedTemplate = null;
+
+  /* ---------------- LOAD ALL ---------------- */
+
+  async function loadAll() {
+    loadStaff();
+    loadTemplates();
+  }
+
+  /* ---------------- CREATE STAFF ---------------- */
+
+  window.createStaff = async () => {
+
+    const name = document.getElementById("name").value;
+    const phone = document.getElementById("phone").value;
+    const role = document.getElementById("role").value;
+
+    if (!name) return;
+
+    await db.from("staff").insert([{
+      name,
+      phone,
+      role,
+      is_active: true
+    }]);
+
+    document.getElementById("name").value = "";
+    document.getElementById("phone").value = "";
+    document.getElementById("role").value = "";
+
+    loadStaff();
+  };
+
+  /* ---------------- LOAD STAFF ---------------- */
+
+  async function loadStaff() {
+
+    const { data } = await db.from("staff").select("*");
+
+    const box = document.getElementById("staffList");
+    box.innerHTML = "";
+
+    (data || []).forEach(s => {
+
+      box.innerHTML += `
+        <div class="card ${selectedStaff?.id === s.id ? 'selected' : ''}"
+             onclick="selectStaff('${s.id}','${s.name}')">
+          <b>${s.name}</b><br>
+          <span class="tag">${s.role || '-'}</span>
+        </div>
+      `;
+    });
+  }
+
+  window.selectStaff = async (id, name) => {
+
+    selectedStaff = { id, name };
+
+    await loadStaffAssignments();
+    loadStaff();
+  };
+
+  /* ---------------- LOAD TEMPLATES ---------------- */
+
+  async function loadTemplates() {
+
+    const { data } = await db.from("service_templates").select("*");
+
+    const box = document.getElementById("templateList");
+    box.innerHTML = "";
+
+    (data || []).forEach(t => {
+
+      box.innerHTML += `
+        <div class="card ${selectedTemplate?.id === t.id ? 'selected' : ''}"
+             onclick="selectTemplate('${t.id}','${t.name}')">
+          <b>${t.name}</b>
+        </div>
+      `;
+    });
+  }
+
+  window.selectTemplate = (id, name) => {
+    selectedTemplate = { id, name };
+    loadTemplates();
+  };
+
+  /* ---------------- ASSIGN STAFF → TEMPLATE ---------------- */
+
+  window.assignTemplate = async () => {
+
+    if (!selectedStaff || !selectedTemplate) {
+      alert("Select staff + template");
+      return;
+    }
+
+    await db.from("staff_service_templates").insert([{
+      staff_id: selectedStaff.id,
+      template_id: selectedTemplate.id,
+      is_fixed: false
+    }]);
+
+    loadStaffAssignments();
+  };
+
+  /* ---------------- VIEW STAFF ASSIGNMENTS ---------------- */
+
+  async function loadStaffAssignments() {
+
+    const box = document.getElementById("assignmentView");
+    box.innerHTML = "";
+
+    if (!selectedStaff) return;
+
+    const { data } = await db
+      .from("staff_service_templates")
+      .select("*, service_templates(name)")
+      .eq("staff_id", selectedStaff.id);
+
+    (data || []).forEach(a => {
+
+      box.innerHTML += `
+        <div class="slot">
+          📅 ${a.service_templates?.name || '-'}
+        </div>
+      `;
+    });
+  }
+
+  loadAll();
+</script>
+
+</body>
+</html>
