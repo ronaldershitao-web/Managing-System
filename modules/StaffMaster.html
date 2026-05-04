@@ -170,20 +170,24 @@ async function loadStaff() {
   /* ---------------- SERVICES ---------------- */
 
   async function loadServices() {
-    const { data } = await db.from("services").select("*");
+  const { data, error } = await db.from("services").select("*");
 
-    const box = document.getElementById("serviceList");
-    box.innerHTML = "";
-
-    data.forEach(s => {
-      box.innerHTML += `
-        <div class="card" onclick="selectService('${s.id}','${s.title}')">
-          <b>${s.title}</b><br>
-          <span class="tag">${s.service_date}</span>
-        </div>
-      `;
-    });
+  if (error || !data) {
+    console.error("Services load error:", error);
+    return;
   }
+
+  const box = document.getElementById("serviceList");
+  box.innerHTML = "";
+
+  data.forEach(s => {
+    box.innerHTML += `
+      <div class="card">
+        <b>${s.title}</b>
+      </div>
+    `;
+  });
+}
 
   window.selectService = (id, title) => {
     selectedService = { id, title };
