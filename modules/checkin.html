@@ -33,62 +33,87 @@
 
     async function checkIn() {
 
-      const phone = document.getElementById("phone").value.trim();
-      const name = document.getElementById("name").value.trim();
+  const phone = document.getElementById("phone").value.trim();
+  const name = document.getElementById("name").value.trim();
 
-      if (!phone) {
-        showMsg("Please enter your phone number");
-        return;
-      }
+  if (!phone) {
+    showMsg("Please enter your phone number");
+    return;
+  }
 
-      setLoading(true);
+  setLoading(true);
 
-      try {
+  try {
 
-        // 1. find person
-        let { data: person } = await db
-          .from("people")
-          .select("*")
-          .eq("phone", phone)
-          .maybeSingle();
+    // 1. FIND PERSON
+    let { data: person } = await db
+      .from("people")
+      .select("*")
+      .eq("phone", phone)
+      .maybeSingle();
 
-        // 2. auto create if not found
-        if (!person) {
+    let isNew = false;
 
-          const { data: newPerson, error } = await db
-            .from("people")
-            .insert([{
-              phone,
-              name: name || "New Member",
-              source: "event_checkin"
-            }])
-            .select()
-            .single();
+    // 2. IF NOT FOUND → CREATE PROPER PROFILE
+    if (!person) {
 
-          if (error) throw error;
+      isNew = true;
 
-          person = newPerson;
-        }
+      const { data: newPerson, error } = await db
+        .from("people")
+        .insert([{
+          name: name || "New Member",
+          phone: phone,
 
-        // 3. insert attendance
-        const { error: attError } = await db
-          .from("event_attendance")
-          .insert([{
-            event_id: eventId,
-            person_id: person.id,
-            score: 2
-          }]);
+          // 🧠 IMPORTANT: lifecycle tracking
+          engagement_status: "NEW",
+          relationship_stage: 1,
+          discipleship_stage: 1,
 
-        if (attError) throw attError;
+          leader_id: null
+        }])
+        .select()
+        .single();
 
-        showSuccess("Check-in successful 🎉");
+      if (error) throw error;
 
-      } catch (err) {
-        showMsg(err.message || "Error occurred");
-      }
-
-      setLoading(false);
+      person = newPerson;
     }
+
+    // 3. UPDATE RETURNING STATUS (if not new)
+    if (!isNew) {
+      await db
+        .from("people")
+        .update({
+          engagement_status: "RETURNING",
+          last_contact_date: new Date().toISOString()
+        })
+        .eq("id", person.id);
+    }
+
+    // 4. INSERT EVENT ATTENDANCE
+    const { error: attError } = await db
+      .from("event_attendance")
+      .insert([{
+        event_id: eventId,
+        person_id: person.id,
+        score: 2
+      }]);
+
+    if (attError) throw attError;
+
+    showSuccess(
+      isNew
+        ? "Welcome! You are registered 🎉"
+        : "Check-in successful 🎉"
+    );
+
+  } catch (err) {
+    showMsg(err.message || "Error occurred");
+  }
+
+  setLoading(false);
+}
 
     function setLoading(state) {
       document.getElementById("btn").disabled = state;
