@@ -45,16 +45,20 @@
       cursor:pointer;
     }
 
-    .card:hover {
-      border-color:#3b82f6;
+    .card:hover { border-color:#3b82f6; }
+
+    .selected {
+      border:2px solid #3b82f6 !important;
     }
 
-    .tag {
-      font-size:11px;
-      padding:2px 6px;
-      background:#1f2937;
+    input, select {
+      width:100%;
+      padding:8px;
+      margin:5px 0;
       border-radius:6px;
-      margin-left:4px;
+      border:1px solid #334155;
+      background:#0f172a;
+      color:white;
     }
 
     button {
@@ -66,13 +70,8 @@
       cursor:pointer;
     }
 
-    .assign { background:#3b82f6; color:white; }
-    .assign:hover { background:#2563eb; }
-
     .add { background:#10b981; color:white; }
-    .add:hover { background:#059669; }
-
-    h3 { margin-top:0; }
+    .assign { background:#3b82f6; color:white; }
 
     .role-block {
       border:1px solid #334155;
@@ -89,8 +88,11 @@
       font-size:13px;
     }
 
-    .selected {
-      border:2px solid #3b82f6 !important;
+    .tag {
+      font-size:11px;
+      padding:2px 6px;
+      background:#1f2937;
+      border-radius:6px;
     }
   </style>
 </head>
@@ -107,19 +109,47 @@
   <!-- STAFF -->
   <div class="panel">
     <h3>Staff Pool</h3>
-    <button class="add" onclick="createStaff()">+ Add Staff</button>
+
+    <input id="staffName" placeholder="Staff Name">
+    <input id="staffRole" placeholder="Role (HC / Anchor / etc)">
+    <input id="staffDept" placeholder="Department (Worship Ops)">
+
+    <button class="add" onclick="addStaff()">+ Add Staff</button>
+
     <div id="staffList"></div>
   </div>
 
-  <!-- SERVICES + ROLES -->
+  <!-- SERVICES + ASSIGN -->
   <div class="panel">
     <h3>Services</h3>
-    <button class="add" onclick="createService()">+ Add Service</button>
+
+    <input id="serviceTitle" placeholder="Service Title">
+    <input id="serviceDate" placeholder="YYYY-MM-DD">
+
+    <button class="add" onclick="addService()">+ Add Service</button>
+
     <div id="serviceList"></div>
 
     <hr style="border:1px solid #1f2937">
 
-    <h3>Roles</h3>
+    <h3>Assign Role</h3>
+
+    <select id="roleSelect">
+      <option>Service Pastor</option>
+      <option>Anchor</option>
+      <option>Preacher</option>
+      <option>Welcome IC</option>
+      <option>HC 1</option>
+      <option>HC 2</option>
+      <option>HC 3</option>
+      <option>HC 4</option>
+      <option>HC Standby 1</option>
+      <option>HC Standby 2</option>
+      <option>Min Deaf</option>
+    </select>
+
+    <button class="assign" onclick="assign()">Assign Selected</button>
+
     <div id="roles"></div>
   </div>
 
@@ -140,26 +170,24 @@
   /* ---------------- LOAD ---------------- */
 
   async function loadAll() {
-    await loadStaff();
-    await loadServices();
+    loadStaff();
+    loadServices();
   }
 
   /* ---------------- STAFF ---------------- */
 
   async function loadStaff() {
-    const { data, error } = await db.from("staff").select("*");
-
-    if (error || !data) return console.error(error);
+    const { data } = await db.from("staff").select("*");
 
     const box = document.getElementById("staffList");
     box.innerHTML = "";
 
-    data.forEach(s => {
+    (data || []).forEach(s => {
       box.innerHTML += `
         <div class="card ${selectedStaff?.id === s.id ? 'selected' : ''}"
              onclick="selectStaff('${s.id}','${s.name}')">
-          <b>${s.name}</b>
-          <div class="tag">${s.role || "-"}</div>
+          <b>${s.name}</b><br>
+          <span class="tag">${s.role || "-"}</span>
         </div>
       `;
     });
@@ -170,37 +198,34 @@
     loadStaff();
   };
 
-  window.createStaff = async () => {
+  window.addStaff = async () => {
 
-    const name = prompt("Staff Name");
-    if (!name) return;
+    const name = document.getElementById("staffName").value;
+    const role = document.getElementById("staffRole").value;
+    const dept = document.getElementById("staffDept").value;
 
-    const role = prompt("Role") || "-";
-    const department = prompt("Department") || "Worship";
+    if (!name) return alert("Enter staff name");
 
-    const { error } = await db.from("staff").insert([{
+    await db.from("staff").insert([{
       name,
       role,
-      department,
+      department: dept,
       is_active: true
     }]);
 
-    if (error) return console.error(error);
-
+    document.getElementById("staffName").value = "";
     loadStaff();
   };
 
   /* ---------------- SERVICES ---------------- */
 
   async function loadServices() {
-    const { data, error } = await db.from("services").select("*");
-
-    if (error || !data) return console.error(error);
+    const { data } = await db.from("services").select("*");
 
     const box = document.getElementById("serviceList");
     box.innerHTML = "";
 
-    data.forEach(s => {
+    (data || []).forEach(s => {
       box.innerHTML += `
         <div class="card ${selectedService?.id === s.id ? 'selected' : ''}"
              onclick="selectService('${s.id}','${s.title}')">
@@ -214,87 +239,42 @@
   window.selectService = (id, title) => {
     selectedService = { id, title };
     loadServices();
-    loadRoles();
     loadAssignments();
   };
 
-  window.createService = async () => {
+  window.addService = async () => {
 
-    const title = prompt("Service Title");
-    if (!title) return;
+    const title = document.getElementById("serviceTitle").value;
+    const date = document.getElementById("serviceDate").value;
 
-    const date = prompt("Service Date (YYYY-MM-DD)");
+    if (!title) return alert("Enter service title");
 
-    const { error } = await db.from("services").insert([{
+    await db.from("services").insert([{
       title,
       service_date: date
     }]);
 
-    if (error) return console.error(error);
-
+    document.getElementById("serviceTitle").value = "";
     loadServices();
   };
 
-  /* ---------------- ROLES ---------------- */
-
-  async function loadRoles() {
-
-    if (!selectedService) return;
-
-    const { data, error } = await db
-      .from("service_assignments")
-      .select("*, staff(name)")
-      .eq("service_id", selectedService.id);
-
-    if (error || !data) return console.error(error);
-
-    const box = document.getElementById("roles");
-    box.innerHTML = "";
-
-    const grouped = {};
-
-    data.forEach(r => {
-      if (!grouped[r.role]) grouped[r.role] = [];
-      grouped[r.role].push(r);
-    });
-
-    Object.keys(grouped).forEach(role => {
-
-      box.innerHTML += `
-        <div class="role-block">
-          <b>${role}</b>
-
-          ${grouped[role].map(m => `
-            <div class="slot">${m.staff?.name || "-"}</div>
-          `).join("")}
-
-          <button class="assign" onclick="assignRole('${role}')">
-            Assign to ${role}
-          </button>
-        </div>
-      `;
-    });
-  }
-
   /* ---------------- ASSIGN ---------------- */
 
-  window.assignRole = async (role) => {
+  window.assign = async () => {
 
     if (!selectedStaff || !selectedService) {
-      alert("Select staff + service first");
-      return;
+      return alert("Select staff AND service first");
     }
 
-    const { error } = await db.from("service_assignments").insert([{
+    const role = document.getElementById("roleSelect").value;
+
+    await db.from("service_assignments").insert([{
       service_id: selectedService.id,
       staff_id: selectedStaff.id,
       role,
       status: "ASSIGNED"
     }]);
 
-    if (error) return console.error(error);
-
-    loadRoles();
     loadAssignments();
   };
 
@@ -304,17 +284,15 @@
 
     if (!selectedService) return;
 
-    const { data, error } = await db
+    const { data } = await db
       .from("service_assignments")
       .select("*, staff(name)")
       .eq("service_id", selectedService.id);
 
-    if (error || !data) return console.error(error);
-
     const box = document.getElementById("assignments");
     box.innerHTML = "";
 
-    data.forEach(a => {
+    (data || []).forEach(a => {
       box.innerHTML += `
         <div class="card">
           <b>${a.role}</b><br>
