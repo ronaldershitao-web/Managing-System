@@ -4,8 +4,6 @@
   <title>Worship Ops Command Center</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
   <style>
     body {
       margin:0;
@@ -77,18 +75,7 @@
       background:#2563eb;
     }
 
-    .service-btn {
-      background:#10b981;
-      color:white;
-    }
-
-    .service-btn:hover {
-      background:#059669;
-    }
-
-    h3 {
-      margin-top:0;
-    }
+    h3 { margin-top:0; }
 
     .role-block {
       border:1px solid #334155;
@@ -122,7 +109,7 @@
     <div id="staffList"></div>
   </div>
 
-  <!-- SERVICES -->
+  <!-- SERVICES + ROLES -->
   <div class="panel">
     <h3>Services</h3>
     <div id="serviceList"></div>
@@ -133,7 +120,7 @@
     <div id="roles"></div>
   </div>
 
-  <!-- ASSIGNMENTS -->
+  <!-- LIVE -->
   <div class="panel">
     <h3>Live Assignments</h3>
     <div id="assignments"></div>
@@ -141,15 +128,13 @@
 
 </div>
 
-<script>
-  const supabaseUrl = "YOUR_SUPABASE_URL";
-  const supabaseKey = "YOUR_SUPABASE_ANON_KEY";
-  const db = supabase.createClient(supabaseUrl, supabaseKey);
+<script type="module">
+  import { db } from "../assets/app.js";
 
   let selectedStaff = null;
   let selectedService = null;
 
-  /* ---------------- LOAD EVERYTHING ---------------- */
+  /* ---------------- LOAD ---------------- */
 
   async function loadAll() {
     loadStaff();
@@ -174,10 +159,10 @@
     });
   }
 
-  function selectStaff(id, name) {
+  window.selectStaff = (id, name) => {
     selectedStaff = { id, name };
-    alert("Selected Staff: " + name);
-  }
+    alert("Selected: " + name);
+  };
 
   /* ---------------- SERVICES ---------------- */
 
@@ -197,12 +182,12 @@
     });
   }
 
-  function selectService(id, title) {
+  window.selectService = (id, title) => {
     selectedService = { id, title };
-    loadAssignments();
     loadRoles();
+    loadAssignments();
     alert("Selected Service: " + title);
-  }
+  };
 
   /* ---------------- ROLES ---------------- */
 
@@ -210,7 +195,7 @@
 
     if (!selectedService) return;
 
-    const { data: roles } = await db
+    const { data } = await db
       .from("service_assignments")
       .select("*, staff(name)")
       .eq("service_id", selectedService.id);
@@ -218,28 +203,24 @@
     const box = document.getElementById("roles");
     box.innerHTML = "";
 
-    const roleMap = {};
+    const grouped = {};
 
-    roles.forEach(r => {
-      if (!roleMap[r.role]) roleMap[r.role] = [];
-      roleMap[r.role].push(r);
+    data.forEach(r => {
+      if (!grouped[r.role]) grouped[r.role] = [];
+      grouped[r.role].push(r);
     });
 
-    Object.keys(roleMap).forEach(role => {
-
-      const members = roleMap[role];
+    Object.keys(grouped).forEach(role => {
 
       box.innerHTML += `
         <div class="role-block">
           <b>${role}</b>
 
-          ${members.map(m => `
-            <div class="slot">
-              ${m.staff?.name || "Unknown"}
-            </div>
+          ${grouped[role].map(m => `
+            <div class="slot">${m.staff?.name || "-"}</div>
           `).join("")}
 
-          <button class="assign" onclick="assign('${role}')">
+          <button class="assign" onclick="assignRole('${role}')">
             Assign to ${role}
           </button>
         </div>
@@ -249,10 +230,10 @@
 
   /* ---------------- ASSIGN ---------------- */
 
-  async function assign(role) {
+  window.assignRole = async (role) => {
 
     if (!selectedStaff || !selectedService) {
-      alert("Select staff and service first");
+      alert("Select staff + service first");
       return;
     }
 
@@ -265,9 +246,9 @@
 
     loadRoles();
     loadAssignments();
-  }
+  };
 
-  /* ---------------- LIVE VIEW ---------------- */
+  /* ---------------- LIVE ---------------- */
 
   async function loadAssignments() {
 
@@ -290,6 +271,8 @@
       `;
     });
   }
+
+  window.loadAll = loadAll;
 
   loadAll();
 </script>
