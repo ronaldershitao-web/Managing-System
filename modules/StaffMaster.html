@@ -1,72 +1,71 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Staff Master</title>
-
+  <title>Worship Ops - Staff Master</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <script type="module">
     import { db } from "../assets/app.js";
 
     let staff = [];
+    let editing = null;
 
     async function load() {
-
       const res = await db
         .from("staff")
         .select("*")
         .order("created_at", { ascending: false });
 
       staff = res.data || [];
-
       render();
     }
 
-    /* ---------------- CREATE STAFF ---------------- */
+    /* ---------------- OPEN FORM ---------------- */
 
-    async function createStaff() {
+    function openForm(s = null) {
+      editing = s;
 
-      const name = prompt("Staff Name");
-      const phone = prompt("Phone Number");
+      document.getElementById("formTitle").innerText =
+        s ? "Edit Staff" : "Add Staff";
 
-      if (!name) return;
+      document.getElementById("name").value = s?.name || "";
+      document.getElementById("phone").value = s?.phone || "";
+      document.getElementById("role").value = s?.role || "";
+      document.getElementById("department").value = s?.department || "Worship Service";
+      document.getElementById("isActive").checked = s?.is_active ?? true;
+      document.getElementById("communion").checked = s?.communion_eligible ?? false;
 
-      const role = prompt("Role (Worship Leader / Media / Usher / etc.)");
-      const department = prompt("Department (default: Worship Service)") || "Worship Service";
+      document.getElementById("form").style.display = "block";
+    }
 
-      const communion = confirm("Eligible for Communion serving?");
+    /* ---------------- SAVE ---------------- */
 
-      await db.from("staff").insert([{
-        name,
-        phone,
-        role,
-        department,
-        is_active: true,
-        communion_eligible: communion
-      }]);
+    async function save() {
 
+      const payload = {
+        name: name.value,
+        phone: phone.value,
+        role: role.value,
+        department: department.value,
+        is_active: isActive.checked,
+        communion_eligible: communion.checked
+      };
+
+      if (editing) {
+        await db.from("staff")
+          .update(payload)
+          .eq("id", editing.id);
+      } else {
+        await db.from("staff").insert([payload]);
+      }
+
+      closeForm();
       load();
     }
 
-    /* ---------------- EDIT STAFF ---------------- */
-
-    async function editStaff(s) {
-
-      const role = prompt("Role", s.role || "");
-      const department = prompt("Department", s.department || "");
-      const active = confirm("Should this staff remain ACTIVE?");
-      const communion = confirm("Eligible for Communion?");
-
-      await db.from("staff")
-        .update({
-          role,
-          department,
-          is_active: active,
-          communion_eligible: communion
-        })
-        .eq("id", s.id);
-
-      load();
+    function closeForm() {
+      document.getElementById("form").style.display = "none";
+      editing = null;
     }
 
     /* ---------------- RENDER ---------------- */
@@ -75,35 +74,29 @@
 
       const container = document.getElementById("list");
 
-      container.innerHTML = staff.map(s => {
+      container.innerHTML = staff.map(s => `
+        <div class="card" onclick='openForm(${JSON.stringify(s)})'>
 
-        return `
-          <div class="card">
+          <b>${s.name || "Unnamed"}</b>
 
-            <b>${s.name || "Unnamed"}</b>
-
-            <div style="font-size:12px;color:#94a3b8;">
-              📞 ${s.phone || "-"}
-            </div>
-
-            <div style="margin-top:6px;font-size:12px;">
-              🧭 Role: <b>${s.role || "-"}</b><br>
-              🏢 Dept: ${s.department || "-"}<br>
-              🍷 Communion: <b>${s.communion_eligible ? "YES" : "NO"}</b><br>
-              Status: ${s.is_active ? "Active" : "Inactive"}
-            </div>
-
-            <button onclick='editStaff(${JSON.stringify(s)})' style="margin-top:8px;">
-              Edit Staff
-            </button>
-
+          <div class="sub">
+            📞 ${s.phone || "-"}
           </div>
-        `;
-      }).join("");
+
+          <div class="meta">
+            🧭 ${s.role || "-"} <br>
+            🏢 ${s.department || "-"} <br>
+            🍷 Communion: ${s.communion_eligible ? "YES" : "NO"} <br>
+            ${s.is_active ? "🟢 Active" : "🔴 Inactive"}
+          </div>
+
+        </div>
+      `).join("");
     }
 
-    window.createStaff = createStaff;
-    window.editStaff = editStaff;
+    window.openForm = openForm;
+    window.save = save;
+    window.closeForm = closeForm;
     window.onload = load;
 
   </script>
@@ -112,7 +105,7 @@
     body {
       margin:0;
       font-family:Arial;
-      background:#0f172a;
+      background:#0b1220;
       color:white;
     }
 
@@ -124,27 +117,91 @@
       align-items:center;
     }
 
+    .layout {
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:10px;
+      padding:10px;
+    }
+
     .card {
       background:#111827;
       border:1px solid #1f2937;
       padding:12px;
       border-radius:10px;
-      margin-bottom:10px;
+      cursor:pointer;
     }
 
-    .grid {
-      padding:10px;
+    .card:hover {
+      border-color:#3b82f6;
+    }
+
+    .sub {
+      font-size:12px;
+      color:#94a3b8;
+      margin-top:4px;
+    }
+
+    .meta {
+      font-size:12px;
+      margin-top:6px;
+      color:#cbd5e1;
+    }
+
+    /* FORM PANEL */
+    .form {
+      background:#0f172a;
+      border:1px solid #1f2937;
+      padding:12px;
+      border-radius:10px;
+      display:none;
+      position:sticky;
+      top:10px;
+      height: fit-content;
+    }
+
+    input, select {
+      width:100%;
+      padding:8px;
+      margin-top:6px;
+      border-radius:6px;
+      border:1px solid #334155;
+      background:#0b1220;
+      color:white;
+    }
+
+    .row {
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:8px;
+    }
+
+    .switch {
+      display:flex;
+      justify-content:space-between;
+      margin-top:10px;
+      font-size:13px;
     }
 
     button {
-      padding:6px 10px;
-      background:#2563eb;
+      padding:8px;
+      margin-top:10px;
+      width:100%;
       border:none;
-      color:white;
       border-radius:6px;
-      font-size:12px;
       cursor:pointer;
     }
+
+    .save {
+      background:#3b82f6;
+      color:white;
+    }
+
+    .close {
+      background:#ef4444;
+      color:white;
+    }
+
   </style>
 
 </head>
@@ -152,12 +209,54 @@
 <body>
 
 <header>
-  👥 Staff Master
-  <button onclick="createStaff()">+ Add Staff</button>
+  👥 Worship Ops Staff Master
+  <button onclick="openForm()">+ Add Staff</button>
 </header>
 
-<div class="grid">
+<div class="layout">
+
+  <!-- LIST -->
   <div id="list"></div>
+
+  <!-- FORM -->
+  <div class="form" id="form">
+
+    <h3 id="formTitle">Add Staff</h3>
+
+    <input id="name" placeholder="Name" />
+    <input id="phone" placeholder="Phone" />
+
+    <select id="role">
+      <option value="">Role</option>
+      <option>Worship Leader</option>
+      <option>Vocalist</option>
+      <option>Musician</option>
+      <option>Sound</option>
+      <option>Media</option>
+      <option>Usher</option>
+    </select>
+
+    <select id="department">
+      <option>Worship Service</option>
+      <option>Youth Ministry</option>
+      <option>Technical Team</option>
+    </select>
+
+    <div class="switch">
+      Active
+      <input type="checkbox" id="isActive" />
+    </div>
+
+    <div class="switch">
+      Communion Eligible
+      <input type="checkbox" id="communion" />
+    </div>
+
+    <button class="save" onclick="save()">Save</button>
+    <button class="close" onclick="closeForm()">Close</button>
+
+  </div>
+
 </div>
 
 </body>
