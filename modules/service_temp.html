@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Service Template Builder</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <style>
+    body {
+      margin:0;
+      font-family: Arial;
+      background:#0b1220;
+      color:white;
+    }
+
+    header {
+      padding:12px;
+      background:#111827;
+      font-weight:bold;
+    }
+
+    .grid {
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:10px;
+      padding:10px;
+    }
+
+    .panel {
+      background:#111827;
+      border:1px solid #1f2937;
+      border-radius:10px;
+      padding:10px;
+      height:85vh;
+      overflow-y:auto;
+    }
+
+    input {
+      width:100%;
+      padding:8px;
+      margin:5px 0;
+      border-radius:6px;
+      border:1px solid #334155;
+      background:#0f172a;
+      color:white;
+    }
+
+    button {
+      width:100%;
+      padding:8px;
+      margin-top:6px;
+      border:none;
+      border-radius:6px;
+      cursor:pointer;
+      background:#3b82f6;
+      color:white;
+    }
+
+    button:hover {
+      background:#2563eb;
+    }
+
+    .card {
+      background:#0f172a;
+      border:1px solid #334155;
+      padding:10px;
+      border-radius:8px;
+      margin-bottom:8px;
+      cursor:pointer;
+    }
+
+    .selected {
+      border:2px solid #3b82f6;
+    }
+
+    .slot {
+      background:#1f2937;
+      padding:6px;
+      border-radius:6px;
+      margin-top:5px;
+      font-size:13px;
+    }
+
+    h3 { margin-top:0; }
+  </style>
+</head>
+
+<body>
+
+<header>
+  🧩 Service Template Builder
+</header>
+
+<div class="grid">
+
+  <!-- TEMPLATE LIST -->
+  <div class="panel">
+    <h3>Templates</h3>
+
+    <input id="templateName" placeholder="New Template Name">
+    <button onclick="createTemplate()">+ Create Template</button>
+
+    <div id="templateList"></div>
+  </div>
+
+  <!-- TEMPLATE DETAILS -->
+  <div class="panel">
+    <h3>Template Roles</h3>
+
+    <input id="roleName" placeholder="Role Name">
+    <button onclick="addRole()">+ Add Role</button>
+
+    <div id="roleList"></div>
+  </div>
+
+</div>
+
+<script type="module">
+  import { db } from "../assets/app.js";
+
+  let selectedTemplate = null;
+
+  /* ---------------- LOAD ---------------- */
+
+  async function loadTemplates() {
+    const { data } = await db.from("service_templates").select("*");
+
+    const box = document.getElementById("templateList");
+    box.innerHTML = "";
+
+    (data || []).forEach(t => {
+      box.innerHTML += `
+        <div class="card ${selectedTemplate?.id === t.id ? 'selected' : ''}"
+             onclick="selectTemplate('${t.id}','${t.name}')">
+          <b>${t.name}</b>
+        </div>
+      `;
+    });
+  }
+
+  /* ---------------- SELECT ---------------- */
+
+  window.selectTemplate = async (id, name) => {
+    selectedTemplate = { id, name };
+    await loadRoles();
+    loadTemplates();
+  };
+
+  /* ---------------- CREATE TEMPLATE ---------------- */
+
+  window.createTemplate = async () => {
+
+    const name = document.getElementById("templateName").value;
+    if (!name) return;
+
+    await db.from("service_templates").insert([{ name }]);
+
+    document.getElementById("templateName").value = "";
+    loadTemplates();
+  };
+
+  /* ---------------- ADD ROLE ---------------- */
+
+  window.addRole = async () => {
+
+    if (!selectedTemplate) {
+      alert("Select a template first");
+      return;
+    }
+
+    const role = document.getElementById("roleName").value;
+    if (!role) return;
+
+    await db.from("service_template_roles").insert([{
+      template_id: selectedTemplate.id,
+      role
+    }]);
+
+    document.getElementById("roleName").value = "";
+    loadRoles();
+  };
+
+  /* ---------------- LOAD ROLES ---------------- */
+
+  async function loadRoles() {
+
+    const box = document.getElementById("roleList");
+    box.innerHTML = "";
+
+    if (!selectedTemplate) return;
+
+    const { data } = await db
+      .from("service_template_roles")
+      .select("*")
+      .eq("template_id", selectedTemplate.id)
+      .order("created_at", { ascending: true });
+
+    (data || []).forEach(r => {
+      box.innerHTML += `
+        <div class="slot">
+          ${r.role}
+        </div>
+      `;
+    });
+  }
+
+  loadTemplates();
+</script>
+
+</body>
+</html>
