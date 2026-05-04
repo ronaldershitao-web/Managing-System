@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Service Builder</title>
+  <title>Service Builder Pro</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <style>
@@ -61,18 +61,16 @@
       padding:10px;
       border-radius:8px;
       margin-bottom:8px;
-      cursor:pointer;
     }
 
-    .selected {
-      border:2px solid #3b82f6;
+    .warn {
+      color:#fbbf24;
+      font-size:12px;
     }
 
-    .tag {
-      font-size:11px;
-      padding:2px 6px;
-      background:#1f2937;
-      border-radius:6px;
+    .bad {
+      color:#ef4444;
+      font-size:12px;
     }
   </style>
 </head>
@@ -80,7 +78,7 @@
 <body>
 
 <header>
-  ⛪ Service Builder (with Communion Logic)
+  ⛪ Service Builder (Full System)
 </header>
 
 <div class="grid">
@@ -89,25 +87,26 @@
   <div class="panel">
     <h3>Create Service</h3>
 
-    <input id="title" placeholder="Service Title">
-    <input type="date" id="service_date">
+    <input type="date" id="date">
+
+    <select id="template"></select>
 
     <label>
-      <input type="checkbox" id="is_communion">
+      <input type="checkbox" id="communion">
       Holy Communion Service
     </label>
 
-    <button onclick="createService()">+ Create Service</button>
+    <button onclick="createService()">Generate Service</button>
 
     <hr>
 
-    <h3>Existing Services</h3>
+    <h3>Services</h3>
     <div id="serviceList"></div>
   </div>
 
-  <!-- TEMPLATE ROLES -->
+  <!-- ROLE ASSIGNMENT -->
   <div class="panel">
-    <h3>Template Roles</h3>
+    <h3>Service Roles</h3>
     <div id="roleList"></div>
   </div>
 
@@ -118,23 +117,53 @@ import { db } from "../assets/app.js";
 
 let selectedService = null;
 
+/* ---------------- LOAD TEMPLATES ---------------- */
+
+async function loadTemplates() {
+  const { data } = await db.from("service_templates").select("*");
+
+  const box = document.getElementById("template");
+  box.innerHTML = "";
+
+  (data || []).forEach(t => {
+    box.innerHTML += `<option value="${t.id}">${t.name}</option>`;
+  });
+}
+
 /* ---------------- CREATE SERVICE ---------------- */
 
 window.createService = async () => {
 
-  const title = document.getElementById("title").value;
-  const service_date = document.getElementById("service_date").value;
-  const is_communion = document.getElementById("is_communion").checked;
+  const service_date = document.getElementById("date").value;
+  const template_id = document.getElementById("template").value;
+  const is_communion = document.getElementById("communion").checked;
 
-  if (!title || !service_date) return;
+  if (!service_date || !template_id) return;
 
-  await db.from("services").insert([{
-    title,
-    service_date,
-    is_communion
-  }]);
+  // 1. create service
+  const { data: service } = await db
+    .from("services")
+    .insert([{
+      service_date,
+      service_template_id: template_id,
+      is_communion
+    }])
+    .select()
+    .single();
 
-  document.getElementById("title").value = "";
+  // 2. copy roles from template
+  const { data: roles } = await db
+    .from("service_template_roles")
+    .select("*")
+    .eq("template_id", template_id);
+
+  const mapped = roles.map(r => ({
+    service_id: service.id,
+    role: r.role,
+    is_communion_role: r.is_communion_role || false
+  }));
+
+  await db.from("service_roles").insert(mapped);
 
   loadServices();
 };
@@ -143,7 +172,10 @@ window.createService = async () => {
 
 async function loadServices() {
 
-  const { data } = await db.from("services").select("*").order("service_date", { ascending: false });
+  const { data } = await db
+    .from("services")
+    .select("*")
+    .order("service_date", { ascending:false });
 
   const box = document.getElementById("serviceList");
   box.innerHTML = "";
@@ -151,16 +183,9 @@ async function loadServices() {
   (data || []).forEach(s => {
 
     box.innerHTML += `
-      <div class="card ${selectedService?.id === s.id ? 'selected' : ''}"
-           onclick="selectService('${s.id}')">
-
-        <b>${s.title}</b><br>
-
-        <span class="tag">
-          ${s.is_communion ? "🕊 Communion" : "Standard"}
-        </span><br>
-
-        ${s.service_date}
+      <div class="card" onclick="selectService('${s.id}')">
+        <b>${s.service_date}</b><br>
+        ${s.is_communion ? "🕊 Communion Service" : "Standard"}
       </div>
     `;
   });
@@ -169,38 +194,37 @@ async function loadServices() {
 /* ---------------- SELECT SERVICE ---------------- */
 
 window.selectService = async (id) => {
-  selectedService = { id };
-  loadServices();
+  selectedService = id;
   loadRoles();
 };
 
-/* ---------------- LOAD ROLES (with communion filter) ---------------- */
+/* ---------------- LOAD ROLES + AVAILABILITY CHECK ---------------- */
 
 async function loadRoles() {
 
   if (!selectedService) return;
 
-  const { data } = await db
-    .from("service_template_roles")
-    .select("*")
-    .order("created_at", { ascending: true });
+  const { data: roles } = await db
+    .from("service_roles")
+    .select("*, staff(name)")
+    .eq("service_id", selectedService);
 
   const box = document.getElementById("roleList");
   box.innerHTML = "";
 
-  (data || []).forEach(r => {
-
-    const disabled = r.is_communion_role ? "🕊 Communion Role" : "Standard Role";
+  (roles || []).forEach(r => {
 
     box.innerHTML += `
       <div class="card">
         <b>${r.role}</b><br>
-        <span class="tag">${disabled}</span>
+        Staff: ${r.staff?.name || "Unassigned"}
       </div>
     `;
   });
 }
 
+/* INIT */
+loadTemplates();
 loadServices();
 
 </script>
