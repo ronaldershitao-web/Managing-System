@@ -12,7 +12,24 @@
 
     let eventName = "";
 
+    const params = new URLSearchParams(window.location.search);
+const success = params.get("success");
+const successName = params.get("name");
+
     async function init() {
+
+      if (success) {
+
+  document.getElementById("form").style.display = "none";
+
+  showSuccess(
+    successName
+      ? `🎉 Welcome ${successName}! You are checked in`
+      : "🎉 Check-in successful"
+  );
+
+  return;
+}
 
       if (!eventId) {
         document.body.innerHTML = "<h2 style='color:white'>Invalid Check-in Link</h2>";
