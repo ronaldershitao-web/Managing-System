@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Communion Eligibility Manager</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <style>
+    body {
+      margin:0;
+      font-family: Arial;
+      background:#0b1220;
+      color:white;
+    }
+
+    header {
+      padding:12px;
+      background:#111827;
+      font-weight:bold;
+    }
+
+    .grid {
+      padding:10px;
+    }
+
+    .card {
+      background:#111827;
+      border:1px solid #1f2937;
+      padding:10px;
+      border-radius:8px;
+      margin-bottom:8px;
+
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+    }
+
+    .name {
+      font-weight:bold;
+    }
+
+    .tag {
+      font-size:12px;
+      padding:4px 8px;
+      border-radius:6px;
+    }
+
+    .yes {
+      background:#16a34a;
+    }
+
+    .no {
+      background:#dc2626;
+    }
+
+    button {
+      padding:6px 10px;
+      border:none;
+      border-radius:6px;
+      cursor:pointer;
+      background:#3b82f6;
+      color:white;
+    }
+
+    button:hover {
+      background:#2563eb;
+    }
+  </style>
+</head>
+
+<body>
+
+<header>
+  🍷 Communion Eligibility Manager
+</header>
+
+<div class="grid" id="list"></div>
+
+<script type="module">
+  import { db } from "../assets/app.js";
+
+  /* ---------------- LOAD STAFF ---------------- */
+
+  async function load() {
+
+    const { data, error } = await db.from("staff").select("*");
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    const box = document.getElementById("list");
+    box.innerHTML = "";
+
+    (data || []).forEach(s => {
+
+      const statusClass = s.communion_eligible ? "yes" : "no";
+      const statusText = s.communion_eligible ? "Eligible" : "Not Eligible";
+
+      box.innerHTML += `
+        <div class="card">
+          <div class="name">${s.name}</div>
+
+          <div class="tag ${statusClass}">
+            ${statusText}
+          </div>
+
+          <button onclick="toggle('${s.id}', ${s.communion_eligible})">
+            Toggle
+          </button>
+        </div>
+      `;
+    });
+  }
+
+  /* ---------------- TOGGLE ---------------- */
+
+  window.toggle = async (id, current) => {
+
+    const { error } = await db
+      .from("staff")
+      .update({
+        communion_eligible: !current
+      })
+      .eq("id", id);
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    load();
+  };
+
+  load();
+</script>
+
+</body>
+</html>
