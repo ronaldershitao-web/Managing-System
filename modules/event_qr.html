@@ -142,7 +142,15 @@ import { db } from "./assets/app.js";
 let events = [];
 let currentLink = "";
 
+document.addEventListener("DOMContentLoaded", init);
+
 async function init() {
+
+  await loadEvents();
+  renderDropdown();
+}
+
+async function loadEvents() {
 
   const { data } = await db
     .from("events")
@@ -150,18 +158,29 @@ async function init() {
     .order("start_time", { ascending: false });
 
   events = data || [];
+}
+
+function renderDropdown() {
 
   const sel = document.getElementById("eventSelect");
+
   sel.innerHTML = `<option value="">Select Event</option>`;
+
+  if (!events.length) {
+    sel.innerHTML = `<option>No events found</option>`;
+    return;
+  }
 
   events.forEach(e => {
     const opt = document.createElement("option");
     opt.value = e.id;
-    opt.textContent = `${e.title}`;
+    opt.textContent = `${e.title} (${new Date(e.start_time).toLocaleDateString()})`;
     sel.appendChild(opt);
   });
 
-  sel.onchange = () => renderQR(sel.value);
+  sel.addEventListener("change", (e) => {
+    renderQR(e.target.value);
+  });
 }
 
 function renderQR(eventId) {
@@ -177,9 +196,10 @@ function renderQR(eventId) {
   document.getElementById("date").innerText =
     new Date(event.start_time).toLocaleString();
 
-  document.getElementById("qrBox").innerHTML = "";
+  const box = document.getElementById("qrBox");
+  box.innerHTML = "";
 
-  new QRCode(document.getElementById("qrBox"), {
+  new QRCode(box, {
     text: url,
     width: 220,
     height: 220
@@ -193,8 +213,6 @@ window.copyLink = async function () {
   await navigator.clipboard.writeText(currentLink);
   alert("Link copied ✔");
 };
-
-window.onload = init;
 
 </script>
 
