@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Staff Availability</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <style>
+    body {
+      margin:0;
+      font-family: Arial;
+      background:#0b1220;
+      color:white;
+    }
+
+    header {
+      padding:12px;
+      background:#111827;
+      font-weight:bold;
+    }
+
+    .grid {
+      display:grid;
+      grid-template-columns: 1fr 2fr;
+      gap:10px;
+      padding:10px;
+    }
+
+    .panel {
+      background:#111827;
+      border:1px solid #1f2937;
+      border-radius:10px;
+      padding:10px;
+      height:85vh;
+      overflow-y:auto;
+    }
+
+    input, select {
+      width:100%;
+      padding:8px;
+      margin:5px 0;
+      border-radius:6px;
+      border:1px solid #334155;
+      background:#0f172a;
+      color:white;
+    }
+
+    button {
+      width:100%;
+      padding:8px;
+      margin-top:6px;
+      border:none;
+      border-radius:6px;
+      cursor:pointer;
+      background:#3b82f6;
+      color:white;
+    }
+
+    .card {
+      background:#0f172a;
+      border:1px solid #334155;
+      padding:10px;
+      border-radius:8px;
+      margin-bottom:8px;
+      cursor:pointer;
+    }
+
+    .selected {
+      border:2px solid #3b82f6;
+    }
+
+    .slot {
+      background:#1f2937;
+      padding:8px;
+      border-radius:6px;
+      margin-top:5px;
+      font-size:13px;
+    }
+
+    .danger {
+      background:#ef4444;
+    }
+  </style>
+</head>
+
+<body>
+
+<header>
+  📅 Staff Availability Manager
+</header>
+
+<div class="grid">
+
+  <!-- STAFF LIST -->
+  <div class="panel">
+    <h3>Staff</h3>
+    <div id="staffList"></div>
+  </div>
+
+  <!-- AVAILABILITY -->
+  <div class="panel">
+    <h3>Availability</h3>
+
+    <input type="date" id="startDate">
+    <input type="date" id="endDate">
+
+    <select id="type">
+      <option value="AL">Annual Leave</option>
+      <option value="OFF">Off Day</option>
+      <option value="MINISTRY">Ministry</option>
+      <option value="TRAINING">Training</option>
+    </select>
+
+    <input id="reason" placeholder="Reason (optional)">
+
+    <button onclick="addAvailability()">+ Add Availability</button>
+
+    <hr style="border:1px solid #1f2937">
+
+    <div id="availabilityList"></div>
+  </div>
+
+</div>
+
+<script type="module">
+import { db } from "../assets/app.js";
+
+let selectedStaff = null;
+
+/* ---------------- LOAD STAFF ---------------- */
+
+async function loadStaff() {
+  const { data } = await db.from("staff").select("*");
+
+  const box = document.getElementById("staffList");
+  box.innerHTML = "";
+
+  (data || []).forEach(s => {
+    box.innerHTML += `
+      <div class="card ${selectedStaff?.id === s.id ? 'selected' : ''}"
+           onclick="selectStaff('${s.id}','${s.name}')">
+        <b>${s.name}</b>
+      </div>
+    `;
+  });
+}
+
+window.selectStaff = (id, name) => {
+  selectedStaff = { id, name };
+  loadStaff();
+  loadAvailability();
+};
+
+/* ---------------- ADD ---------------- */
+
+window.addAvailability = async () => {
+
+  if (!selectedStaff) {
+    alert("Select staff first");
+    return;
+  }
+
+  const start_date = document.getElementById("startDate").value;
+  const end_date = document.getElementById("endDate").value;
+  const type = document.getElementById("type").value;
+  const reason = document.getElementById("reason").value;
+
+  if (!start_date || !end_date) {
+    alert("Select dates");
+    return;
+  }
+
+  await db.from("staff_availability").insert([{
+    staff_id: selectedStaff.id,
+    start_date,
+    end_date,
+    type,
+    status: "OFF",
+    reason
+  }]);
+
+  loadAvailability();
+};
+
+/* ---------------- LOAD AVAILABILITY ---------------- */
+
+async function loadAvailability() {
+
+  const box = document.getElementById("availabilityList");
+  box.innerHTML = "";
+
+  if (!selectedStaff) return;
+
+  const { data } = await db
+    .from("staff_availability")
+    .select("*")
+    .eq("staff_id", selectedStaff.id)
+    .order("start_date", { ascending: false });
+
+  (data || []).forEach(a => {
+    box.innerHTML += `
+      <div class="slot">
+        <b>${a.type}</b><br>
+        ${a.start_date} → ${a.end_date}<br>
+        ${a.reason || ''}
+
+        <button class="danger"
+          onclick="removeAvailability('${a.id}')">
+          Delete
+        </button>
+      </div>
+    `;
+  });
+}
+
+/* ---------------- DELETE ---------------- */
+
+window.removeAvailability = async (id) => {
+  await db.from("staff_availability").delete().eq("id", id);
+  loadAvailability();
+};
+
+loadStaff();
+</script>
+
+</body>
+</html>
