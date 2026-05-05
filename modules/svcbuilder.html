@@ -129,6 +129,14 @@ import { db } from "../assets/app.js";
 
 let selectedService = null;
 let selectedRole = null;
+let assignedStaffMap = {}; // service-level assignment tracking
+
+/* ---------------- HELPERS ---------------- */
+
+function getDayName(dateStr) {
+  const d = new Date(dateStr);
+  return d.toLocaleDateString("en-SG", { weekday: "short" }); // Sat / Sun
+}
 
 /* ---------------- SERVICES ---------------- */
 
@@ -137,20 +145,25 @@ async function loadServices() {
   const { data } = await db
     .from("services")
     .select("*")
-    .order("service_date", { ascending:false });
+    .order("service_date", { ascending: false });
 
   const box = document.getElementById("serviceList");
   box.innerHTML = "";
 
   (data || []).forEach(s => {
 
+    const day = getDayName(s.service_date);
+
     box.innerHTML += `
       <div class="card ${s.is_communion_service ? 'communion' : ''}"
         onclick="selectService('${s.id}', ${s.is_communion_service}, '${s.service_date}')">
 
-        <b>${s.service_date}</b><br>
+        <b>${s.service_date}</b> (${day})<br>
 
-        ${s.is_communion_service ? "🕊 Communion Service" : "Standard Service"}
+        ${s.is_communion_service
+          ? "🕊 Communion Service"
+          : "Standard Service"
+        }
 
       </div>
     `;
@@ -180,7 +193,16 @@ async function loadRoles() {
   const box = document.getElementById("roleList");
   box.innerHTML = "";
 
+  assignedStaffMap = {};
+
   (data || []).forEach(r => {
+
+    // ❌ hide communion roles if NOT communion service
+    if (!selectedService.isComm && r.is_communion_role) return;
+
+    if (r.staff_id) {
+      assignedStaffMap[r.staff_id] = true;
+    }
 
     box.innerHTML += `
       <div class="role ${r.is_communion_role ? 'communion' : ''}"
@@ -204,7 +226,7 @@ window.selectRole = (roleId, isCommRole) => {
   selectedRole = { roleId, isCommRole };
 };
 
-/* ---------------- AVAILABILITY CHECK ---------------- */
+/* ---------------- AVAILABILITY ---------------- */
 
 async function isUnavailable(staffId, serviceDate) {
 
@@ -223,6 +245,8 @@ async function isUnavailable(staffId, serviceDate) {
 
 async function loadStaff() {
 
+  if (!selectedService) return;
+
   const { data } = await db.from("staff").select("*");
 
   const box = document.getElementById("staffList");
@@ -230,23 +254,30 @@ async function loadStaff() {
 
   for (const s of data || []) {
 
-    const unavailable = await isUnavailable(
-      s.id,
-      selectedService?.date
-    );
+    const unavailable = await isUnavailable(s.id, selectedService.date);
+
+    // ❌ REMOVE unavailable staff completely
+    if (unavailable) continue;
+
+    const alreadyAssigned = assignedStaffMap[s.id];
 
     const blocked =
-      (selectedRole?.isCommRole && !s.communion_eligible) ||
-      unavailable;
+      (selectedRole?.isCommRole && !s.communion_eligible);
 
     box.innerHTML += `
-      <div class="card">
+      <div class="card ${alreadyAssigned ? 'selected' : ''}">
 
         <b>${s.name}</b>
 
-        ${s.communion_eligible ? "" : "<div class='warn'>Not Communion Eligible</div>"}
+        ${s.communion_eligible
+          ? ""
+          : "<div class='warn'>Not Communion Eligible</div>"
+        }
 
-        ${unavailable ? "<div class='bad'>Unavailable for this service</div>" : ""}
+        ${alreadyAssigned
+          ? "<div>✅ Already Assigned</div>"
+          : ""
+        }
 
         <button
           ${blocked ? "disabled" : ""}
@@ -265,23 +296,13 @@ async function loadStaff() {
 
 window.assignStaff = async (staffId, eligible) => {
 
-  const unavailable = await isUnavailable(
-    staffId,
-    selectedService.date
-  );
-
   if (!selectedService || !selectedRole) {
     alert("Select service and role first");
     return;
   }
 
   if (selectedRole.isCommRole && !eligible) {
-    alert("Staff not eligible for communion");
-    return;
-  }
-
-  if (unavailable) {
-    alert("Staff is unavailable for this service");
+    alert("Only communion eligible staff allowed");
     return;
   }
 
@@ -291,6 +312,7 @@ window.assignStaff = async (staffId, eligible) => {
     .eq("id", selectedRole.roleId);
 
   await loadRoles();
+  await loadStaff();
 };
 
 /* INIT */
