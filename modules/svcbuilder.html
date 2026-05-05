@@ -1,48 +1,40 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Smart Service Assignment Engine</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
+  <title>Service Builder</title>
   <style>
-    body { margin:0; font-family: Arial; background:#0b1220; color:white; }
-    header { padding:12px; background:#111827; font-weight:bold; }
+    body { margin:0; font-family:Arial; background:#0b1220; color:white; }
+    header { padding:10px; background:#111827; font-weight:bold; }
 
-    .grid {
-      display:grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap:10px;
-      padding:10px;
-    }
+    .grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; padding:10px; }
 
     .panel {
       background:#111827;
-      border:1px solid #1f2937;
-      border-radius:10px;
       padding:10px;
+      border-radius:10px;
       height:85vh;
-      overflow-y:auto;
+      overflow:auto;
     }
 
-    .card, .role {
+    .card {
       background:#0f172a;
-      border:1px solid #334155;
       padding:10px;
-      border-radius:8px;
       margin-bottom:8px;
+      border-radius:8px;
+      border:1px solid #334155;
       cursor:pointer;
     }
 
-    .selected { border:2px solid #3b82f6; }
-    .communion { border-left:4px solid #fbbf24; }
+    .card:hover { border-color:#3b82f6; }
 
-    .warn { color:#fbbf24; font-size:12px; }
-    .bad { color:#ef4444; font-size:12px; }
+    .role { padding:8px; margin-bottom:8px; border:1px solid #334155; border-radius:8px; }
+
+    .tag { font-size:12px; color:#94a3b8; }
 
     button {
       width:100%;
-      padding:6px;
       margin-top:5px;
+      padding:6px;
       border:none;
       border-radius:6px;
       cursor:pointer;
@@ -50,34 +42,29 @@
       color:white;
     }
 
-    button:disabled {
-      background:#374151;
-      cursor:not-allowed;
-    }
+    button:disabled { background:#374151; }
   </style>
 </head>
 
 <body>
 
-<header>
-  ⛪ Smart Service Assignment Engine
-</header>
+<header>Service Builder (Fixed Logic)</header>
 
 <div class="grid">
 
   <div class="panel">
     <h3>Services</h3>
-    <div id="serviceList"></div>
+    <div id="services"></div>
   </div>
 
   <div class="panel">
     <h3>Roles</h3>
-    <div id="roleList"></div>
+    <div id="roles"></div>
   </div>
 
   <div class="panel">
     <h3>Staff</h3>
-    <div id="staffList"></div>
+    <div id="staff"></div>
   </div>
 
 </div>
@@ -88,59 +75,44 @@ import { db } from "../assets/app.js";
 let selectedService = null;
 let selectedRole = null;
 
-/* ---------------- HELPERS ---------------- */
-
-function formatDay(dateStr) {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString('en-US', { weekday: 'short' });
-}
-
-function todayStr() {
-  return new Date().toISOString().split("T")[0];
-}
-
 /* ---------------- SERVICES ---------------- */
 
 async function loadServices() {
 
-  const { data, error } = await db
+  const today = new Date().toISOString().split("T")[0];
+
+  const { data } = await db
     .from("services")
-    .select("*, service_slots(time, location, label)")
-    .gte("service_date", todayStr())
+    .select(`*, service_slots(time, location, label)`)
+    .gte("service_date", today)
     .order("service_date", { ascending:true });
 
-  if (error) {
-    console.error(error);
-    return;
-  }
-
-  const box = document.getElementById("serviceList");
+  const box = document.getElementById("services");
   box.innerHTML = "";
 
   (data || []).forEach(s => {
 
-    const slot = s.service_slots || {};
-    const label = slot.label || slot.time || "";
+    const slot = s.service_slots;
+
+    const label =
+      slot?.label || "Service";
+
+    const time =
+      slot?.time || "";
 
     box.innerHTML += `
-      <div class="card ${s.id === selectedService?.id ? 'selected' : ''} ${s.is_communion_service ? 'communion' : ''}"
-        onclick="selectService('${s.id}', ${s.is_communion_service}, '${s.service_date}')">
-
-        <b>${s.service_date} (${formatDay(s.service_date)})</b><br>
-        ${label} ${slot.location ? '('+slot.location+')' : ''}<br>
-
-        ${s.is_communion_service ? "🕊 Communion" : "Standard"}
-
+      <div class="card" onclick="selectService('${s.id}', '${s.service_slot_id}', '${s.service_date}')">
+        <b>${s.service_date}</b><br>
+        <div class="tag">${label} - ${time}</div>
       </div>
     `;
   });
 }
 
-window.selectService = async (id, isComm, date) => {
-  selectedService = { id, isComm, date };
+window.selectService = async (id, slotId, date) => {
+  selectedService = { id, slotId, date };
   selectedRole = null;
 
-  await loadServices();
   await loadRoles();
   await loadStaff();
 };
@@ -149,98 +121,74 @@ window.selectService = async (id, isComm, date) => {
 
 async function loadRoles() {
 
-  if (!selectedService) return;
-
   const { data } = await db
     .from("service_roles")
-    .select("*, staff(name)")
+    .select("*")
     .eq("service_id", selectedService.id);
 
-  const box = document.getElementById("roleList");
+  const box = document.getElementById("roles");
   box.innerHTML = "";
 
-  (data || [])
-    .filter(r => selectedService.isComm || !r.is_communion_role)
-    .forEach(r => {
+  (data || []).forEach(r => {
 
-      box.innerHTML += `
-        <div class="role ${selectedRole?.roleId === r.id ? 'selected' : ''} ${r.is_communion_role ? 'communion' : ''}"
-          onclick="selectRole('${r.id}', ${r.is_communion_role})">
-
-          <b>${r.role} ${r.is_communion_role ? "🕊" : ""}</b>
-
-          <div>
-            ${r.staff?.name || "Unassigned"}
-          </div>
-
-          ${r.staff_id ? `<button onclick="event.stopPropagation(); unassign('${r.id}')">Unassign</button>` : ""}
-
-        </div>
-      `;
-    });
+    box.innerHTML += `
+      <div class="role" onclick="selectRole('${r.id}', ${r.is_communion_role})">
+        <b>${r.role}</b>
+        <div class="tag">${r.staff_id ? "Assigned" : "Unassigned"}</div>
+      </div>
+    `;
+  });
 }
 
-window.selectRole = (roleId, isCommRole) => {
-  selectedRole = { roleId, isCommRole };
-  loadRoles();
-  loadStaff();
+window.selectRole = (id, isComm) => {
+  selectedRole = { id, isComm };
 };
 
 /* ---------------- AVAILABILITY ---------------- */
 
-async function isUnavailable(staffId, date) {
+async function isUnavailable(staffId) {
 
   const { data } = await db
     .from("staff_availability")
     .select("*")
-    .eq("staff_id", staffId);
+    .eq("staff_id", staffId)
+    .eq("service_slot_id", selectedService.slotId)
+    .eq("service_date", selectedService.date);
 
-  return (data || []).some(a =>
-    date >= a.start_date && date <= a.end_date
-  );
+  return (data || []).length > 0;
 }
 
 /* ---------------- STAFF ---------------- */
 
 async function loadStaff() {
 
-  if (!selectedService) return;
+  const { data } = await db.from("staff").select("*");
 
-  const { data: staff } = await db.from("staff").select("*");
-
-  const { data: roles } = await db
-    .from("service_roles")
-    .select("staff_id")
-    .eq("service_id", selectedService.id);
-
-  const assignedIds = (roles || []).map(r => r.staff_id);
-
-  const box = document.getElementById("staffList");
+  const box = document.getElementById("staff");
   box.innerHTML = "";
 
-  for (const s of staff || []) {
+  for (const s of data || []) {
 
-    const unavailable = await isUnavailable(s.id, selectedService.date);
-
-    if (assignedIds.includes(s.id) || unavailable) continue;
+    const unavailable = await isUnavailable(s.id);
 
     const blocked =
-      (selectedRole?.isCommRole && !s.communion_eligible);
+      unavailable ||
+      (selectedRole?.isComm && !s.communion_eligible);
 
     box.innerHTML += `
       <div class="card">
-
         <b>${s.name}</b>
 
-        ${!s.communion_eligible ? "<div class='warn'>Not Communion Eligible</div>" : ""}
+        ${unavailable ? "<div style='color:red'>Unavailable</div>" : ""}
 
         <button ${blocked ? "disabled" : ""}
-          onclick="assign('${s.id}', ${s.communion_eligible})">
+          onclick="assign('${s.id}')">
           Assign
         </button>
 
-        <button onclick="markUnavailable('${s.id}')">
-          🚫 Not Available
+        <button style="background:#ef4444"
+          onclick="markUnavailable('${s.id}')">
+          Not Available
         </button>
 
       </div>
@@ -248,49 +196,55 @@ async function loadStaff() {
   }
 }
 
-/* ---------------- ACTIONS ---------------- */
+/* ---------------- ASSIGN ---------------- */
 
-window.assign = async (staffId, eligible) => {
+window.assign = async (staffId) => {
 
-  if (!selectedRole) return alert("Select role");
-
-  if (selectedRole.isCommRole && !eligible) {
-    return alert("Not eligible for communion");
-  }
+  if (!selectedService || !selectedRole) return;
 
   await db
     .from("service_roles")
     .update({ staff_id: staffId })
-    .eq("id", selectedRole.roleId);
+    .eq("id", selectedRole.id);
 
-  loadRoles();
-  loadStaff();
+  await loadRoles();
 };
 
-window.unassign = async (roleId) => {
-
-  await db
-    .from("service_roles")
-    .update({ staff_id: null })
-    .eq("id", roleId);
-
-  loadRoles();
-  loadStaff();
-};
+/* ---------------- MARK UNAVAILABLE (TOGGLE SAFE) ---------------- */
 
 window.markUnavailable = async (staffId) => {
 
-  await db
+  const { data } = await db
     .from("staff_availability")
-    .insert({
-      staff_id: staffId,
-      start_date: selectedService.date,
-      end_date: selectedService.date,
-      type: "manual",
-      status: "active"
-    });
+    .select("*")
+    .eq("staff_id", staffId)
+    .eq("service_slot_id", selectedService.slotId)
+    .eq("service_date", selectedService.date);
 
-  loadStaff();
+  if ((data || []).length > 0) {
+
+    // RESTORE
+    await db
+      .from("staff_availability")
+      .delete()
+      .eq("staff_id", staffId)
+      .eq("service_slot_id", selectedService.slotId)
+      .eq("service_date", selectedService.date);
+
+  } else {
+
+    // MARK UNAVAILABLE
+    await db
+      .from("staff_availability")
+      .insert({
+        staff_id: staffId,
+        service_slot_id: selectedService.slotId,
+        service_date: selectedService.date,
+        status: "unavailable"
+      });
+  }
+
+  await loadStaff();
 };
 
 /* INIT */
