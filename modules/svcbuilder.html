@@ -69,11 +69,6 @@
       font-size:12px;
     }
 
-    .bad {
-      color:#ef4444;
-      font-size:12px;
-    }
-
     button {
       width:100%;
       padding:6px;
@@ -87,11 +82,6 @@
 
     button:disabled {
       background:#374151;
-      cursor:not-allowed;
-    }
-
-    button:hover:not(:disabled) {
-      background:#2563eb;
     }
   </style>
 </head>
@@ -99,24 +89,21 @@
 <body>
 
 <header>
-  ⛪ Smart Service Assignment Engine (With Availability + Communion Rules)
+  ⛪ Smart Service Assignment Engine
 </header>
 
 <div class="grid">
 
-  <!-- SERVICES -->
   <div class="panel">
     <h3>Services</h3>
     <div id="serviceList"></div>
   </div>
 
-  <!-- ROLES -->
   <div class="panel">
-    <h3>Service Roles</h3>
+    <h3>Roles</h3>
     <div id="roleList"></div>
   </div>
 
-  <!-- STAFF -->
   <div class="panel">
     <h3>Staff</h3>
     <div id="staffList"></div>
@@ -129,23 +116,35 @@ import { db } from "../assets/app.js";
 
 let selectedService = null;
 let selectedRole = null;
-let assignedStaffMap = {}; // service-level assignment tracking
+let assignedStaffMap = {};
 
-/* ---------------- HELPERS ---------------- */
+/* ---------- HELPERS ---------- */
+
+// Get TODAY in Singapore (YYYY-MM-DD)
+function getTodaySGT() {
+  const now = new Date();
+  const sgt = new Date(
+    now.toLocaleString("en-US", { timeZone: "Asia/Singapore" })
+  );
+  return sgt.toISOString().split("T")[0];
+}
 
 function getDayName(dateStr) {
   const d = new Date(dateStr);
-  return d.toLocaleDateString("en-SG", { weekday: "short" }); // Sat / Sun
+  return d.toLocaleDateString("en-SG", { weekday: "short" });
 }
 
-/* ---------------- SERVICES ---------------- */
+/* ---------- SERVICES ---------- */
 
 async function loadServices() {
+
+  const today = getTodaySGT();
 
   const { data } = await db
     .from("services")
     .select("*")
-    .order("service_date", { ascending: false });
+    .gte("service_date", today) // 🔥 filter future
+    .order("service_date", { ascending: true }); // 🔥 ascending
 
   const box = document.getElementById("serviceList");
   box.innerHTML = "";
@@ -159,11 +158,7 @@ async function loadServices() {
         onclick="selectService('${s.id}', ${s.is_communion_service}, '${s.service_date}')">
 
         <b>${s.service_date}</b> (${day})<br>
-
-        ${s.is_communion_service
-          ? "🕊 Communion Service"
-          : "Standard Service"
-        }
+        ${s.is_communion_service ? "🕊 Communion" : "Standard"}
 
       </div>
     `;
@@ -171,7 +166,6 @@ async function loadServices() {
 }
 
 window.selectService = async (id, isComm, date) => {
-
   selectedService = { id, isComm, date };
   selectedRole = null;
 
@@ -179,7 +173,7 @@ window.selectService = async (id, isComm, date) => {
   await loadStaff();
 };
 
-/* ---------------- ROLES ---------------- */
+/* ---------- ROLES ---------- */
 
 async function loadRoles() {
 
@@ -197,25 +191,21 @@ async function loadRoles() {
 
   (data || []).forEach(r => {
 
-    // ❌ hide communion roles if NOT communion service
     if (!selectedService.isComm && r.is_communion_role) return;
 
     if (r.staff_id) {
       assignedStaffMap[r.staff_id] = true;
     }
 
+    const isSelected = selectedRole?.roleId === r.id;
+
     box.innerHTML += `
-      <div class="role ${r.is_communion_role ? 'communion' : ''}"
+      <div class="role ${isSelected ? 'selected' : ''} ${r.is_communion_role ? 'communion' : ''}"
         onclick="selectRole('${r.id}', ${r.is_communion_role})">
 
-        <b>
-          ${r.role}
-          ${r.is_communion_role ? "🕊" : ""}
-        </b>
+        <b>${r.role} ${r.is_communion_role ? "🕊" : ""}</b>
 
-        <div>
-          ${r.staff_id ? "Assigned" : "Unassigned"}
-        </div>
+        <div>${r.staff_id ? "Assigned" : "Unassigned"}</div>
 
       </div>
     `;
@@ -224,11 +214,14 @@ async function loadRoles() {
 
 window.selectRole = (roleId, isCommRole) => {
   selectedRole = { roleId, isCommRole };
+
+  loadRoles();
+  loadStaff();
 };
 
-/* ---------------- AVAILABILITY ---------------- */
+/* ---------- AVAILABILITY ---------- */
 
-async function isUnavailable(staffId, serviceDate) {
+async function isUnavailable(staffId, date) {
 
   const { data } = await db
     .from("staff_availability")
@@ -236,12 +229,11 @@ async function isUnavailable(staffId, serviceDate) {
     .eq("staff_id", staffId);
 
   return (data || []).some(a =>
-    serviceDate >= a.start_date &&
-    serviceDate <= a.end_date
+    date >= a.start_date && date <= a.end_date
   );
 }
 
-/* ---------------- STAFF ---------------- */
+/* ---------- STAFF ---------- */
 
 async function loadStaff() {
 
@@ -256,31 +248,27 @@ async function loadStaff() {
 
     const unavailable = await isUnavailable(s.id, selectedService.date);
 
-    // ❌ REMOVE unavailable staff completely
-    if (unavailable) continue;
+    if (unavailable) continue; // 🔥 remove unavailable
 
     const alreadyAssigned = assignedStaffMap[s.id];
 
     const blocked =
-      (selectedRole?.isCommRole && !s.communion_eligible);
+      selectedRole?.isCommRole && !s.communion_eligible;
 
     box.innerHTML += `
       <div class="card ${alreadyAssigned ? 'selected' : ''}">
 
         <b>${s.name}</b>
 
-        ${s.communion_eligible
-          ? ""
-          : "<div class='warn'>Not Communion Eligible</div>"
-        }
-
-        ${alreadyAssigned
-          ? "<div>✅ Already Assigned</div>"
+        ${!s.communion_eligible
+          ? "<div class='warn'>Not Communion Eligible</div>"
           : ""
         }
 
+        ${alreadyAssigned ? "<div>✅ Assigned</div>" : ""}
+
         <button
-          ${blocked ? "disabled" : ""}
+          ${!selectedRole || blocked ? "disabled" : ""}
           onclick="assignStaff('${s.id}', ${s.communion_eligible})">
 
           Assign
@@ -292,7 +280,7 @@ async function loadStaff() {
   }
 }
 
-/* ---------------- ASSIGN ---------------- */
+/* ---------- ASSIGN ---------- */
 
 window.assignStaff = async (staffId, eligible) => {
 
@@ -302,7 +290,7 @@ window.assignStaff = async (staffId, eligible) => {
   }
 
   if (selectedRole.isCommRole && !eligible) {
-    alert("Only communion eligible staff allowed");
+    alert("Only eligible staff can serve communion");
     return;
   }
 
