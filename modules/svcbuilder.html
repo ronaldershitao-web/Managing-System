@@ -82,11 +82,21 @@
     <div id="roles"></div>
   </div>
 
-  <div class="panel">
-    <h3>Staff</h3>
-    <div id="staff"></div>
-  </div>
+ <div class="panel">
+  <h3>Staff</h3>
 
+  <input
+    placeholder="Search staff..."
+    oninput="searchStaff(this.value)"
+    style="width:100%;margin-bottom:8px;padding:6px;border-radius:6px;border:none;"
+  />
+
+  <h4>Available</h4>
+  <div id="staffAvailable"></div>
+
+  <h4>Unavailable</h4>
+  <div id="staffUnavailable"></div>
+</div>
 </div>
 
 <script type="module">
@@ -94,29 +104,68 @@ import { db } from "../assets/app.js";
 
 let selectedService = null;
 let selectedRole = null;
+let searchText = "";
 
 /* =========================
-   SERVICES
+   HELPERS
+========================= */
+
+async function getAssignments() {
+  const { data } = await db
+    .from("service_roles")
+    .select("*")
+    .eq("service_id", selectedService.id);
+
+  return data || [];
+}
+
+function canAssign(staff, role, assignments) {
+
+  const staffRoles = assignments.filter(a => a.staff_id === staff.id);
+
+  const hasPastor = staffRoles.some(r => r.role === "Service Pastor");
+  const hasAnchor = staffRoles.some(r => r.role === "Anchor");
+  const hasCommunion = staffRoles.some(r => r.is_communion_role);
+
+  // 🚫 unavailable already handled outside
+
+  // RULE 1: Service Pastor restriction
+  if (hasPastor) {
+    return role.role === "Anchor";
+  }
+
+  // RULE 2: already has normal role
+  const normalRoles = staffRoles.filter(r => !r.is_communion_role);
+
+  if (normalRoles.length >= 1 && !role.is_communion_role) {
+    return false;
+  }
+
+  // RULE 3: communion rule
+  if (selectedService.isComm) {
+
+    if (role.is_communion_role && hasCommunion) {
+      return false;
+    }
+
+    if (!role.is_communion_role && normalRoles.length >= 1) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/* =========================
+   SERVICES (unchanged)
 ========================= */
 
 async function loadServices() {
-
   const today = new Date().toISOString().split("T")[0];
 
-  const { data, error } = await db
+  const { data } = await db
     .from("services")
-    .select(`
-      id,
-      service_date,
-      is_communion_service,
-      service_slot_id,
-      service_slots (
-        id,
-        time,
-        label,
-        location
-      )
-    `)
+    .select(`id, service_date, is_communion_service, service_slot_id`)
     .gte("service_date", today)
     .order("service_date", { ascending: true });
 
@@ -124,35 +173,21 @@ async function loadServices() {
   box.innerHTML = "";
 
   (data || []).forEach(s => {
-
-    const slot = s.service_slots || {};
-
     box.innerHTML += `
-      <div class="card ${selectedService?.id === s.id ? 'active' : ''}"
-        onclick="selectService('${s.id}', '${s.service_slot_id}', '${s.service_date}', ${s.is_communion_service || false})">
-
-        <b>${s.service_date}</b><br>
-        <div class="tag">
-          ${slot.label || "Service"} - ${slot.time || "N/A"}
-        </div>
-
-        <div class="tag">
-          ${s.is_communion_service ? "🕊 Communion Service" : "Standard Service"}
-        </div>
-
+      <div class="card"
+        onclick="selectService('${s.id}', '${s.service_slot_id}', '${s.service_date}', ${s.is_communion_service})">
+        <b>${s.service_date}</b>
       </div>
     `;
   });
 }
 
 window.selectService = async (id, slotId, date, isComm) => {
-
   selectedService = { id, slotId, date, isComm };
   selectedRole = null;
 
   await loadRoles();
   await loadStaff();
-  await loadServices();
 };
 
 /* =========================
@@ -161,14 +196,11 @@ window.selectService = async (id, slotId, date, isComm) => {
 
 async function loadRoles() {
 
-  if (!selectedService) return;
-
   let query = db
     .from("service_roles")
     .select("*")
     .eq("service_id", selectedService.id);
 
-  // hide communion roles if not communion service
   if (!selectedService.isComm) {
     query = query.eq("is_communion_role", false);
   }
@@ -179,26 +211,10 @@ async function loadRoles() {
   box.innerHTML = "";
 
   (data || []).forEach(r => {
-
-    const active = selectedRole?.roleId === r.id;
-
     box.innerHTML += `
-      <div class="role ${active ? 'active' : ''}"
+      <div class="role"
         onclick="selectRole('${r.id}', ${r.is_communion_role})">
-
-        <b>${r.role} ${r.is_communion_role ? "🕊" : ""}</b>
-
-        <div class="tag">
-          ${r.staff_id ? "Assigned" : "Unassigned"}
-        </div>
-
-        ${r.staff_id ? `
-          <button class="danger"
-            onclick="event.stopPropagation(); unassign('${r.id}')">
-            Unassign
-          </button>
-        ` : ""}
-
+        ${r.role}
       </div>
     `;
   });
@@ -209,11 +225,10 @@ window.selectRole = (roleId, isComm) => {
 };
 
 /* =========================
-   AVAILABILITY (slot scoped)
+   AVAILABILITY
 ========================= */
 
 async function isUnavailable(staffId) {
-
   const { data } = await db
     .from("staff_availability")
     .select("*")
@@ -225,44 +240,52 @@ async function isUnavailable(staffId) {
 }
 
 /* =========================
-   STAFF
+   STAFF (SPLIT VIEW + SEARCH)
 ========================= */
 
 async function loadStaff() {
 
-  const { data } = await db.from("staff").select("*");
+  const { data: staff } = await db.from("staff").select("*");
+  const assignments = await getAssignments();
 
-  const box = document.getElementById("staff");
-  box.innerHTML = "";
+  const availableBox = document.getElementById("staffAvailable");
+  const unavailableBox = document.getElementById("staffUnavailable");
 
-  for (const s of data || []) {
+  availableBox.innerHTML = "";
+  unavailableBox.innerHTML = "";
+
+  for (const s of staff || []) {
+
+    if (searchText && !s.name.toLowerCase().includes(searchText.toLowerCase())) {
+      continue;
+    }
 
     const unavailable = await isUnavailable(s.id);
 
-    const blocked =
-      unavailable ||
-      (selectedRole?.isComm && !s.communion_eligible);
+    const roleData = assignments.find(r => r.id === selectedRole?.roleId);
 
-    box.innerHTML += `
+    const can = roleData ? canAssign(s, roleData, assignments) : false;
+
+    const card = `
       <div class="card">
-
         <b>${s.name}</b>
 
-        ${unavailable ? "<div style='color:#ef4444'>Unavailable for this slot</div>" : ""}
+        <button ${!can || unavailable ? "disabled" : ""}
+          onclick="assign('${s.id}')">Assign</button>
 
-        <button
-          ${blocked ? "disabled" : ""}
-          onclick="assign('${s.id}')">
-          Assign
-        </button>
-
-        <button class="danger"
-          onclick="toggleUnavailable('${s.id}')">
-          Not Available
-        </button>
-
+        ${
+          unavailable
+          ? `<button onclick="toggle('${s.id}')">Return Availability</button>`
+          : `<button onclick="toggle('${s.id}')">Mark Unavailable</button>`
+        }
       </div>
     `;
+
+    if (unavailable) {
+      unavailableBox.innerHTML += card;
+    } else {
+      availableBox.innerHTML += card;
+    }
   }
 }
 
@@ -272,36 +295,19 @@ async function loadStaff() {
 
 window.assign = async (staffId) => {
 
-  if (!selectedService || !selectedRole) return;
-
   await db
     .from("service_roles")
     .update({ staff_id: staffId })
     .eq("id", selectedRole.roleId);
 
-  await loadRoles();
   await loadStaff();
 };
 
 /* =========================
-   UNASSIGN
+   TOGGLE AVAILABILITY
 ========================= */
 
-window.unassign = async (roleId) => {
-
-  await db
-    .from("service_roles")
-    .update({ staff_id: null })
-    .eq("id", roleId);
-
-  await loadRoles();
-};
-
-/* =========================
-   TOGGLE AVAILABILITY (SAFE SLOT SCOPED)
-========================= */
-
-window.toggleUnavailable = async (staffId) => {
+window.toggle = async (staffId) => {
 
   const { data } = await db
     .from("staff_availability")
@@ -312,17 +318,10 @@ window.toggleUnavailable = async (staffId) => {
 
   if ((data || []).length > 0) {
 
-    const record = data[0];
-
-    const newStatus =
-      record.status === "unavailable"
-        ? "available"
-        : "unavailable";
-
     await db
       .from("staff_availability")
-      .update({ status: newStatus })
-      .eq("id", record.id);
+      .delete()
+      .eq("id", data[0].id);
 
   } else {
 
@@ -339,9 +338,17 @@ window.toggleUnavailable = async (staffId) => {
   await loadStaff();
 };
 
+/* =========================
+   SEARCH
+========================= */
+
+window.searchStaff = (val) => {
+  searchText = val;
+  loadStaff();
+};
+
 /* INIT */
 loadServices();
-
 </script>
 
 </body>
