@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Service Builder v2 (Fixed System)</title>
+  <title>Service Builder v2 (Stable Fixed)</title>
   <style>
     body { margin:0; font-family:Arial; background:#0b1220; color:white; }
     header { padding:12px; background:#111827; font-weight:bold; }
@@ -34,7 +34,6 @@
       margin-bottom:8px;
       border:1px solid #334155;
       border-radius:8px;
-      cursor:pointer;
     }
 
     button {
@@ -49,14 +48,13 @@
     }
 
     button.secondary { background:#ef4444; }
-
     button:disabled { background:#374151; }
   </style>
 </head>
 
 <body>
 
-<header>⛪ Service Builder (Slot + Role + Availability Fixed)</header>
+<header>⛪ Service Builder (Stable Slot + Role + Staff Engine)</header>
 
 <div class="grid">
 
@@ -87,35 +85,34 @@ let selectedRole = null;
 
 async function loadServices() {
 
-  const today = new Date().toISOString().split("T")[0];
-
   const { data } = await db
     .from("services")
-    .select(`
-      *,
-      service_slots(time, label, location)
-    `)
-    .gte("service_date", today)
+    .select(`*, service_slots(time, label, location)`)
     .order("service_date", { ascending:true });
 
   const box = document.getElementById("services");
   box.innerHTML = "";
 
-  (data || []).forEach(s => {
+  if (!data) return;
+
+  data.forEach(s => {
 
     const slot = s.service_slots;
 
-    const label = slot?.label || "Service";
-    const time = slot?.time || "";
+    const label = slot?.label ?? "Service";
+    const time = slot?.time ?? "";
+    const location = slot?.location ?? "";
 
     box.innerHTML += `
       <div class="card ${selectedService?.id === s.id ? 'active' : ''}"
         onclick="selectService('${s.id}', '${s.service_slot_id}', '${s.service_date}', ${s.is_communion_service})">
 
         <b>${s.service_date}</b><br>
-        <small>${label} - ${time}</small>
-
         <div style="font-size:12px;color:#94a3b8;">
+          ${label} - ${time} (${location})
+        </div>
+
+        <div style="font-size:12px;color:#60a5fa;">
           ${s.is_communion_service ? "🕊 Communion Service" : "Standard Service"}
         </div>
 
@@ -131,7 +128,6 @@ window.selectService = async (id, slotId, date, isComm) => {
 
   await loadRoles();
   await loadStaff();
-  await loadServices();
 };
 
 /* ---------------- ROLES ---------------- */
@@ -145,7 +141,7 @@ async function loadRoles() {
     .select("*")
     .eq("service_id", selectedService.id);
 
-  // ❗ KEY FIX: hide communion roles for normal service
+  // hide communion roles if not communion service
   if (!selectedService.isComm) {
     query = query.eq("is_communion_role", false);
   }
@@ -155,7 +151,9 @@ async function loadRoles() {
   const box = document.getElementById("roles");
   box.innerHTML = "";
 
-  (data || []).forEach(r => {
+  if (!data) return;
+
+  data.forEach(r => {
 
     const active = selectedRole?.roleId === r.id;
 
@@ -196,9 +194,7 @@ async function isUnavailable(staffId) {
     .eq("service_date", selectedService.date)
     .eq("service_slot_id", selectedService.slotId);
 
-  const record = (data || [])[0];
-
-  return record?.status === "unavailable";
+  return (data || []).some(r => r.status === "unavailable");
 }
 
 /* ---------------- STAFF ---------------- */
@@ -210,7 +206,9 @@ async function loadStaff() {
   const box = document.getElementById("staff");
   box.innerHTML = "";
 
-  for (const s of data || []) {
+  if (!data) return;
+
+  for (const s of data) {
 
     const unavailable = await isUnavailable(s.id);
 
@@ -225,8 +223,7 @@ async function loadStaff() {
 
         ${unavailable ? "<div style='color:#ef4444'>Unavailable</div>" : ""}
 
-        <button
-          ${blocked ? "disabled" : ""}
+        <button ${blocked ? "disabled" : ""}
           onclick="assign('${s.id}')">
           Assign
         </button>
@@ -245,7 +242,10 @@ async function loadStaff() {
 
 window.assign = async (staffId) => {
 
-  if (!selectedService || !selectedRole) return;
+  if (!selectedService || !selectedRole) {
+    alert("Select service + role first");
+    return;
+  }
 
   await db
     .from("service_roles")
@@ -279,18 +279,15 @@ window.toggleAvailability = async (staffId) => {
     .eq("service_date", selectedService.date)
     .eq("service_slot_id", selectedService.slotId);
 
-  if ((data || []).length > 0) {
+  if (data && data.length > 0) {
 
     const current = data[0];
 
-    const newStatus =
-      current.status === "unavailable"
-        ? "available"
-        : "unavailable";
-
     await db
       .from("staff_availability")
-      .update({ status: newStatus })
+      .update({
+        status: current.status === "unavailable" ? "available" : "unavailable"
+      })
       .eq("id", current.id);
 
   } else {
