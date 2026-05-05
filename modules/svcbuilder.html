@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Service Assignment Engine</title>
+  <title>Service Assignment Engine (Smart)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <style>
@@ -47,20 +47,21 @@
       border-color:#3b82f6;
     }
 
-    .selected {
-      border:2px solid #3b82f6;
-    }
-
-    .communion {
-      border-left:4px solid #fbbf24;
-    }
-
     .role {
       background:#0f172a;
       border:1px solid #334155;
       padding:8px;
       border-radius:8px;
       margin-bottom:8px;
+      cursor:pointer;
+    }
+
+    .selected {
+      border:2px solid #3b82f6;
+    }
+
+    .communion {
+      border-left:4px solid #fbbf24;
     }
 
     .warn {
@@ -84,21 +85,21 @@
       color:white;
     }
 
-    button:hover {
+    button:disabled {
+      background:#374151;
+      cursor:not-allowed;
+    }
+
+    button:hover:not(:disabled) {
       background:#2563eb;
     }
-
-    .assign-btn {
-      margin-top:6px;
-    }
-
   </style>
 </head>
 
 <body>
 
 <header>
-  ⛪ Service Assignment Engine
+  ⛪ Smart Service Assignment Engine (With Availability + Communion Rules)
 </header>
 
 <div class="grid">
@@ -145,23 +146,20 @@ async function loadServices() {
 
     box.innerHTML += `
       <div class="card ${s.is_communion_service ? 'communion' : ''}"
-           onclick="selectService('${s.id}', ${s.is_communion_service})">
+        onclick="selectService('${s.id}', ${s.is_communion_service}, '${s.service_date}')">
 
         <b>${s.service_date}</b><br>
 
-        ${s.is_communion_service
-          ? "🕊 Communion Service"
-          : "Standard Service"
-        }
+        ${s.is_communion_service ? "🕊 Communion Service" : "Standard Service"}
 
       </div>
     `;
   });
 }
 
-window.selectService = async (id, isComm) => {
+window.selectService = async (id, isComm, date) => {
 
-  selectedService = { id, isComm };
+  selectedService = { id, isComm, date };
   selectedRole = null;
 
   await loadRoles();
@@ -186,7 +184,7 @@ async function loadRoles() {
 
     box.innerHTML += `
       <div class="role ${r.is_communion_role ? 'communion' : ''}"
-           onclick="selectRole('${r.id}', ${r.is_communion_role})">
+        onclick="selectRole('${r.id}', ${r.is_communion_role})">
 
         <b>
           ${r.role}
@@ -206,6 +204,21 @@ window.selectRole = (roleId, isCommRole) => {
   selectedRole = { roleId, isCommRole };
 };
 
+/* ---------------- AVAILABILITY CHECK ---------------- */
+
+async function isUnavailable(staffId, serviceDate) {
+
+  const { data } = await db
+    .from("staff_availability")
+    .select("*")
+    .eq("staff_id", staffId);
+
+  return (data || []).some(a =>
+    serviceDate >= a.start_date &&
+    serviceDate <= a.end_date
+  );
+}
+
 /* ---------------- STAFF ---------------- */
 
 async function loadStaff() {
@@ -215,43 +228,60 @@ async function loadStaff() {
   const box = document.getElementById("staffList");
   box.innerHTML = "";
 
-  (data || []).forEach(s => {
+  for (const s of data || []) {
+
+    const unavailable = await isUnavailable(
+      s.id,
+      selectedService?.date
+    );
 
     const blocked =
-      selectedRole?.isCommRole &&
-      !s.communion_eligible;
+      (selectedRole?.isCommRole && !s.communion_eligible) ||
+      unavailable;
 
     box.innerHTML += `
       <div class="card">
 
         <b>${s.name}</b>
 
-        ${s.communion_eligible
-          ? ""
-          : "<div class='warn'>Not Communion Eligible</div>"
-        }
+        ${s.communion_eligible ? "" : "<div class='warn'>Not Communion Eligible</div>"}
 
-        <button class="assign-btn"
+        ${unavailable ? "<div class='bad'>Unavailable for this service</div>" : ""}
+
+        <button
+          ${blocked ? "disabled" : ""}
           onclick="assignStaff('${s.id}', ${s.communion_eligible})">
+
           Assign
+
         </button>
 
       </div>
     `;
-  });
+  }
 }
 
 /* ---------------- ASSIGN ---------------- */
 
 window.assignStaff = async (staffId, eligible) => {
 
-  if (!selectedRole || !selectedService) {
-    alert("Select service + role first");
+  const unavailable = await isUnavailable(
+    staffId,
+    selectedService.date
+  );
+
+  if (!selectedService || !selectedRole) {
+    alert("Select service and role first");
     return;
   }
 
   if (selectedRole.isCommRole && !eligible) {
-    alert("This staff cannot serve communion");
+    alert("Staff not eligible for communion");
+    return;
+  }
+
+  if (unavailable) {
+    alert("Staff is unavailable for this service");
     return;
   }
 
