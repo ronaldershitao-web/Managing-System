@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Service Builder Pro</title>
+  <title>Communion Service Assignment</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <style>
@@ -20,7 +20,7 @@
 
     .grid {
       display:grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr 1fr 1fr;
       gap:10px;
       padding:10px;
     }
@@ -34,33 +34,25 @@
       overflow-y:auto;
     }
 
-    input, select {
-      width:100%;
-      padding:8px;
-      margin:6px 0;
-      border-radius:6px;
-      border:1px solid #334155;
-      background:#0f172a;
-      color:white;
-    }
-
-    button {
-      width:100%;
-      padding:8px;
-      margin-top:6px;
-      border:none;
-      border-radius:6px;
-      cursor:pointer;
-      background:#3b82f6;
-      color:white;
-    }
-
     .card {
       background:#0f172a;
       border:1px solid #334155;
       padding:10px;
       border-radius:8px;
       margin-bottom:8px;
+      cursor:pointer;
+    }
+
+    .card:hover {
+      border-color:#3b82f6;
+    }
+
+    .selected {
+      border:2px solid #3b82f6;
+    }
+
+    .communion {
+      border-left:4px solid #fbbf24;
     }
 
     .warn {
@@ -72,42 +64,65 @@
       color:#ef4444;
       font-size:12px;
     }
+
+    button {
+      width:100%;
+      padding:6px;
+      margin-top:5px;
+      border:none;
+      border-radius:6px;
+      cursor:pointer;
+      background:#3b82f6;
+      color:white;
+    }
+
+    button:hover {
+      background:#2563eb;
+    }
+
+    .role-block {
+      background:#0f172a;
+      border:1px solid #334155;
+      padding:8px;
+      border-radius:8px;
+      margin-bottom:10px;
+    }
+
+    .slot {
+      background:#1f2937;
+      padding:6px;
+      border-radius:6px;
+      margin-top:5px;
+      font-size:13px;
+    }
+
   </style>
 </head>
 
 <body>
 
 <header>
-  ⛪ Service Builder (Full System)
+  🕊 Communion Service Assignment System
 </header>
 
 <div class="grid">
 
-  <!-- CREATE SERVICE -->
+  <!-- SERVICES -->
   <div class="panel">
-    <h3>Create Service</h3>
-
-    <input type="date" id="date">
-
-    <select id="template"></select>
-
-    <label>
-      <input type="checkbox" id="communion">
-      Holy Communion Service
-    </label>
-
-    <button onclick="createService()">Generate Service</button>
-
-    <hr>
-
     <h3>Services</h3>
     <div id="serviceList"></div>
   </div>
 
-  <!-- ROLE ASSIGNMENT -->
+  <!-- ROLES -->
   <div class="panel">
-    <h3>Service Roles</h3>
+    <h3>Roles</h3>
     <div id="roleList"></div>
+  </div>
+
+  <!-- STAFF -->
+  <div class="panel">
+    <h3>Staff</h3>
+    <div id="staffList"></div>
   </div>
 
 </div>
@@ -116,57 +131,7 @@
 import { db } from "../assets/app.js";
 
 let selectedService = null;
-
-/* ---------------- LOAD TEMPLATES ---------------- */
-
-async function loadTemplates() {
-  const { data } = await db.from("service_templates").select("*");
-
-  const box = document.getElementById("template");
-  box.innerHTML = "";
-
-  (data || []).forEach(t => {
-    box.innerHTML += `<option value="${t.id}">${t.name}</option>`;
-  });
-}
-
-/* ---------------- CREATE SERVICE ---------------- */
-
-window.createService = async () => {
-
-  const service_date = document.getElementById("date").value;
-  const template_id = document.getElementById("template").value;
-  const is_communion = document.getElementById("communion").checked;
-
-  if (!service_date || !template_id) return;
-
-  // 1. create service
-  const { data: service } = await db
-    .from("services")
-    .insert([{
-      service_date,
-      service_template_id: template_id,
-      is_communion
-    }])
-    .select()
-    .single();
-
-  // 2. copy roles from template
-  const { data: roles } = await db
-    .from("service_template_roles")
-    .select("*")
-    .eq("template_id", template_id);
-
-  const mapped = roles.map(r => ({
-    service_id: service.id,
-    role: r.role,
-    is_communion_role: r.is_communion_role || false
-  }));
-
-  await db.from("service_roles").insert(mapped);
-
-  loadServices();
-};
+let selectedRole = null;
 
 /* ---------------- LOAD SERVICES ---------------- */
 
@@ -183,48 +148,131 @@ async function loadServices() {
   (data || []).forEach(s => {
 
     box.innerHTML += `
-      <div class="card" onclick="selectService('${s.id}')">
+      <div class="card ${s.is_communion_service ? 'communion' : ''}"
+           onclick="selectService('${s.id}', ${s.is_communion_service})">
+
         <b>${s.service_date}</b><br>
-        ${s.is_communion ? "🕊 Communion Service" : "Standard"}
+
+        ${s.is_communion_service 
+          ? "🕊 Communion Service" 
+          : "Standard Service"
+        }
+
       </div>
     `;
   });
 }
 
-/* ---------------- SELECT SERVICE ---------------- */
-
-window.selectService = async (id) => {
-  selectedService = id;
+window.selectService = (id, isComm) => {
+  selectedService = { id, isComm };
   loadRoles();
+  loadStaff();
 };
 
-/* ---------------- LOAD ROLES + AVAILABILITY CHECK ---------------- */
+/* ---------------- LOAD ROLES ---------------- */
 
 async function loadRoles() {
 
   if (!selectedService) return;
 
-  const { data: roles } = await db
+  const { data } = await db
     .from("service_roles")
-    .select("*, staff(name)")
-    .eq("service_id", selectedService);
+    .select("*")
+    .eq("service_id", selectedService.id);
 
   const box = document.getElementById("roleList");
   box.innerHTML = "";
 
-  (roles || []).forEach(r => {
+  (data || []).forEach(r => {
+
+    const isCommunionRole = r.is_communion_role;
 
     box.innerHTML += `
-      <div class="card">
-        <b>${r.role}</b><br>
-        Staff: ${r.staff?.name || "Unassigned"}
+      <div class="role-block ${isCommunionRole ? 'communion' : ''}"
+           onclick="selectRole('${r.id}', ${isCommunionRole})">
+
+        <b>
+          ${r.role}
+          ${isCommunionRole ? "🕊" : ""}
+        </b>
+
+        <div>
+          Staff: ${r.staff_id || "Unassigned"}
+        </div>
+
       </div>
     `;
   });
 }
 
+window.selectRole = (roleId, isCommRole) => {
+  selectedRole = { roleId, isCommRole };
+};
+
+/* ---------------- LOAD STAFF ---------------- */
+
+async function loadStaff() {
+
+  const { data } = await db.from("staff").select("*");
+
+  const box = document.getElementById("staffList");
+  box.innerHTML = "";
+
+  (data || []).forEach(s => {
+
+    const blocked =
+      selectedRole?.isCommRole &&
+      !s.communion_eligible;
+
+    box.innerHTML += `
+      <div class="card">
+
+        <b>${s.name}</b>
+
+        ${s.communion_eligible
+          ? ""
+          : "<div class='warn'>Not Communion Eligible</div>"
+        }
+
+        <button onclick="assignStaff('${s.id}')">
+          Assign
+        </button>
+
+      </div>
+    `;
+  });
+}
+
+/* ---------------- ASSIGN STAFF ---------------- */
+
+window.assignStaff = async (staffId) => {
+
+  if (!selectedRole || !selectedService) {
+    alert("Select service + role first");
+    return;
+  }
+
+  // BLOCK invalid communion assignment
+  const { data: staff } = await db
+    .from("staff")
+    .select("*")
+    .eq("id", staffId)
+    .single();
+
+  if (selectedRole.isCommRole && !staff.communion_eligible) {
+    alert("This staff is NOT eligible for Holy Communion");
+    return;
+  }
+
+  await db
+    .from("service_roles")
+    .update({ staff_id: staffId })
+    .eq("id", selectedRole.roleId);
+
+  loadRoles();
+};
+
 /* INIT */
-loadTemplates();
 loadServices();
 
 </script>
