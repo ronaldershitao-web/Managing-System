@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Service Assignment Engine (Final)</title>
+  <title>Smart Service Assignment Engine</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <style>
     body { margin:0; font-family: Arial; background:#0b1220; color:white; }
@@ -40,13 +41,13 @@
 
     button {
       width:100%;
-      margin-top:5px;
       padding:6px;
+      margin-top:5px;
       border:none;
       border-radius:6px;
+      cursor:pointer;
       background:#3b82f6;
       color:white;
-      cursor:pointer;
     }
 
     button:disabled {
@@ -58,9 +59,12 @@
 
 <body>
 
-<header>⛪ Service Assignment Engine</header>
+<header>
+  ⛪ Smart Service Assignment Engine
+</header>
 
 <div class="grid">
+
   <div class="panel">
     <h3>Services</h3>
     <div id="serviceList"></div>
@@ -75,6 +79,7 @@
     <h3>Staff</h3>
     <div id="staffList"></div>
   </div>
+
 </div>
 
 <script type="module">
@@ -83,45 +88,46 @@ import { db } from "../assets/app.js";
 let selectedService = null;
 let selectedRole = null;
 
+/* ---------------- HELPERS ---------------- */
+
+function formatDay(dateStr) {
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('en-US', { weekday: 'short' });
+}
+
+function todayStr() {
+  return new Date().toISOString().split("T")[0];
+}
+
 /* ---------------- SERVICES ---------------- */
 
 async function loadServices() {
 
-  const today = new Date().toISOString().split("T")[0];
-
-  const { data } = await db
+  const { data, error } = await db
     .from("services")
-    .select(`
-      *,
-      service_slots (
-        time,
-        location,
-        label
-      )
-    `)
-    .gte("service_date", today)
+    .select("*, service_slots(time, location, label)")
+    .gte("service_date", todayStr())
     .order("service_date", { ascending:true });
+
+  if (error) {
+    console.error(error);
+    return;
+  }
 
   const box = document.getElementById("serviceList");
   box.innerHTML = "";
 
-  data.forEach(s => {
+  (data || []).forEach(s => {
 
-    const dateObj = new Date(s.service_date);
-    const day = dateObj.toLocaleDateString("en-US", { weekday: "long" });
-
-    const time = s.service_slots?.time || "";
-    const loc = s.service_slots?.location || "";
+    const slot = s.service_slots || {};
+    const label = slot.label || slot.time || "";
 
     box.innerHTML += `
-      <div class="card 
-        ${selectedService?.id === s.id ? 'selected' : ''}
-        ${s.is_communion_service ? 'communion' : ''}"
-        
+      <div class="card ${s.id === selectedService?.id ? 'selected' : ''} ${s.is_communion_service ? 'communion' : ''}"
         onclick="selectService('${s.id}', ${s.is_communion_service}, '${s.service_date}')">
 
-        <b>${s.service_date}</b> (${day})<br>
-        ${time} ${loc ? "(" + loc + ")" : ""}<br>
+        <b>${s.service_date} (${formatDay(s.service_date)})</b><br>
+        ${label} ${slot.location ? '('+slot.location+')' : ''}<br>
 
         ${s.is_communion_service ? "🕊 Communion" : "Standard"}
 
@@ -147,29 +153,27 @@ async function loadRoles() {
 
   const { data } = await db
     .from("service_roles")
-    .select("*")
+    .select("*, staff(name)")
     .eq("service_id", selectedService.id);
 
   const box = document.getElementById("roleList");
   box.innerHTML = "";
 
-  data
+  (data || [])
     .filter(r => selectedService.isComm || !r.is_communion_role)
     .forEach(r => {
 
       box.innerHTML += `
-        <div class="role
-          ${selectedRole?.roleId === r.id ? 'selected' : ''}
-          ${r.is_communion_role ? 'communion' : ''}"
-
+        <div class="role ${selectedRole?.roleId === r.id ? 'selected' : ''} ${r.is_communion_role ? 'communion' : ''}"
           onclick="selectRole('${r.id}', ${r.is_communion_role})">
 
-          <b>${r.role}</b>
-          ${r.is_communion_role ? "🕊" : ""}
+          <b>${r.role} ${r.is_communion_role ? "🕊" : ""}</b>
 
           <div>
-            ${r.staff_id ? "Assigned" : "Unassigned"}
+            ${r.staff?.name || "Unassigned"}
           </div>
+
+          ${r.staff_id ? `<button onclick="event.stopPropagation(); unassign('${r.id}')">Unassign</button>` : ""}
 
         </div>
       `;
@@ -179,6 +183,7 @@ async function loadRoles() {
 window.selectRole = (roleId, isCommRole) => {
   selectedRole = { roleId, isCommRole };
   loadRoles();
+  loadStaff();
 };
 
 /* ---------------- AVAILABILITY ---------------- */
@@ -190,7 +195,7 @@ async function isUnavailable(staffId, date) {
     .select("*")
     .eq("staff_id", staffId);
 
-  return data.some(a =>
+  return (data || []).some(a =>
     date >= a.start_date && date <= a.end_date
   );
 }
@@ -201,35 +206,41 @@ async function loadStaff() {
 
   if (!selectedService) return;
 
-  const { data } = await db.from("staff").select("*");
+  const { data: staff } = await db.from("staff").select("*");
+
+  const { data: roles } = await db
+    .from("service_roles")
+    .select("staff_id")
+    .eq("service_id", selectedService.id);
+
+  const assignedIds = (roles || []).map(r => r.staff_id);
 
   const box = document.getElementById("staffList");
   box.innerHTML = "";
 
-  for (const s of data) {
+  for (const s of staff || []) {
 
     const unavailable = await isUnavailable(s.id, selectedService.date);
 
-    if (unavailable) continue;
+    if (assignedIds.includes(s.id) || unavailable) continue;
 
     const blocked =
-      selectedRole?.isCommRole && !s.communion_eligible;
+      (selectedRole?.isCommRole && !s.communion_eligible);
 
     box.innerHTML += `
       <div class="card">
 
         <b>${s.name}</b>
 
-        ${s.communion_eligible ? "" : "<div class='warn'>Not Communion Eligible</div>"}
+        ${!s.communion_eligible ? "<div class='warn'>Not Communion Eligible</div>" : ""}
 
-        <button
-          ${blocked ? "disabled" : ""}
-          onclick="assignStaff('${s.id}', ${s.communion_eligible})">
+        <button ${blocked ? "disabled" : ""}
+          onclick="assign('${s.id}', ${s.communion_eligible})">
           Assign
         </button>
 
         <button onclick="markUnavailable('${s.id}')">
-          Not Available
+          🚫 Not Available
         </button>
 
       </div>
@@ -237,18 +248,14 @@ async function loadStaff() {
   }
 }
 
-/* ---------------- ASSIGN ---------------- */
+/* ---------------- ACTIONS ---------------- */
 
-window.assignStaff = async (staffId, eligible) => {
+window.assign = async (staffId, eligible) => {
 
-  if (!selectedRole || !selectedService) {
-    alert("Select service + role first");
-    return;
-  }
+  if (!selectedRole) return alert("Select role");
 
   if (selectedRole.isCommRole && !eligible) {
-    alert("Not eligible for communion");
-    return;
+    return alert("Not eligible for communion");
   }
 
   await db
@@ -256,22 +263,34 @@ window.assignStaff = async (staffId, eligible) => {
     .update({ staff_id: staffId })
     .eq("id", selectedRole.roleId);
 
-  await loadRoles();
+  loadRoles();
+  loadStaff();
 };
 
-/* ---------------- MARK UNAVAILABLE ---------------- */
+window.unassign = async (roleId) => {
+
+  await db
+    .from("service_roles")
+    .update({ staff_id: null })
+    .eq("id", roleId);
+
+  loadRoles();
+  loadStaff();
+};
 
 window.markUnavailable = async (staffId) => {
 
-  await db.from("staff_availability").insert({
-    staff_id: staffId,
-    start_date: selectedService.date,
-    end_date: selectedService.date,
-    type: "service_block",
-    status: "active"
-  });
+  await db
+    .from("staff_availability")
+    .insert({
+      staff_id: staffId,
+      start_date: selectedService.date,
+      end_date: selectedService.date,
+      type: "manual",
+      status: "active"
+    });
 
-  await loadStaff();
+  loadStaff();
 };
 
 /* INIT */
