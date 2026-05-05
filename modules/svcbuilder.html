@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Communion Service Assignment</title>
+  <title>Service Assignment Engine</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <style>
@@ -55,6 +55,14 @@
       border-left:4px solid #fbbf24;
     }
 
+    .role {
+      background:#0f172a;
+      border:1px solid #334155;
+      padding:8px;
+      border-radius:8px;
+      margin-bottom:8px;
+    }
+
     .warn {
       color:#fbbf24;
       font-size:12px;
@@ -80,20 +88,8 @@
       background:#2563eb;
     }
 
-    .role-block {
-      background:#0f172a;
-      border:1px solid #334155;
-      padding:8px;
-      border-radius:8px;
-      margin-bottom:10px;
-    }
-
-    .slot {
-      background:#1f2937;
-      padding:6px;
-      border-radius:6px;
-      margin-top:5px;
-      font-size:13px;
+    .assign-btn {
+      margin-top:6px;
     }
 
   </style>
@@ -102,7 +98,7 @@
 <body>
 
 <header>
-  🕊 Communion Service Assignment System
+  ⛪ Service Assignment Engine
 </header>
 
 <div class="grid">
@@ -115,7 +111,7 @@
 
   <!-- ROLES -->
   <div class="panel">
-    <h3>Roles</h3>
+    <h3>Service Roles</h3>
     <div id="roleList"></div>
   </div>
 
@@ -133,7 +129,7 @@ import { db } from "../assets/app.js";
 let selectedService = null;
 let selectedRole = null;
 
-/* ---------------- LOAD SERVICES ---------------- */
+/* ---------------- SERVICES ---------------- */
 
 async function loadServices() {
 
@@ -153,8 +149,8 @@ async function loadServices() {
 
         <b>${s.service_date}</b><br>
 
-        ${s.is_communion_service 
-          ? "🕊 Communion Service" 
+        ${s.is_communion_service
+          ? "🕊 Communion Service"
           : "Standard Service"
         }
 
@@ -163,13 +159,16 @@ async function loadServices() {
   });
 }
 
-window.selectService = (id, isComm) => {
+window.selectService = async (id, isComm) => {
+
   selectedService = { id, isComm };
-  loadRoles();
-  loadStaff();
+  selectedRole = null;
+
+  await loadRoles();
+  await loadStaff();
 };
 
-/* ---------------- LOAD ROLES ---------------- */
+/* ---------------- ROLES ---------------- */
 
 async function loadRoles() {
 
@@ -185,19 +184,17 @@ async function loadRoles() {
 
   (data || []).forEach(r => {
 
-    const isCommunionRole = r.is_communion_role;
-
     box.innerHTML += `
-      <div class="role-block ${isCommunionRole ? 'communion' : ''}"
-           onclick="selectRole('${r.id}', ${isCommunionRole})">
+      <div class="role ${r.is_communion_role ? 'communion' : ''}"
+           onclick="selectRole('${r.id}', ${r.is_communion_role})">
 
         <b>
           ${r.role}
-          ${isCommunionRole ? "🕊" : ""}
+          ${r.is_communion_role ? "🕊" : ""}
         </b>
 
         <div>
-          Staff: ${r.staff_id || "Unassigned"}
+          ${r.staff_id ? "Assigned" : "Unassigned"}
         </div>
 
       </div>
@@ -209,7 +206,7 @@ window.selectRole = (roleId, isCommRole) => {
   selectedRole = { roleId, isCommRole };
 };
 
-/* ---------------- LOAD STAFF ---------------- */
+/* ---------------- STAFF ---------------- */
 
 async function loadStaff() {
 
@@ -234,7 +231,8 @@ async function loadStaff() {
           : "<div class='warn'>Not Communion Eligible</div>"
         }
 
-        <button onclick="assignStaff('${s.id}')">
+        <button class="assign-btn"
+          onclick="assignStaff('${s.id}', ${s.communion_eligible})">
           Assign
         </button>
 
@@ -243,24 +241,17 @@ async function loadStaff() {
   });
 }
 
-/* ---------------- ASSIGN STAFF ---------------- */
+/* ---------------- ASSIGN ---------------- */
 
-window.assignStaff = async (staffId) => {
+window.assignStaff = async (staffId, eligible) => {
 
   if (!selectedRole || !selectedService) {
     alert("Select service + role first");
     return;
   }
 
-  // BLOCK invalid communion assignment
-  const { data: staff } = await db
-    .from("staff")
-    .select("*")
-    .eq("id", staffId)
-    .single();
-
-  if (selectedRole.isCommRole && !staff.communion_eligible) {
-    alert("This staff is NOT eligible for Holy Communion");
+  if (selectedRole.isCommRole && !eligible) {
+    alert("This staff cannot serve communion");
     return;
   }
 
@@ -269,7 +260,7 @@ window.assignStaff = async (staffId) => {
     .update({ staff_id: staffId })
     .eq("id", selectedRole.roleId);
 
-  loadRoles();
+  await loadRoles();
 };
 
 /* INIT */
