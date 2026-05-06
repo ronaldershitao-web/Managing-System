@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Command Post (Template Driven Stable)</title>
+  <title>Command Post (Availability Corrected)</title>
 
   <style>
     body {
@@ -67,13 +67,15 @@
     }
 
     .good { color:#22c55e; }
+    .bad { color:#ef4444; }
+    .warn { color:#f59e0b; }
   </style>
 </head>
 
 <body>
 
 <header>
-  ⛪ Command Post (Template System Stable)
+  ⛪ Command Post (Availability Engine)
   <button onclick="load()" style="background:#3b82f6;color:white;border:none;padding:6px 10px;border-radius:6px;">
     Refresh
   </button>
@@ -85,7 +87,7 @@
 import { db } from "../assets/app.js";
 
 /* =========================
-   SAFE DATE (SGT SAFE)
+   DATE SAFE (SGT SAFE)
 ========================= */
 function parseDate(d) {
   if (!d) return new Date(0);
@@ -111,7 +113,7 @@ function inWindow(dateStr) {
 }
 
 /* =========================
-   FIXED SLOT ORDER (NO TEXT PARSING DEPENDENCY)
+   SLOT ORDER (4 COLUMN FIXED)
 ========================= */
 function getSlotIndex(s) {
 
@@ -121,12 +123,12 @@ function getSlotIndex(s) {
 
   const text = `${label} ${time} ${loc}`;
 
-  if (text.includes("jurong")) return 3;
-  if (text.includes("10.45") || text.includes("1045")) return 2;
+  if (text.includes("sat") || text.includes("14:30")) return 0;
   if (text.includes("8.30") || text.includes("0830")) return 1;
-  if (text.includes("14:30") || text.includes("saturday")) return 0;
+  if (text.includes("10.45") || text.includes("1045")) return 2;
+  if (text.includes("jurong")) return 3;
 
-  return 99;
+  return -1;
 }
 
 /* =========================
@@ -137,7 +139,8 @@ async function load() {
   const [
     servicesRes,
     templateStaffRes,
-    rolesRes
+    rolesRes,
+    availabilityRes
   ] = await Promise.all([
     db.from("services").select(`
       *,
@@ -148,14 +151,18 @@ async function load() {
       .select("staff_id, template_id"),
 
     db.from("service_roles")
-      .select(`*, staff(name)`)
+      .select(`*, staff(name)`),
+
+    db.from("staff_availability")
+      .select("*")
   ]);
 
   let services = servicesRes.data || [];
   const templateStaff = templateStaffRes.data || [];
   const roles = rolesRes.data || [];
+  const availability = availabilityRes.data || [];
 
-  /* FILTER ONLY CURRENT WINDOW */
+  /* FILTER WINDOW */
   services = services.filter(s => inWindow(s.service_date));
 
   /* SORT */
@@ -163,12 +170,12 @@ async function load() {
     parseDate(a.service_date) - parseDate(b.service_date)
   );
 
-  /* GROUP INTO 4 COLUMNS */
+  /* SPLIT INTO 4 COLUMNS */
   const cols = [[],[],[],[]];
 
   for (const s of services) {
     const idx = getSlotIndex(s);
-    if (idx < 4) cols[idx].push(s);
+    if (idx >= 0) cols[idx].push(s);
   }
 
   const grid = document.getElementById("grid");
@@ -182,16 +189,44 @@ async function load() {
 
         ${col.map(s => {
 
+          /* =========================
+             TEMPLATE STAFF (BASELINE)
+          ========================= */
           const assignedStaff = templateStaff.filter(
             t => t.template_id === s.service_template_id
           );
 
-          const uniqueStaffCount = new Set(
+          const assignedIds = new Set(
             assignedStaff.map(a => a.staff_id)
-          ).size;
+          );
 
+          /* =========================
+             UNAVAILABLE STAFF (PER SERVICE INSTANCE)
+          ========================= */
+          const unavailableIds = new Set(
+            availability
+              .filter(a =>
+                a.service_date === s.service_date &&
+                a.service_slot_id === s.service_slot_id &&
+                a.status === "unavailable"
+              )
+              .map(a => a.staff_id)
+          );
+
+          /* =========================
+             AVAILABLE STAFF (CORE LOGIC)
+          ========================= */
+          const availableIds = [...assignedIds]
+            .filter(id => !unavailableIds.has(id));
+
+          /* =========================
+             ROLE ASSIGNMENTS
+          ========================= */
           const serviceRoles = roles.filter(r => r.service_id === s.id);
 
+          /* =========================
+             DATE
+          ========================= */
           const d = parseDate(s.service_date);
 
           const day = d.toLocaleDateString("en-SG",{weekday:"long"});
@@ -213,11 +248,21 @@ async function load() {
               </div>
 
               <div class="section">
-                <b>Total Staff Assigned (Template)</b>
+                <b>Staff Summary</b>
 
                 <div class="row">
-                  <span>Assigned Staff</span>
-                  <b class="good">${uniqueStaffCount}</b>
+                  <span>Assigned (Template)</span>
+                  <b>${assignedIds.size}</b>
+                </div>
+
+                <div class="row">
+                  <span>Unavailable</span>
+                  <b class="bad">${unavailableIds.size}</b>
+                </div>
+
+                <div class="row">
+                  <span>Available</span>
+                  <b class="good">${availableIds.length}</b>
                 </div>
               </div>
 
@@ -226,7 +271,7 @@ async function load() {
 
                 ${serviceRoles
                   .filter(r =>
-                    ["Service Pastor","Anchor","Welcome IC"].includes(r.role)
+                    ["Service Pastor","Anchor","Welcome IC","Hospitality Cell"].includes(r.role)
                   )
                   .map(r => `
                     <div class="row">
@@ -234,6 +279,15 @@ async function load() {
                       <b>${r.staff?.name || "-"}</b>
                     </div>
                   `).join("")}
+              </div>
+
+              <div class="section">
+                <b>Attendance</b>
+
+                <div class="row">
+                  <span>Total Roles Filled</span>
+                  <b>${serviceRoles.filter(r => r.staff_id).length}</b>
+                </div>
               </div>
 
             </div>
