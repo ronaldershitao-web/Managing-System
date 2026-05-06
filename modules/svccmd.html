@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Service Command Post</title>
+  <title>Service Command Post (Fixed)</title>
 
   <style>
     body {
@@ -17,6 +17,7 @@
       font-weight:bold;
       display:flex;
       justify-content:space-between;
+      align-items:center;
     }
 
     .grid {
@@ -39,10 +40,7 @@
       border-top:1px solid #1f2937;
     }
 
-    .tag {
-      font-size:12px;
-      color:#94a3b8;
-    }
+    .tag { font-size:12px; color:#94a3b8; }
 
     input {
       width:90px;
@@ -62,7 +60,6 @@
     }
 
     .good { color:#22c55e; }
-    .warn { color:#f59e0b; }
     .bad  { color:#ef4444; }
   </style>
 </head>
@@ -84,7 +81,7 @@
 import { db } from "../assets/app.js";
 
 /* =========================
-   LOAD COMMAND POST
+   LOAD
 ========================= */
 
 async function loadCommandPost() {
@@ -97,7 +94,10 @@ async function loadCommandPost() {
     availabilityRes
   ] = await Promise.all([
     db.from("services")
-      .select(`*, service_slots(label, time, location, id as slot_id)`),
+      .select(`
+        *,
+        service_slots(label, time, location, id)
+      `),
 
     db.from("service_roles")
       .select(`*, staff(name)`),
@@ -126,7 +126,7 @@ async function loadCommandPost() {
 
     const slot = s.service_slots || {};
 
-    /* ---------------- FORMAT DATE ---------------- */
+    /* DATE */
     const dateObj = new Date(s.service_date);
 
     const day = dateObj.toLocaleDateString("en-SG", {
@@ -139,7 +139,7 @@ async function loadCommandPost() {
       year: "numeric"
     });
 
-    /* ---------------- FORMAT TIME ---------------- */
+    /* TIME */
     let time = slot.time || "";
     if (time) {
       const [h, m] = time.split(":");
@@ -149,20 +149,20 @@ async function loadCommandPost() {
       time = `${displayHour}:${m} ${ampm}`;
     }
 
-    /* ---------------- LOCATION NORMALISE ---------------- */
+    /* LOCATION */
     let location = slot.location || "";
     location = location.toLowerCase().includes("jurong")
       ? "COOS Jurong"
       : "COOS MD";
 
-    /* ---------------- SERVICE ROLES ---------------- */
+    /* ROLES (IMPORTANT FIX: SERVICE SCOPED) */
     const serviceRoles = roles.filter(r => r.service_id === s.id);
 
     const assignedIds = new Set(
       serviceRoles.filter(r => r.staff_id).map(r => r.staff_id)
     );
 
-    /* ---------------- SLOT SAFE AVAILABILITY ---------------- */
+    /* SLOT SAFE AVAILABILITY */
     const unavailableIds = new Set(
       availability
         .filter(a =>
@@ -177,19 +177,19 @@ async function loadCommandPost() {
 
     const floating = availableCount - assignedIds.size;
 
-    /* ---------------- ATTENDANCE ---------------- */
+    /* ATTENDANCE */
     const attendance =
       attendanceList.find(a => a.service_id === s.id) || {};
 
     const totalAttendance =
       (attendance.onsite || 0) +
-      (attendance.online || 0);
+      (attendance.online || 0) +
+      (attendance.communicants || 0);
 
-    /* ---------------- RENDER ---------------- */
+    /* RENDER */
     box.innerHTML += `
       <div class="card">
 
-        <!-- HEADER -->
         <div style="font-size:18px;font-weight:bold;">
           ${day}
         </div>
@@ -207,15 +207,11 @@ async function loadCommandPost() {
         </div>
 
         <div style="margin-top:6px;">
-          ${s.is_communion_service
-            ? "🕊 Communion Service"
-            : "Standard Service"}
+          ${s.is_communion_service ? "🕊 Communion Service" : "Standard Service"}
         </div>
 
-        <!-- KEY APPOINTMENTS -->
         <div class="section">
           <b>Key Appointments</b>
-
           ${serviceRoles
             .filter(r => ["Service Pastor","Anchor"].includes(r.role))
             .map(r => `
@@ -226,10 +222,8 @@ async function loadCommandPost() {
             `).join("")}
         </div>
 
-        <!-- ALL ROLES -->
         <div class="section">
-          <b>Roles</b>
-
+          <b>All Roles</b>
           ${serviceRoles
             .map(r => `
               <div class="row">
@@ -239,31 +233,26 @@ async function loadCommandPost() {
             `).join("")}
         </div>
 
-        <!-- FLOATING -->
         <div class="section">
-          <b>Floating Staff</b>
+          <b>Floating</b>
           <div class="${floating < 0 ? 'bad' : 'good'}">
             ${floating}
           </div>
         </div>
 
-        <!-- ATTENDANCE -->
         <div class="section">
           <b>Attendance</b>
 
           <div style="margin-top:6px;">
             <input type="number"
-              placeholder="On Site"
               value="${attendance.onsite || 0}"
               onchange="updateAttendance('${s.id}','onsite', this.value)" />
 
             <input type="number"
-              placeholder="Online"
               value="${attendance.online || 0}"
               onchange="updateAttendance('${s.id}','online', this.value)" />
 
             <input type="number"
-              placeholder="Communicants"
               value="${attendance.communicants || 0}"
               onchange="updateAttendance('${s.id}','communicants', this.value)" />
           </div>
@@ -278,10 +267,7 @@ async function loadCommandPost() {
   }
 }
 
-/* =========================
-   UPDATE ATTENDANCE
-========================= */
-
+/* UPDATE */
 window.updateAttendance = async (serviceId, field, value) => {
 
   const { data } = await db
@@ -309,7 +295,6 @@ window.updateAttendance = async (serviceId, field, value) => {
   loadCommandPost();
 };
 
-/* INIT */
 loadCommandPost();
 
 </script>
