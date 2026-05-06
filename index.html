@@ -3,93 +3,183 @@
 <head>
   <title>Ministry OS Hub</title>
 
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+
   <style>
     body {
       margin:0;
       font-family: Arial;
-      background: linear-gradient(135deg,#0f172a,#1e293b);
+      background: radial-gradient(circle at top, #1e293b, #0f172a);
       color:white;
-      display:flex;
       height:100vh;
+      display:flex;
+      flex-direction:column;
+    }
+
+    /* TOP BAR */
+    header {
+      padding:14px;
+      background:#0b1220;
+      border-bottom:1px solid #1f2937;
+      display:flex;
+      justify-content:space-between;
       align-items:center;
-      justify-content:center;
     }
 
-    .grid {
+    /* MAIN LAYOUT */
+    .container {
       display:grid;
-      grid-template-columns: repeat(3, 220px);
-      gap:20px;
+      grid-template-columns: 260px 1fr;
+      height:100%;
     }
 
-    .card {
+    /* LEFT MENU */
+    .sidebar {
+      background:#0b1220;
+      border-right:1px solid #1f2937;
+      padding:10px;
+    }
+
+    .menu-title {
+      font-size:12px;
+      color:#94a3b8;
+      margin:10px 0;
+    }
+
+    .btn {
+      width:100%;
+      padding:12px;
+      margin-bottom:8px;
       background:#111827;
-      padding:22px;
-      border-radius:14px;
-      text-align:center;
-      cursor:pointer;
       border:1px solid #1f2937;
-      transition:0.25s;
-      font-weight:bold;
+      color:white;
+      border-radius:8px;
+      cursor:pointer;
+      text-align:left;
+      transition:0.2s;
     }
 
-    .card:hover {
-      transform: translateY(-5px);
+    .btn:hover {
       border-color:#3b82f6;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+      transform: translateX(2px);
     }
 
-    .service {
-      background: linear-gradient(135deg,#1d4ed8,#2563eb);
+    .active {
+      border-color:#22c55e;
+      background:#0f172a;
     }
 
-    .pastoral {
-      background: linear-gradient(135deg,#16a34a,#22c55e);
+    /* RIGHT PANEL (SHELL) */
+    .content {
+      padding:10px;
     }
 
-    .risk {
-      background: linear-gradient(135deg,#ef4444,#f97316);
+    .shell {
+      width:100%;
+      height:100%;
+      background:#0f172a;
+      border:1px solid #1f2937;
+      border-radius:12px;
+      overflow:hidden;
+      position:relative;
     }
+
+    iframe {
+      width:100%;
+      height:100%;
+      border:none;
+      background:#0f172a;
+    }
+
+    /* TOP LABEL INSIDE SHELL */
+    .shell-header {
+      position:absolute;
+      top:0;
+      left:0;
+      right:0;
+      background:#111827;
+      padding:8px 12px;
+      font-size:12px;
+      color:#94a3b8;
+      border-bottom:1px solid #1f2937;
+      z-index:10;
+    }
+
   </style>
 </head>
 
 <body>
 
-<div class="grid">
+<header>
+  ⛪ Ministry OS System Hub
+  <span style="font-size:12px;color:#94a3b8;">Operational Dashboard</span>
+</header>
 
-  <div class="card service" onclick="go('modules/svccmd.html')">
-    ⛪ Service Command Post
+<div class="container">
+
+  <!-- LEFT NAV -->
+  <div class="sidebar">
+
+    <div class="menu-title">CORE MODULES</div>
+
+    <button class="btn active" onclick="loadModule('svccmd.html', this)">
+      🔥 Service Command Post
+    </button>
+
+    <button class="btn" onclick="loadModule('modules/people.html', this)">
+      👥 People
+    </button>
+
+    <button class="btn" onclick="loadModule('modules/groups.html', this)">
+      🏠 Groups
+    </button>
+
+    <button class="btn" onclick="loadModule('modules/visit.html', this)">
+      📍 Cell Visit
+    </button>
+
+    <button class="btn" onclick="loadModule('modules/risk.html', this)">
+      ⚠️ Risk Cockpit
+    </button>
+
+    <div class="menu-title">SYSTEM</div>
+
+    <button class="btn" onclick="loadModule('modules/timeline.html', this)">
+      📊 Timeline
+    </button>
+
   </div>
 
-  <div class="card service" onclick="go('command.html')">
-    ⛪ Service Command Post
-  </div>
+  <!-- RIGHT SHELL -->
+  <div class="content">
 
-  <div class="card pastoral" onclick="go('modules/people.html')">
-    👥 People & Pastoral Care
-  </div>
+    <div class="shell">
 
-  <div class="card risk" onclick="go('modules/risk.html')">
-    ⚠️ Risk Cockpit
-  </div>
+      <div class="shell-header" id="shellTitle">
+        Loading Service Command Post...
+      </div>
 
-  <div class="card" onclick="go('modules/groups.html')">
-    🏠 Groups
-  </div>
+      <iframe id="frame" src="svccmd.html"></iframe>
 
-  <div class="card" onclick="go('modules/visit.html')">
-    🔥 Cell Visitations
-  </div>
+    </div>
 
-  <div class="card" onclick="go('modules/tasks.html')">
-    📌 Tasks
   </div>
 
 </div>
 
 <script>
-function go(page){
-  // cache-busting fix
-  window.location.href = page + "?v=" + new Date().getTime();
+function loadModule(page, btn) {
+
+  // LOAD PAGE
+  document.getElementById("frame").src = page + "?v=" + Date.now();
+
+  // UPDATE TITLE
+  document.getElementById("shellTitle").innerText =
+    "Loading: " + page.replace("modules/","");
+
+  // ACTIVE STATE
+  document.querySelectorAll(".btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
 }
 </script>
 
