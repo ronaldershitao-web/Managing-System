@@ -74,7 +74,14 @@
   <!-- SERVICES -->
   <div class="panel">
     <h3>Services</h3>
-    <div id="services"></div>
+
+<input
+  placeholder="Search service (date / location)..."
+  oninput="searchService(this.value)"
+  style="width:100%;margin-bottom:10px;padding:6px;border-radius:6px;border:none;"
+/>
+
+<div id="services"></div>
   </div>
 
   <!-- ROLES -->
@@ -111,6 +118,7 @@ let selectedService = null;
 let selectedRole = null;
 let currentRoleName = "";
 let searchText = "";
+  let serviceSearch = "";
 
 /* ================= SERVICES ================= */
 
@@ -146,41 +154,87 @@ async function loadServices() {
 
     const slot = s.service_slots || {};
 
-    // 📆 DAY FORMAT
-    const day = new Date(s.service_date)
-      .toLocaleDateString("en-SG", { weekday: "long" });
+    // ========================
+    // SEARCH FILTER
+    // ========================
+    const searchText =
+      (s.service_date + " " + (slot.location || "")).toLowerCase();
 
-    // ⏰ TIME FORMAT (from DB: "08:30:00")
-    let time = slot.time || "";
-    if (time) {
-      const [h, m] = time.split(":");
+    if (serviceSearch && !searchText.includes(serviceSearch.toLowerCase())) {
+      return;
+    }
+
+    // ========================
+    // SAFE DATE PARSING
+    // ========================
+    const dateObj = new Date(s.service_date + "T00:00:00");
+
+    // DAY (Sunday)
+    const day = dateObj.toLocaleDateString("en-SG", {
+      weekday: "long"
+    });
+
+    // FORMAT: DD-MMM-YYYY
+    const parts = dateObj.toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric"
+    }).split(" ");
+
+    const formattedDate = `${parts[0]}-${parts[1]}-${parts[2]}`;
+
+    // ========================
+    // TIME FORMAT
+    // ========================
+    let time = "";
+
+    if (slot.time) {
+      const [h, m] = slot.time.split(":");
       const hour = parseInt(h);
+
       const ampm = hour >= 12 ? "PM" : "AM";
       const displayHour = hour % 12 || 12;
+
       time = `${displayHour}:${m} ${ampm}`;
     }
 
-    const label = slot.label || "Service";
-    const location = slot.location || "";
+    // ========================
+    // LOCATION STANDARDIZATION
+    // ========================
+    let location = "COOS MD";
 
+    if (slot.location && slot.location.toLowerCase().includes("jurong")) {
+      location = "COOS Jurong";
+    }
+
+    // ========================
+    // UI RENDER
+    // ========================
     box.innerHTML += `
       <div class="card ${selectedService?.id === s.id ? 'active' : ''}"
         onclick="selectService('${s.id}', '${s.service_slot_id}', '${s.service_date}', ${s.is_communion_service})">
 
-        <b>${day}</b>
-
-        <div class="tag">${s.service_date}</div>
-
-        <div style="margin-top:6px;">
-          ⏰ ${time} ${label ? `(${label})` : ""}
+        <!-- DAY -->
+        <div style="font-size:20px;font-weight:bold;">
+          ${day}
         </div>
 
-        ${
-          location
-          ? `<div class="tag">📍 ${location}</div>`
-          : ""
-        }
+        <!-- DATE -->
+        <div style="font-size:14px;color:#94a3b8;">
+          ${formattedDate}
+        </div>
 
+        <!-- TIME -->
+        <div style="margin-top:6px;font-size:16px;">
+          ⏰ ${time || "-"}
+        </div>
+
+        <!-- LOCATION -->
+        <div class="tag">
+          📍 ${location}
+        </div>
+
+        <!-- TYPE -->
         <div style="margin-top:6px;">
           ${s.is_communion_service
             ? "🕊 Communion Service"
@@ -192,6 +246,11 @@ async function loadServices() {
   });
 }
 
+window.searchService = (val) => {
+  serviceSearch = val;
+  loadServices();
+};
+  
 window.selectService = async (id, slotId, date, isComm) => {
   selectedService = { id, slotId, date, isComm };
   selectedRole = null;
