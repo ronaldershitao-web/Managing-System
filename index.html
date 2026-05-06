@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+
 <html>
 <head>
   <title>Ministry OS Hub</title>
@@ -9,72 +10,104 @@
       font-family: Arial;
       background:#0f172a;
       color:white;
+    }
+
+    /* HEADER */
+    header {
       display:flex;
-      height:100vh;
+      justify-content:space-between;
       align-items:center;
-      justify-content:center;
-    }
-
-    .grid {
-      display:grid;
-      grid-template-columns: repeat(2, 200px);
-      gap:20px;
-    }
-
-    .card {
+      padding:12px 20px;
       background:#111827;
-      padding:20px;
-      border-radius:12px;
-      text-align:center;
+      border-bottom:1px solid #1f2937;
+    }
+
+    header h1 {
+      margin:0;
+      font-size:18px;
+    }
+
+    /* TAB BAR */
+    .tabs {
+      display:flex;
+      gap:10px;
+      padding:10px 20px;
+      background:#0b1220;
+      border-bottom:1px solid #1f2937;
+    }
+
+    .tab {
+      padding:10px 14px;
+      border-radius:8px;
       cursor:pointer;
+      background:#111827;
       border:1px solid #1f2937;
       transition:0.2s;
+      font-size:14px;
     }
 
-    .card:hover {
-      transform: scale(1.05);
+    .tab:hover {
+      border-color:#3b82f6;
+      transform:translateY(-1px);
+    }
+
+    .tab.active {
+      background:#1d4ed8;
       border-color:#2563eb;
     }
 
-    .highlight {
-      border-color: #22c55e;
+    /* MAIN PANEL */
+    .container {
+      padding:20px;
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      height:calc(100vh - 120px);
     }
+
+    .panel {
+      text-align:center;
+      color:#94a3b8;
+    }
+
+    .panel h2 {
+      color:white;
+    }
+
   </style>
+
 </head>
 
 <body>
 
-<div class="grid">
+<header>
+  <h1>🔥 Ministry Operating System</h1>
+</header>
 
-  <div class="card highlight" onclick="location.href='modules/groups.html'">
-    🏠 Groups
-  </div>
+<div class="tabs">
 
-  <div class="card" onclick="location.href='modules/people.html'">
-    👥 People
-  </div>
-
-  <div class="card" onclick="location.href='command.html'">
-    🔥 Command Center
-  </div>
-
-  <div class="card" onclick="location.href='modules/visit.html'">
-    🔥 Cell Vistation
-  </div>
-
-  <div class="card" onclick="location.href='modules/tasks.html'">
-    📌 Tasks
-  </div>
-
-  <div class="card" onclick="location.href='modules/timeline.html'">
-    📊 Timeline
-  </div>
-
-  <div class="card" onclick="location.href='modules/risk.html'">
-    ⚠️ Risk Cockpit
-  </div>
+  <div class="tab active" onclick="go('modules/groups.html')">🏠 Groups</div>
+  <div class="tab" onclick="go('modules/people.html')">👥 People</div>
+  <div class="tab" onclick="go('command.html')">🔥 Command Center</div>
+  <div class="tab" onclick="go('modules/visit.html')">📋 Cell Visitation</div>
+  <div class="tab" onclick="go('modules/tasks.html')">📌 Tasks</div>
+  <div class="tab" onclick="go('modules/timeline.html')">📊 Timeline</div>
+  <div class="tab" onclick="go('modules/risk.html')">⚠️ Risk Cockpit</div>
 
 </div>
+
+<div class="container">
+  <div class="panel">
+    <h2>Welcome</h2>
+    <p>Select a module above to begin</p>
+  </div>
+</div>
+
+<script>
+function go(page) {
+  window.location.href = page;
+}
+</script>
 
 </body>
 </html>
