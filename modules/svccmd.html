@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Service Command Post (Stable v6)</title>
+  <title>Command Post (Structured vFinal)</title>
 
   <style>
     body {
@@ -14,10 +14,9 @@
     header {
       padding:12px;
       background:#111827;
+      font-weight:bold;
       display:flex;
       justify-content:space-between;
-      align-items:center;
-      font-weight:bold;
     }
 
     .grid {
@@ -32,11 +31,10 @@
       padding:12px;
       border-radius:10px;
       border:1px solid #1f2937;
-      min-height:240px;
+      min-height:200px;
     }
 
     .title {
-      font-size:15px;
       font-weight:bold;
       color:#60a5fa;
     }
@@ -46,29 +44,20 @@
       color:#94a3b8;
     }
 
-    .section {
-      margin-top:10px;
-      border-top:1px solid #1f2937;
-      padding-top:8px;
-    }
-
     .row {
       display:flex;
       justify-content:space-between;
       font-size:12px;
       margin:3px 0;
     }
-
-    .good { color:#22c55e; }
-    .bad { color:#ef4444; }
   </style>
 </head>
 
 <body>
 
 <header>
-  ⛪ Service Command Post (Stable)
-  <button onclick="load()" style="background:#3b82f6;color:white;border:none;padding:6px 10px;border-radius:6px;">
+  ⛪ Command Post (Structured)
+  <button onclick="load()" style="background:#3b82f6;color:white;padding:6px 10px;border:none;border-radius:6px;">
     Refresh
   </button>
 </header>
@@ -78,204 +67,121 @@
 <script type="module">
 import { db } from "../assets/app.js";
 
-/* =================================================
-   🔥 FIXED DATE PARSER (NO TIMEZONE SHIFT BUG)
-================================================= */
-function safeDate(dateStr) {
-  if (!dateStr) return new Date();
-
-  const parts = dateStr.split("-");
-  return new Date(
-    Number(parts[0]),
-    Number(parts[1]) - 1,
-    Number(parts[2])
-  );
+/* =========================
+   SAFE DATE
+========================= */
+function parseDate(dateStr) {
+  const [y, m, d] = dateStr.split("-");
+  return new Date(Number(y), Number(m) - 1, Number(d));
 }
 
-/* =================================================
-   🔥 FORMAT DATE (CONSISTENT DISPLAY)
-================================================= */
-function formatDate(d) {
-  const day = d.toLocaleDateString("en-SG", { weekday: "long" });
+/* =========================
+   WINDOW FILTER (-7 to +7)
+========================= */
+function inWindow(dateStr) {
+  const today = new Date();
 
-  const date = `${String(d.getDate()).padStart(2,'0')} ${
-    d.toLocaleDateString("en-SG", { month: "short" })
-  } ${String(d.getFullYear()).slice(-2)}`;
+  const min = new Date(today);
+  min.setDate(today.getDate() - 7);
 
-  return { day, date };
+  const max = new Date(today);
+  max.setDate(today.getDate() + 7);
+
+  const d = parseDate(dateStr);
+
+  return d >= min && d <= max;
 }
 
-/* =================================================
-   🔥 MAIN LOAD
-================================================= */
+/* =========================
+   SLOT MAP (FOR COLUMNS)
+========================= */
+function slotKey(s) {
+  const label = (s.service_slots?.label || "").toLowerCase();
+
+  if (label.includes("8.30")) return "slot1";
+  if (label.includes("10.45") && !label.includes("jurong")) return "slot2";
+  if (label.includes("jurong")) return "slot3";
+  return "slot0";
+}
+
+/* =========================
+   LOAD
+========================= */
 async function load() {
 
   const [
     servicesRes,
     rolesRes,
-    staffRes,
-    availabilityRes
+    staffRes
   ] = await Promise.all([
-    db.from("services").select(`
-      *,
-      service_slots(label,time,location,id)
-    `),
-
+    db.from("services").select(`*, service_slots(label,time,location,id)`),
     db.from("service_roles").select(`*, staff(name)`),
-
-    db.from("staff").select("*"),
-
-    db.from("staff_availability").select("*").eq("status","unavailable")
+    db.from("staff").select("*")
   ]);
 
   let services = servicesRes.data || [];
   const roles = rolesRes.data || [];
   const staff = staffRes.data || [];
-  const unavailable = availabilityRes.data || [];
 
-  /* =================================================
-     🔥 FIX 1: ONLY RUNNING WINDOW (NO 2027 BUG)
-  ================================================= */
-  const today = new Date();
-  const min = new Date(today);
-  const max = new Date(today);
-  max.setDate(today.getDate() + 60);
+  /* FILTER WINDOW */
+  services = services.filter(s => inWindow(s.service_date));
 
-  services = services.filter(s => {
-    const d = safeDate(s.service_date);
-    return d >= min && d <= max;
-  });
-
-  /* =================================================
-     🔥 FIX 2: ONLY WEEKEND SERVICES
-  ================================================= */
-  services = services.filter(s => {
-    const d = safeDate(s.service_date);
-    const day = d.getDay();
-    return day === 0 || day === 6;
-  });
-
-  /* =================================================
-     🔥 FIX 3: GROUP UNIQUE SERVICES (NO DUPLICATES)
-  ================================================= */
-  const grouped = {};
-
-  services.forEach(s => {
-    const key = `${s.service_date}_${s.service_slot_id}`;
-
-    if (!grouped[key]) {
-      grouped[key] = {
-        service: s,
-        roles: roles.filter(r => r.service_id === s.id)
-      };
-    }
-  });
+  /* SORT ASC */
+  services.sort((a,b) =>
+    parseDate(a.service_date) - parseDate(b.service_date)
+  );
 
   const grid = document.getElementById("grid");
   grid.innerHTML = "";
 
-  /* =================================================
-     🔥 RENDER
-  ================================================= */
-  Object.values(grouped).forEach(obj => {
+  /* FIXED 4 COLUMNS */
+  const slots = [[],[],[],[]];
 
-    const s = obj.service;
-    const serviceRoles = obj.roles;
+  services.forEach(s => {
 
-    const slot = s.service_slots || {};
+    const idx =
+      slotKey(s) === "slot1" ? 0 :
+      slotKey(s) === "slot2" ? 1 :
+      slotKey(s) === "slot3" ? 2 : 3;
 
-    const d = safeDate(s.service_date);
-    const { day, date } = formatDate(d);
+    slots[idx].push(s);
+  });
 
-    /* AVAILABLE STAFF */
-    const unavailableIds = new Set(
-      unavailable
-        .filter(a =>
-          a.service_date === s.service_date &&
-          a.service_slot_id === s.service_slot_id
-        )
-        .map(a => a.staff_id)
-    );
-
-    const availableStaff = staff.filter(st => !unavailableIds.has(st.id));
-
-    /* ASSIGNED */
-    const assignedIds = new Set(
-      serviceRoles.map(r => r.staff_id).filter(Boolean)
-    );
-
-    const floating = availableStaff.length - assignedIds.size;
-
-    /* ATTENDANCE */
-    const attendance = s.attendance || {};
-
-    const totalAttendance =
-      (attendance.onsite || 0) +
-      (attendance.online || 0) +
-      (attendance.communicants || 0);
+  /* RENDER COLUMNS */
+  slots.forEach(col => {
 
     grid.innerHTML += `
       <div class="card">
+        ${
+          col.map(s => {
 
-        <!-- HEADER -->
-        <div class="title">
-          ${slot.label || "Service"}
-        </div>
+            const r = roles.filter(x => x.service_id === s.id);
 
-        <div class="tag">
-          ${day} | ${date}
-        </div>
+            const d = parseDate(s.service_date);
 
-        <div class="tag">
-          ⏰ ${slot.time || ""} | 📍 ${slot.location || ""}
-        </div>
+            return `
+              <div style="margin-bottom:12px;">
+                <div class="title">
+                  ${s.service_slots?.label || "Service"}
+                </div>
 
-        <!-- STAFF SUMMARY -->
-        <div class="section">
-          <b>Staff Summary</b>
+                <div class="tag">
+                  ${d.toDateString()}
+                </div>
 
-          <div class="row">
-            <span>Available</span>
-            <b>${availableStaff.length}</b>
-          </div>
+                <div class="row">
+                  <span>Staff</span>
+                  <b>${r.length}</b>
+                </div>
 
-          <div class="row">
-            <span>Assigned</span>
-            <b>${assignedIds.size}</b>
-          </div>
-
-          <div class="row">
-            <span>Floating</span>
-            <b class="${floating < 0 ? 'bad' : 'good'}">${floating}</b>
-          </div>
-        </div>
-
-        <!-- KEY APPOINTMENTS -->
-        <div class="section">
-          <b>Key Appointments</b>
-
-          ${serviceRoles
-            .filter(r =>
-              ["Service Pastor","Anchor","Welcome IC","Hospitality Cell"].includes(r.role)
-            )
-            .map(r => `
-              <div class="row">
-                <span>${r.role}</span>
-                <b>${r.staff?.name || "-"}</b>
+                <div class="row">
+                  <span>Assigned</span>
+                  <b>${r.filter(x=>x.staff_id).length}</b>
+                </div>
               </div>
-            `).join("")}
-        </div>
-
-        <!-- ATTENDANCE -->
-        <div class="section">
-          <b>Attendance</b>
-
-          <div class="row">
-            <span>Total</span>
-            <b>${totalAttendance}</b>
-          </div>
-        </div>
-
+            `;
+          }).join("")
+        }
       </div>
     `;
   });
