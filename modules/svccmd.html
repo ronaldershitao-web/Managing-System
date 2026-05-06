@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Command Post (Template-Based Count)</title>
+  <title>Command Post (4 Column + Template System)</title>
 
   <style>
     body {
@@ -27,12 +27,20 @@
       padding:10px;
     }
 
-    .card {
+    .col {
       background:#111827;
-      padding:12px;
-      border-radius:10px;
       border:1px solid #1f2937;
+      border-radius:10px;
+      padding:10px;
       min-height:200px;
+    }
+
+    .card {
+      background:#0f172a;
+      border:1px solid #334155;
+      padding:10px;
+      border-radius:8px;
+      margin-bottom:10px;
     }
 
     .title {
@@ -46,7 +54,7 @@
     }
 
     .section {
-      margin-top:10px;
+      margin-top:8px;
       padding-top:8px;
       border-top:1px solid #1f2937;
     }
@@ -55,7 +63,6 @@
       display:flex;
       justify-content:space-between;
       font-size:12px;
-      margin:3px 0;
     }
 
     .good { color:#22c55e; }
@@ -65,7 +72,7 @@
 <body>
 
 <header>
-  ⛪ Command Post (Template-Based Staffing)
+  ⛪ Command Post (Template 4-Column View)
   <button onclick="load()" style="background:#3b82f6;color:white;border:none;padding:6px 10px;border-radius:6px;">
     Refresh
   </button>
@@ -77,11 +84,11 @@
 import { db } from "../assets/app.js";
 
 /* =========================
-   SAFE DATE
+   DATE SAFE
 ========================= */
-function parseDate(dateStr) {
-  const [y, m, d] = dateStr.split("-");
-  return new Date(Number(y), Number(m)-1, Number(d));
+function parseDate(d) {
+  const [y,m,day] = d.split("-");
+  return new Date(Number(y), Number(m)-1, Number(day));
 }
 
 /* =========================
@@ -102,6 +109,23 @@ function inWindow(dateStr) {
 }
 
 /* =========================
+   SLOT INDEX
+========================= */
+function getSlotIndex(s) {
+  const t = (s.service_slots?.time || "").toLowerCase();
+  const l = (s.service_slots?.location || "").toLowerCase();
+
+  const text = `${t} ${l}`;
+
+  if (text.includes("sat") || text.includes("14:30")) return 0;
+  if (text.includes("8.30") || text.includes("0830")) return 1;
+  if (text.includes("10.45") || text.includes("1045")) return 2;
+  if (text.includes("jurong")) return 3;
+
+  return -1;
+}
+
+/* =========================
    LOAD
 ========================= */
 async function load() {
@@ -117,64 +141,70 @@ async function load() {
   let services = servicesRes.data || [];
   const templateStaff = templateStaffRes.data || [];
 
-  /* =========================
-     FILTER WINDOW
-  ========================= */
+  /* FILTER WINDOW */
   services = services.filter(s => inWindow(s.service_date));
+
+  /* SPLIT INTO 4 COLUMNS */
+  const cols = [[],[],[],[]];
+
+  for (const s of services) {
+    const idx = getSlotIndex(s);
+    if (idx >= 0) cols[idx].push(s);
+  }
 
   const grid = document.getElementById("grid");
   grid.innerHTML = "";
 
-  for (const s of services) {
-
-    const templateId = s.service_template_id;
-
-    /* =========================
-       FIXED: TOTAL STAFF ASSIGNED
-    ========================= */
-    const assignedStaff = templateStaff
-      .filter(t => t.template_id === templateId);
-
-    const totalAssigned = new Set(
-      assignedStaff.map(a => a.staff_id)
-    ).size;
-
-    const d = parseDate(s.service_date);
-
-    const day = d.toLocaleDateString("en-SG", { weekday:"long" });
-
-    const datePretty = d.toLocaleDateString("en-SG", {
-      day:"2-digit",
-      month:"short"
-    });
+  /* RENDER COLUMNS */
+  cols.forEach(col => {
 
     grid.innerHTML += `
-      <div class="card">
+      <div class="col">
+        ${col.map(s => {
 
-        <div class="title">
-          ${s.service_slots?.label || "Service"}
-        </div>
+          const assigned = templateStaff.filter(
+            t => t.template_id === s.service_template_id
+          );
 
-        <div class="tag">
-          ${day} | ${datePretty}
-        </div>
+          const totalAssigned = new Set(
+            assigned.map(a => a.staff_id)
+          ).size;
 
-        <div class="tag">
-          ⏰ ${s.service_slots?.time || ""}
-        </div>
+          const d = parseDate(s.service_date);
 
-        <div class="section">
-          <b>Total Staff Assigned (Template Based)</b>
+          const day = d.toLocaleDateString("en-SG",{weekday:"long"});
+          const date = d.toLocaleDateString("en-SG",{day:"2-digit", month:"short"});
 
-          <div class="row">
-            <span>Assigned Staff</span>
-            <b class="good">${totalAssigned}</b>
-          </div>
-        </div>
+          return `
+            <div class="card">
 
+              <div class="title">
+                ${s.service_slots?.label || "Service"}
+              </div>
+
+              <div class="tag">
+                ${day} | ${date}
+              </div>
+
+              <div class="tag">
+                ⏰ ${s.service_slots?.time || ""}
+              </div>
+
+              <div class="section">
+                <b>Total Staff Assigned</b>
+
+                <div class="row">
+                  <span>Assigned</span>
+                  <b class="good">${totalAssigned}</b>
+                </div>
+              </div>
+
+            </div>
+          `;
+        }).join("")}
       </div>
     `;
-  }
+  });
 }
 
 window.load = load;
