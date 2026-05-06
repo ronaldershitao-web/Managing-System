@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Command Post (Welcome IC Hierarchy)</title>
+  <title>Command Post (Fixed Names + Stable)</title>
 
   <style>
     body {
@@ -74,7 +74,7 @@
 <body>
 
 <header>
-  ⛪ Command Post (Welcome IC Hierarchy System)
+  ⛪ Command Post (Stable + Name Fix)
   <button onclick="load()" style="background:#3b82f6;color:white;border:none;padding:6px 10px;border-radius:6px;">
     Refresh
   </button>
@@ -86,7 +86,7 @@
 import { db } from "../assets/app.js";
 
 /* =========================
-   DATE SAFE
+   SAFE DATE
 ========================= */
 function parseDate(d) {
   if (!d) return new Date(0);
@@ -95,7 +95,7 @@ function parseDate(d) {
 }
 
 /* =========================
-   WINDOW FILTER (±7 DAYS)
+   WINDOW FILTER
 ========================= */
 function inWindow(dateStr) {
   const today = new Date();
@@ -112,15 +112,14 @@ function inWindow(dateStr) {
 }
 
 /* =========================
-   SLOT INDEX (4 COLUMN)
+   SLOT ORDER
 ========================= */
 function getSlotIndex(s) {
 
-  const label = (s.service_slots?.label || "").toLowerCase();
-  const time = (s.service_slots?.time || "").toLowerCase();
-  const loc = (s.service_slots?.location || "").toLowerCase();
+  const t = (s.service_slots?.time || "").toLowerCase();
+  const l = (s.service_slots?.location || "").toLowerCase();
 
-  const text = `${label} ${time} ${loc}`;
+  const text = `${t} ${l}`;
 
   if (text.includes("sat") || text.includes("14:30")) return 0;
   if (text.includes("8.30") || text.includes("0830")) return 1;
@@ -128,6 +127,15 @@ function getSlotIndex(s) {
   if (text.includes("jurong")) return 3;
 
   return -1;
+}
+
+/* =========================
+   SAFE ROLE MATCH (FIXED)
+========================= */
+function findRole(serviceRoles, roleName) {
+  return serviceRoles.find(r =>
+    (r.role || "").trim().toLowerCase() === roleName.toLowerCase()
+  );
 }
 
 /* =========================
@@ -142,9 +150,15 @@ async function load() {
     availabilityRes
   ] = await Promise.all([
     db.from("services").select(`*, service_slots(label,time,location)`),
-    db.from("staff_service_templates").select("staff_id, template_id"),
-    db.from("service_roles").select(`*, staff(name)`),
-    db.from("staff_availability").select("*")
+
+    db.from("staff_service_templates")
+      .select("staff_id, template_id"),
+
+    db.from("service_roles")
+      .select(`*, staff(name)`),
+
+    db.from("staff_availability")
+      .select("*")
   ]);
 
   let services = servicesRes.data || [];
@@ -171,7 +185,6 @@ async function load() {
   const grid = document.getElementById("grid");
   grid.innerHTML = "";
 
-  /* RENDER */
   cols.forEach(col => {
 
     grid.innerHTML += `
@@ -203,7 +216,6 @@ async function load() {
               .map(a => a.staff_id)
           );
 
-          /* AVAILABLE */
           const availableIds = [...assignedIds]
             .filter(id => !unavailableIds.has(id));
 
@@ -213,7 +225,7 @@ async function load() {
           const serviceRoles = roles.filter(r => r.service_id === s.id);
 
           /* =========================
-             KEY ROLES
+             KEY ROLES (FIXED)
           ========================= */
           const KEY_ROLES = [
             "Service Pastor",
@@ -223,35 +235,13 @@ async function load() {
           ];
 
           const keyAppointments = KEY_ROLES.map(role => {
-            const found = serviceRoles.find(r => r.role === role);
+            const found = findRole(serviceRoles, role);
+
             return {
               role,
               name: found?.staff?.name || "-"
             };
           });
-
-          /* =========================
-             WELCOME IC SUBTEAM
-          ========================= */
-          const WELCOME_SUBTEAM = {
-            "Welcome Members": 2,
-            "Plaza": 2
-          };
-
-          const welcomeSubteam = Object.entries(WELCOME_SUBTEAM).map(
-            ([role, count]) => {
-
-              const members = serviceRoles
-                .filter(r => r.role === role)
-                .map(r => r.staff?.name || "-");
-
-              while (members.length < count) {
-                members.push("-");
-              }
-
-              return { role, members: members.slice(0, count) };
-            }
-          );
 
           const d = parseDate(s.service_date);
 
@@ -299,23 +289,6 @@ async function load() {
                   <div class="row">
                     <span>${k.role}</span>
                     <b>${k.name}</b>
-                  </div>
-                `).join("")}
-              </div>
-
-              <div class="section">
-                <b>Welcome IC Sub-Team</b>
-
-                ${welcomeSubteam.map(group => `
-                  <div style="margin-top:6px;">
-                    <b style="color:#60a5fa;">${group.role}</b>
-
-                    ${group.members.map(m => `
-                      <div class="row">
-                        <span>Member</span>
-                        <b>${m}</b>
-                      </div>
-                    `).join("")}
                   </div>
                 `).join("")}
               </div>
