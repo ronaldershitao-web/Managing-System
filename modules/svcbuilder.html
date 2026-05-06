@@ -5,7 +5,12 @@
 
   <style>
     body { margin:0; font-family:Arial; background:#0b1220; color:white; }
-    header { padding:12px; background:#111827; font-weight:bold; }
+
+    header {
+      padding:12px;
+      background:#111827;
+      font-weight:bold;
+    }
 
     .grid {
       display:grid;
@@ -28,10 +33,10 @@
       padding:10px;
       margin-bottom:8px;
       border-radius:8px;
-      cursor:pointer;
     }
 
     .card:hover { border-color:#3b82f6; }
+
     .active { border:2px solid #3b82f6; }
 
     .role {
@@ -55,14 +60,14 @@
       color:white;
     }
 
-    button.danger { background:#ef4444; }
-    button:disabled { background:#374151; }
+    button.unavailable { background:#ef4444; }
+    button.restore { background:#22c55e; }
   </style>
 </head>
 
 <body>
 
-<header>⛪ Service Builder (Stable v5 - Fixed)</header>
+<header>⛪ Service Builder (Stable v5)</header>
 
 <div class="grid">
 
@@ -81,6 +86,8 @@
   <!-- STAFF -->
   <div class="panel">
     <h3>Staff</h3>
+
+    <div id="currentRole" style="margin-bottom:10px;color:#93c5fd;"></div>
 
     <input
       placeholder="Search staff..."
@@ -102,90 +109,31 @@ import { db } from "../assets/app.js";
 
 let selectedService = null;
 let selectedRole = null;
+let currentRoleName = "";
 let searchText = "";
 
-/* =========================
-   HELPERS
-========================= */
-
-async function getAssignments() {
-  const { data, error } = await db
-    .from("service_roles")
-    .select("*")
-    .eq("service_id", selectedService.id);
-
-  if (error) console.error(error);
-  return data || [];
-}
-
-function canAssign(staff, role, assignments) {
-
-  const staffRoles = assignments.filter(a => a.staff_id === staff.id);
-
-  const hasPastor = staffRoles.some(r => r.role === "Service Pastor");
-  const hasCommunion = staffRoles.some(r => r.is_communion_role);
-
-  const normalRoles = staffRoles.filter(r => !r.is_communion_role);
-
-  // Pastor rule → only Anchor allowed next
-  if (hasPastor) {
-    return role.role === "Anchor";
-  }
-
-  // Only 1 normal role
-  if (!role.is_communion_role && normalRoles.length >= 1) {
-    return false;
-  }
-
-  // Communion rules
-  if (selectedService.isComm) {
-    if (role.is_communion_role && hasCommunion) return false;
-  }
-
-  return true;
-}
-
-/* =========================
-   SERVICES
-========================= */
+/* ================= SERVICES ================= */
 
 async function loadServices() {
 
   const today = new Date().toISOString().split("T")[0];
 
-  const { data, error } = await db
+  const { data } = await db
     .from("services")
-    .select(`
-      id,
-      service_date,
-      is_communion_service,
-      service_slot_id,
-      service_slots(label, time, location)
-    `)
+    .select("id, service_date, is_communion_service, service_slot_id")
     .gte("service_date", today)
     .order("service_date", { ascending:true });
-
-  if (error) {
-    console.error(error);
-    return;
-  }
 
   const box = document.getElementById("services");
   box.innerHTML = "";
 
   (data || []).forEach(s => {
 
-    const slot = s.service_slots || {};
-
     box.innerHTML += `
       <div class="card ${selectedService?.id === s.id ? 'active' : ''}"
         onclick="selectService('${s.id}', '${s.service_slot_id}', '${s.service_date}', ${s.is_communion_service})">
 
         <b>${s.service_date}</b>
-
-        <div class="tag">
-          ${slot.label || "Service"} - ${slot.time || ""}
-        </div>
 
         <div class="tag">
           ${s.is_communion_service ? "🕊 Communion" : "Standard"}
@@ -199,15 +147,16 @@ async function loadServices() {
 window.selectService = async (id, slotId, date, isComm) => {
   selectedService = { id, slotId, date, isComm };
   selectedRole = null;
+  currentRoleName = "";
+
+  document.getElementById("currentRole").innerText = "";
 
   await loadRoles();
   await loadStaff();
   await loadServices();
 };
 
-/* =========================
-   ROLES
-========================= */
+/* ================= ROLES ================= */
 
 async function loadRoles() {
 
@@ -215,30 +164,23 @@ async function loadRoles() {
 
   let query = db
     .from("service_roles")
-    .select(`*, staff(name)`)
+    .select("*, staff(name)")
     .eq("service_id", selectedService.id);
 
   if (!selectedService.isComm) {
     query = query.eq("is_communion_role", false);
   }
 
-  const { data, error } = await query;
-
-  if (error) {
-    console.error(error);
-    return;
-  }
+  const { data } = await query;
 
   const box = document.getElementById("roles");
   box.innerHTML = "";
 
   (data || []).forEach(r => {
 
-    const active = selectedRole?.roleId === r.id;
-
     box.innerHTML += `
-      <div class="role ${active ? 'active' : ''}"
-        onclick="selectRole('${r.id}', ${r.is_communion_role})">
+      <div class="role"
+        onclick="selectRole('${r.id}', '${r.role}', ${r.is_communion_role})">
 
         <b>${r.role} ${r.is_communion_role ? "🕊" : ""}</b>
 
@@ -248,8 +190,7 @@ async function loadRoles() {
 
         ${
           r.staff_id
-          ? `<button class="danger"
-              onclick="event.stopPropagation(); unassign('${r.id}')">
+          ? `<button onclick="event.stopPropagation(); unassign('${r.id}')">
               Unassign
             </button>`
           : ""
@@ -260,47 +201,75 @@ async function loadRoles() {
   });
 }
 
-window.selectRole = (roleId, isComm) => {
+window.selectRole = (roleId, roleName, isComm) => {
   selectedRole = { roleId, isComm };
+  currentRoleName = roleName;
+
+  document.getElementById("currentRole").innerText =
+    "Assigning: " + roleName;
+
+  loadStaff();
 };
 
-/* =========================
-   AVAILABILITY
-========================= */
+/* ================= ASSIGN RULES ================= */
 
-async function isUnavailable(staffId) {
+function canAssign(staff, role, assignments) {
 
-  if (!selectedService) return false;
+  const staffRoles = assignments.filter(a => a.staff_id === staff.id);
 
-  const { data, error } = await db
-    .from("staff_availability")
-    .select("*")
-    .eq("staff_id", staffId)
-    .eq("service_date", selectedService.date + "T00:00:00") // 🔥 FIX
-    .eq("service_slot_id", selectedService.slotId);
+  const hasPastor = staffRoles.some(r => r.role === "Service Pastor");
+  const hasCommunion = staffRoles.some(r => r.is_communion_role);
 
-  if (error) {
-    console.error("Availability error:", error);
+  const normalRoles = staffRoles.filter(r => !r.is_communion_role);
+
+  if (hasPastor) {
+    return role.role === "Anchor";
+  }
+
+  if (!role.is_communion_role && normalRoles.length >= 1) {
     return false;
   }
 
-  return (data || []).some(r => r.status === "unavailable");
+  if (selectedService.isComm) {
+    if (role.is_communion_role && hasCommunion) return false;
+  }
+
+  return true;
 }
 
-/* =========================
-   STAFF
-========================= */
+/* ================= AVAILABILITY ================= */
+
+async function isUnavailable(staffId) {
+
+  const { data } = await db
+    .from("staff_availability")
+    .select("*")
+    .eq("staff_id", staffId)
+    .eq("service_date", selectedService.date)
+    .eq("service_slot_id", selectedService.slotId);
+
+  return (data || []).length > 0;
+}
+
+/* ================= STAFF ================= */
 
 async function loadStaff() {
 
-  const { data: staff, error } = await db.from("staff").select("*");
-
-  if (error) {
-    console.error(error);
+  if (!selectedRole) {
+    document.getElementById("staffAvailable").innerHTML =
+      "<div class='tag'>Select a role to assign</div>";
+    document.getElementById("staffUnavailable").innerHTML = "";
     return;
   }
 
-  const assignments = await getAssignments();
+  const { data: staff } = await db.from("staff").select("*");
+
+  const { data: assignments } = await db
+    .from("service_roles")
+    .select("*")
+    .eq("service_id", selectedService.id);
+
+  const roleData = assignments.find(r => r.id === selectedRole.roleId);
 
   const availableBox = document.getElementById("staffAvailable");
   const unavailableBox = document.getElementById("staffUnavailable");
@@ -314,25 +283,27 @@ async function loadStaff() {
 
     const unavailable = await isUnavailable(s.id);
 
-    const roleData = assignments.find(r => r.id === selectedRole?.roleId);
+    const assigned = assignments
+      .filter(a => a.staff_id === s.id)
+      .map(a => a.role)
+      .join(", ");
 
-    const can = selectedRole && roleData
-      ? canAssign(s, roleData, assignments)
-      : false;
+    const can = canAssign(s, roleData, assignments);
 
     const card = `
       <div class="card">
         <b>${s.name}</b>
 
-        <button ${!selectedRole || !can || unavailable ? "disabled" : ""}
-          onclick="assign('${s.id}')">
-          Assign
+        <div class="tag">${assigned || "No role assigned"}</div>
+
+        <button onclick="assign('${s.id}')">
+          Assign ${currentRoleName}
         </button>
 
         ${
           unavailable
-          ? `<button onclick="toggle('${s.id}')">Return Availability</button>`
-          : `<button onclick="toggle('${s.id}')">Mark Unavailable</button>`
+          ? `<button class="restore" onclick="toggle('${s.id}')">Return Availability</button>`
+          : `<button class="unavailable" onclick="toggle('${s.id}')">Mark Unavailable</button>`
         }
       </div>
     `;
@@ -345,119 +316,54 @@ async function loadStaff() {
   }
 }
 
-/* =========================
-   ASSIGN / UNASSIGN
-========================= */
+/* ================= ASSIGN ================= */
 
 window.assign = async (staffId) => {
 
-  if (!selectedService || !selectedRole) {
-    alert("Select service and role first");
-    return;
-  }
-
-  // 🔥 Get all roles for this service
-  const { data: assignments, error } = await db
+  const { data: assignments } = await db
     .from("service_roles")
     .select("*")
     .eq("service_id", selectedService.id);
 
-  if (error) {
-    console.error(error);
-    alert(error.message);
-    return;
-  }
-
-  const staffRoles = assignments.filter(r => r.staff_id === staffId);
-
   const roleData = assignments.find(r => r.id === selectedRole.roleId);
 
-  const hasPastor = staffRoles.some(r => r.role === "Service Pastor");
-  const hasCommunion = staffRoles.some(r => r.is_communion_role);
-  const normalRoles = staffRoles.filter(r => !r.is_communion_role);
-
-  // 🚫 RULE 1: Pastor → only Anchor allowed next
-  if (hasPastor && roleData.role !== "Anchor") {
-    alert("Service Pastor can only be assigned Anchor next");
+  if (!canAssign({ id: staffId }, roleData, assignments)) {
+    alert("Assignment not allowed");
     return;
   }
 
-  // 🚫 RULE 2: Only 1 normal role
-  if (!roleData.is_communion_role && normalRoles.length >= 1) {
-    alert("Staff already has a role");
-    return;
-  }
-
-  // 🚫 RULE 3: Communion limit
-  if (selectedService.isComm) {
-    if (roleData.is_communion_role && hasCommunion) {
-      alert("Already assigned a Communion role");
-      return;
-    }
-  }
-
-  // 🚫 RULE 4: Availability
-  const unavailable = await isUnavailable(staffId);
-  if (unavailable) {
-    alert("Staff is unavailable");
-    return;
-  }
-
-  // ✅ SAFE ASSIGN
-  const { error: updateError } = await db
+  await db
     .from("service_roles")
     .update({ staff_id: staffId })
     .eq("id", selectedRole.roleId);
 
-  if (updateError) {
-    console.error(updateError);
-    alert(updateError.message);
-    return;
-  }
-
   await loadRoles();
   await loadStaff();
 };
 
+/* ================= UNASSIGN ================= */
+
 window.unassign = async (roleId) => {
 
-  const { error } = await db
+  await db
     .from("service_roles")
     .update({ staff_id: null })
     .eq("id", roleId);
 
-  if (error) {
-    console.error(error);
-    alert(error.message);
-  }
-
   await loadRoles();
   await loadStaff();
 };
 
-/* =========================
-   TOGGLE AVAILABILITY
-========================= */
+/* ================= TOGGLE ================= */
 
 window.toggle = async (staffId) => {
 
-  if (!selectedService) {
-    alert("Select a service first");
-    return;
-  }
-
-  const { data, error } = await db
+  const { data } = await db
     .from("staff_availability")
     .select("*")
     .eq("staff_id", staffId)
-    .eq("service_date", selectedService.date + "T00:00:00") // 🔥 FIX
+    .eq("service_date", selectedService.date)
     .eq("service_slot_id", selectedService.slotId);
-
-  if (error) {
-    console.error(error);
-    alert(error.message);
-    return;
-  }
 
   if ((data || []).length > 0) {
 
@@ -472,7 +378,7 @@ window.toggle = async (staffId) => {
       .from("staff_availability")
       .insert({
         staff_id: staffId,
-        service_date: selectedService.date + "T00:00:00",
+        service_date: selectedService.date,
         service_slot_id: selectedService.slotId,
         status: "unavailable"
       });
@@ -481,9 +387,7 @@ window.toggle = async (staffId) => {
   await loadStaff();
 };
 
-/* =========================
-   SEARCH
-========================= */
+/* ================= SEARCH ================= */
 
 window.searchStaff = (val) => {
   searchText = val;
