@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Command Post (4 Column + Template System)</title>
+  <title>Command Post (Template Driven Stable)</title>
 
   <style>
     body {
@@ -63,6 +63,7 @@
       display:flex;
       justify-content:space-between;
       font-size:12px;
+      margin:3px 0;
     }
 
     .good { color:#22c55e; }
@@ -72,7 +73,7 @@
 <body>
 
 <header>
-  ⛪ Command Post (Template 4-Column View)
+  ⛪ Command Post (Template System Stable)
   <button onclick="load()" style="background:#3b82f6;color:white;border:none;padding:6px 10px;border-radius:6px;">
     Refresh
   </button>
@@ -84,15 +85,16 @@
 import { db } from "../assets/app.js";
 
 /* =========================
-   DATE SAFE
+   SAFE DATE (SGT SAFE)
 ========================= */
 function parseDate(d) {
+  if (!d) return new Date(0);
   const [y,m,day] = d.split("-");
   return new Date(Number(y), Number(m)-1, Number(day));
 }
 
 /* =========================
-   WINDOW FILTER
+   WINDOW FILTER (±7 DAYS)
 ========================= */
 function inWindow(dateStr) {
   const today = new Date();
@@ -109,20 +111,22 @@ function inWindow(dateStr) {
 }
 
 /* =========================
-   SLOT INDEX
+   FIXED SLOT ORDER (NO TEXT PARSING DEPENDENCY)
 ========================= */
 function getSlotIndex(s) {
-  const t = (s.service_slots?.time || "").toLowerCase();
-  const l = (s.service_slots?.location || "").toLowerCase();
 
-  const text = `${t} ${l}`;
+  const label = (s.service_slots?.label || "").toLowerCase();
+  const time = (s.service_slots?.time || "").toLowerCase();
+  const loc = (s.service_slots?.location || "").toLowerCase();
 
-  if (text.includes("sat") || text.includes("14:30")) return 0;
-  if (text.includes("8.30") || text.includes("0830")) return 1;
-  if (text.includes("10.45") || text.includes("1045")) return 2;
+  const text = `${label} ${time} ${loc}`;
+
   if (text.includes("jurong")) return 3;
+  if (text.includes("10.45") || text.includes("1045")) return 2;
+  if (text.includes("8.30") || text.includes("0830")) return 1;
+  if (text.includes("14:30") || text.includes("saturday")) return 0;
 
-  return -1;
+  return 99;
 }
 
 /* =========================
@@ -132,48 +136,66 @@ async function load() {
 
   const [
     servicesRes,
-    templateStaffRes
+    templateStaffRes,
+    rolesRes
   ] = await Promise.all([
-    db.from("services").select(`*, service_slots(label,time,location)`),
-    db.from("staff_service_templates").select("staff_id, template_id")
+    db.from("services").select(`
+      *,
+      service_slots(label,time,location)
+    `),
+
+    db.from("staff_service_templates")
+      .select("staff_id, template_id"),
+
+    db.from("service_roles")
+      .select(`*, staff(name)`)
   ]);
 
   let services = servicesRes.data || [];
   const templateStaff = templateStaffRes.data || [];
+  const roles = rolesRes.data || [];
 
-  /* FILTER WINDOW */
+  /* FILTER ONLY CURRENT WINDOW */
   services = services.filter(s => inWindow(s.service_date));
 
-  /* SPLIT INTO 4 COLUMNS */
+  /* SORT */
+  services.sort((a,b) =>
+    parseDate(a.service_date) - parseDate(b.service_date)
+  );
+
+  /* GROUP INTO 4 COLUMNS */
   const cols = [[],[],[],[]];
 
   for (const s of services) {
     const idx = getSlotIndex(s);
-    if (idx >= 0) cols[idx].push(s);
+    if (idx < 4) cols[idx].push(s);
   }
 
   const grid = document.getElementById("grid");
   grid.innerHTML = "";
 
-  /* RENDER COLUMNS */
+  /* RENDER */
   cols.forEach(col => {
 
     grid.innerHTML += `
       <div class="col">
+
         ${col.map(s => {
 
-          const assigned = templateStaff.filter(
+          const assignedStaff = templateStaff.filter(
             t => t.template_id === s.service_template_id
           );
 
-          const totalAssigned = new Set(
-            assigned.map(a => a.staff_id)
+          const uniqueStaffCount = new Set(
+            assignedStaff.map(a => a.staff_id)
           ).size;
+
+          const serviceRoles = roles.filter(r => r.service_id === s.id);
 
           const d = parseDate(s.service_date);
 
           const day = d.toLocaleDateString("en-SG",{weekday:"long"});
-          const date = d.toLocaleDateString("en-SG",{day:"2-digit", month:"short"});
+          const date = d.toLocaleDateString("en-SG",{day:"2-digit",month:"short"});
 
           return `
             <div class="card">
@@ -191,17 +213,33 @@ async function load() {
               </div>
 
               <div class="section">
-                <b>Total Staff Assigned</b>
+                <b>Total Staff Assigned (Template)</b>
 
                 <div class="row">
-                  <span>Assigned</span>
-                  <b class="good">${totalAssigned}</b>
+                  <span>Assigned Staff</span>
+                  <b class="good">${uniqueStaffCount}</b>
                 </div>
+              </div>
+
+              <div class="section">
+                <b>Key Appointments</b>
+
+                ${serviceRoles
+                  .filter(r =>
+                    ["Service Pastor","Anchor","Welcome IC"].includes(r.role)
+                  )
+                  .map(r => `
+                    <div class="row">
+                      <span>${r.role}</span>
+                      <b>${r.staff?.name || "-"}</b>
+                    </div>
+                  `).join("")}
               </div>
 
             </div>
           `;
         }).join("")}
+
       </div>
     `;
   });
