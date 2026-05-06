@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-
 <html>
 <head>
   <title>Ministry OS Hub</title>
@@ -8,114 +7,229 @@
     body {
       margin:0;
       font-family: ui-sans-serif, system-ui, Arial;
-      background: radial-gradient(circle at top, #0f172a, #0b1020);
       color:white;
+      min-height:100vh;
+
+      /* 🌈 MAIN GRADIENT */
+      background: linear-gradient(
+        135deg,
+        #020617 0%,
+        #0f172a 35%,
+        #1e1b4b 70%,
+        #312e81 100%
+      );
+
+      overflow:hidden;
+    }
+
+    /* 🌟 LIGHT GLOW EFFECTS */
+    body::before {
+      content:"";
+      position:fixed;
+      top:-200px;
+      left:-200px;
+      width:600px;
+      height:600px;
+      background: radial-gradient(circle,
+        rgba(59,130,246,0.25),
+        transparent 60%);
+      filter: blur(40px);
+      z-index:0;
+    }
+
+    body::after {
+      content:"";
+      position:fixed;
+      bottom:-200px;
+      right:-200px;
+      width:600px;
+      height:600px;
+      background: radial-gradient(circle,
+        rgba(168,85,247,0.20),
+        transparent 60%);
+      filter: blur(50px);
+      z-index:0;
     }
 
     /* HEADER */
     header {
-      padding:14px 20px;
-      background: rgba(17,24,39,0.7);
-      backdrop-filter: blur(10px);
-      border-bottom: 1px solid rgba(255,255,255,0.05);
+      position:relative;
+      z-index:1;
+      padding:18px 24px;
+      font-size:18px;
       font-weight:600;
-      letter-spacing:0.5px;
-    }
-
-    /* TABS */
-    .tabs {
       display:flex;
-      gap:8px;
-      padding:10px 16px;
-      background: rgba(15,23,42,0.6);
+      justify-content:space-between;
+      align-items:center;
       backdrop-filter: blur(10px);
+      background: rgba(15, 23, 42, 0.4);
       border-bottom:1px solid rgba(255,255,255,0.05);
-      overflow-x:auto;
     }
 
-    .tab {
-      padding:9px 14px;
-      border-radius:10px;
-      cursor:pointer;
-      background: rgba(255,255,255,0.03);
-      border:1px solid rgba(255,255,255,0.05);
-      font-size:13px;
-      transition:0.2s ease;
-      white-space:nowrap;
+    /* MAIN LAYOUT */
+    .layout {
+      display:grid;
+      grid-template-columns: 260px 1fr;
+      height: calc(100vh - 60px);
+      position:relative;
+      z-index:1;
     }
 
-    .tab:hover {
-      transform: translateY(-1px);
-      border-color:#3b82f6;
-      background: rgba(59,130,246,0.08);
+    /* SIDEBAR */
+    .sidebar {
+      padding:16px;
+      border-right:1px solid rgba(255,255,255,0.05);
+      background: rgba(15, 23, 42, 0.3);
+      backdrop-filter: blur(12px);
     }
 
-    .tab.active {
-      background: rgba(59,130,246,0.18);
-      border-color:#3b82f6;
-      box-shadow: 0 0 0 1px rgba(59,130,246,0.2);
-    }
-
-    /* CONTENT AREA */
-    .content {
-      height:calc(100vh - 110px);
+    .nav-item {
       padding:12px;
+      margin-bottom:10px;
+      border-radius:10px;
+      background: rgba(17,24,39,0.6);
+      border:1px solid rgba(255,255,255,0.05);
+      cursor:pointer;
+      transition:0.2s;
+      font-size:14px;
     }
 
-    .frame {
-      height:100%;
+    .nav-item:hover {
+      transform: translateX(4px);
+      border-color:#3b82f6;
+    }
+
+    .active {
+      border-color:#22c55e;
+    }
+
+    /* MAIN CONTENT AREA */
+    .content {
+      padding:20px;
+      display:grid;
+      grid-template-rows: auto 1fr;
+      gap:16px;
+    }
+
+    /* TOP CARDS */
+    .grid {
+      display:grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap:12px;
+    }
+
+    .card {
+      background: rgba(17,24,39,0.7);
+      border:1px solid rgba(255,255,255,0.05);
+      padding:18px;
       border-radius:14px;
-      overflow:hidden;
-      border:1px solid rgba(255,255,255,0.06);
+      cursor:pointer;
+      transition:0.2s;
+      text-align:left;
+      backdrop-filter: blur(10px);
+    }
+
+    .card:hover {
+      transform: translateY(-3px);
+      border-color:#3b82f6;
+    }
+
+    .title {
+      font-size:16px;
+      font-weight:600;
+    }
+
+    .desc {
+      font-size:12px;
+      color:#94a3b8;
+      margin-top:4px;
+    }
+
+    /* PREVIEW PANEL */
+    .preview {
       background: rgba(17,24,39,0.5);
-      backdrop-filter: blur(8px);
-      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+      border:1px dashed rgba(255,255,255,0.1);
+      border-radius:14px;
+      padding:20px;
+      color:#94a3b8;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      text-align:center;
     }
 
-    iframe {
-      width:100%;
-      height:100%;
-      border:none;
-    }
   </style>
-
 </head>
 
 <body>
 
 <header>
-  🔥 Ministry Operating System
+  <div>⛪ Ministry OS Hub</div>
+  <div style="font-size:12px;color:#94a3b8;">Operational Command System</div>
 </header>
 
-<div class="tabs">
+<div class="layout">
 
-  <div class="tab active" onclick="loadPage(this,'modules/groups.html')">🏠 Groups</div>
-  <div class="tab" onclick="loadPage(this,'modules/people.html')">👥 People</div>
-  <div class="tab" onclick="loadPage(this,'command.html')">⚡ Command</div>
-  <div class="tab" onclick="loadPage(this,'modules/visit.html')">📋 Cell Visit</div>
-  <div class="tab" onclick="loadPage(this,'modules/tasks.html')">📌 Tasks</div>
-  <div class="tab" onclick="loadPage(this,'modules/timeline.html')">📊 Timeline</div>
-  <div class="tab" onclick="loadPage(this,'modules/risk.html')">⚠️ Risk</div>
+  <!-- SIDEBAR -->
+  <div class="sidebar">
 
-</div>
+    <div class="nav-item active" onclick="location.href='command.html'">
+      🔥 Command Center
+    </div>
 
-<div class="content">
-  <div class="frame">
-    <iframe id="viewer" src="modules/groups.html"></iframe>
+    <div class="nav-item" onclick="location.href='modules/groups.html'">
+      🏠 Groups
+    </div>
+
+    <div class="nav-item" onclick="location.href='modules/people.html'">
+      👥 People
+    </div>
+
+    <div class="nav-item" onclick="location.href='modules/visit.html'">
+      📍 Cell Visit
+    </div>
+
+    <div class="nav-item" onclick="location.href='modules/tasks.html'">
+      📌 Tasks
+    </div>
+
+    <div class="nav-item" onclick="location.href='modules/risk.html'">
+      ⚠️ Risk Cockpit
+    </div>
+
   </div>
+
+  <!-- MAIN -->
+  <div class="content">
+
+    <!-- QUICK ACCESS -->
+    <div class="grid">
+
+      <div class="card" onclick="location.href='command.html'">
+        <div class="title">🔥 Command Center</div>
+        <div class="desc">Service ops, assignments, attendance</div>
+      </div>
+
+      <div class="card" onclick="location.href='modules/groups.html'">
+        <div class="title">🏠 Groups</div>
+        <div class="desc">Cell structure & health tracking</div>
+      </div>
+
+      <div class="card" onclick="location.href='modules/people.html'">
+        <div class="title">👥 People</div>
+        <div class="desc">Discipleship & engagement data</div>
+      </div>
+
+    </div>
+
+    <!-- EMPTY SPACE / FUTURE PREVIEW -->
+    <div class="preview">
+      Select a module to view operational insights, service assignments, or pastoral dashboards.
+    </div>
+
+  </div>
+
 </div>
-
-<script>
-function loadPage(el, page) {
-
-  document.getElementById("viewer").src = page;
-
-  document.querySelectorAll(".tab")
-    .forEach(t => t.classList.remove("active"));
-
-  el.classList.add("active");
-}
-</script>
 
 </body>
 </html>
