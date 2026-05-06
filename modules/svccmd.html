@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Service Command Post (Stable v5)</title>
+  <title>Service Command Post (Running Stable)</title>
 
   <style>
     body {
@@ -22,7 +22,7 @@
 
     .grid {
       display:grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(2, 1fr);
       gap:10px;
       padding:10px;
     }
@@ -32,7 +32,6 @@
       padding:12px;
       border-radius:10px;
       border:1px solid #1f2937;
-      min-height:220px;
     }
 
     .title {
@@ -60,14 +59,13 @@
 
     .good { color:#22c55e; }
     .bad { color:#ef4444; }
-    .warn { color:#f59e0b; }
   </style>
 </head>
 
 <body>
 
 <header>
-  ⛪ Command Post (Weekend View - Stable)
+  ⛪ Command Post (Running Weekend View)
   <button onclick="load()" style="background:#3b82f6;border:none;color:white;padding:6px 10px;border-radius:6px;">
     Refresh
   </button>
@@ -79,36 +77,59 @@
 import { db } from "../assets/app.js";
 
 /* =========================
-   SAFE DATE PARSING (CRITICAL FIX)
+   SAFE SG DATE PARSER
 ========================= */
-function safeDate(d) {
-  return new Date(`${d}T00:00:00`);
+function parseSG(dateStr) {
+  return new Date(dateStr + "T00:00:00+08:00");
 }
 
 /* =========================
-   WEEKEND FILTER
+   FORMAT DATE
 ========================= */
-function isWeekend(dateStr) {
-  const d = safeDate(dateStr);
+function formatDate(d) {
+  return d.toLocaleDateString("en-SG", {
+    day: "2-digit",
+    month: "short",
+    year: "2-digit"
+  });
+}
+
+/* =========================
+   WEEKEND CHECK
+========================= */
+function isWeekend(d) {
   const day = d.getDay();
   return day === 0 || day === 6;
 }
 
 /* =========================
-   WEEK GROUP (2 WEEKENDS ONLY)
+   GET WEEK START (MONDAY)
 ========================= */
-function getWeekStart(dateStr) {
-  const d = safeDate(dateStr);
-  const day = d.getDay();
-
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  const monday = new Date(d.setDate(diff));
-
-  return monday.toISOString().split("T")[0];
+function getWeekKey(d) {
+  const copy = new Date(d);
+  const day = copy.getDay();
+  const diff = copy.getDate() - day + (day === 0 ? -6 : 1);
+  const monday = new Date(copy.setDate(diff));
+  return monday.toDateString();
 }
 
 /* =========================
-   LOAD COMMAND POST
+   GET RUNNING WINDOW (2 BACK + 2 FORWARD WEEKS)
+========================= */
+function isInWindow(date) {
+  const today = new Date();
+
+  const start = new Date(today);
+  start.setDate(today.getDate() - 14); // 2 weeks back
+
+  const end = new Date(today);
+  end.setDate(today.getDate() + 14); // 2 weeks forward
+
+  return date >= start && date <= end;
+}
+
+/* =========================
+   LOAD
 ========================= */
 async function load() {
 
@@ -119,18 +140,21 @@ async function load() {
     attendanceRes,
     availabilityRes
   ] = await Promise.all([
-    db.from("services").select(`
-      *,
-      service_slots(label,time,location,id)
-    `),
+    db.from("services")
+      .select(`*, service_slots(label,time,location,id)`),
 
-    db.from("service_roles").select(`*, staff(name)`),
+    db.from("service_roles")
+      .select(`*, staff(name)`),
 
-    db.from("staff").select("*"),
+    db.from("staff")
+      .select("*"),
 
-    db.from("service_attendance").select("*"),
+    db.from("service_attendance")
+      .select("*"),
 
-    db.from("staff_availability").select("*").eq("status","unavailable")
+    db.from("staff_availability")
+      .select("*")
+      .eq("status","unavailable")
   ]);
 
   let services = servicesRes.data || [];
@@ -140,30 +164,30 @@ async function load() {
   const unavailableList = availabilityRes.data || [];
 
   /* =========================
-     FIX 1: ONLY CURRENT + FUTURE WINDOW (PREVENT 2027 BUG)
+     FIX 1: PARSE DATES SAFELY
   ========================= */
-  const today = new Date();
-  const min = new Date(today);
-  const max = new Date(today);
-  max.setDate(today.getDate() + 60);
-
-  services = services.filter(s => {
-    const d = safeDate(s.service_date);
-    return d >= min && d <= max;
-  });
+  services = services.map(s => ({
+    ...s,
+    _dateObj: parseSG(s.service_date)
+  }));
 
   /* =========================
-     FIX 2: WEEKEND ONLY
+     FIX 2: RUNNING WINDOW FILTER
   ========================= */
-  services = services.filter(s => isWeekend(s.service_date));
+  services = services.filter(s => isInWindow(s._dateObj));
 
   /* =========================
-     FIX 3: ONLY 2 WEEKENDS
+     FIX 3: ONLY WEEKENDS
+  ========================= */
+  services = services.filter(s => isWeekend(s._dateObj));
+
+  /* =========================
+     FIX 4: GROUP WEEKENDS (2 WEEK BLOCKS)
   ========================= */
   const grouped = {};
 
   services.forEach(s => {
-    const key = getWeekStart(s.service_date);
+    const key = getWeekKey(s._dateObj);
     if (!grouped[key]) grouped[key] = [];
     grouped[key].push(s);
   });
@@ -182,7 +206,7 @@ async function load() {
 
     const serviceRoles = roles.filter(r => r.service_id === s.id);
 
-    const assignedIds = new Set(
+    const assigned = new Set(
       serviceRoles.map(r => r.staff_id).filter(Boolean)
     );
 
@@ -197,7 +221,7 @@ async function load() {
 
     const availableStaff = staff.filter(st => !unavailableIds.has(st.id));
 
-    const floating = availableStaff.length - assignedIds.size;
+    const floating = availableStaff.length - assigned.size;
 
     const attendance =
       attendanceList.find(a => a.service_id === s.id) || {};
@@ -207,15 +231,7 @@ async function load() {
       (attendance.online || 0) +
       (attendance.communicants || 0);
 
-    const d = safeDate(s.service_date);
-
-    const day = d.toLocaleDateString("en-SG", { weekday:"long" });
-
-    const datePretty = d.toLocaleDateString("en-SG", {
-      day:"2-digit",
-      month:"short",
-      year:"numeric"
-    });
+    const day = s._dateObj.toLocaleDateString("en-SG", { weekday: "long" });
 
     grid.innerHTML += `
       <div class="card">
@@ -225,7 +241,7 @@ async function load() {
         </div>
 
         <div class="tag">
-          ${day} | ${datePretty}
+          ${day} | ${formatDate(s._dateObj)}
         </div>
 
         <div class="tag">
@@ -246,7 +262,7 @@ async function load() {
 
           <div class="row">
             <span>Assigned</span>
-            <b>${assignedIds.size}</b>
+            <b>${assigned.size}</b>
           </div>
 
           <div class="row">
@@ -269,38 +285,6 @@ async function load() {
         </div>
 
         <div class="section">
-          <b>Welcome Team</b>
-
-          ${serviceRoles
-            .filter(r => ["Welcome 1","Welcome 2","Plaza 1","Plaza 2"].includes(r.role))
-            .map(r => `
-              <div class="row">
-                <span>${r.role}</span>
-                <span>${r.staff?.name || "-"}</span>
-              </div>
-            `).join("")}
-        </div>
-
-        ${s.is_communion_service ? `
-        <div class="section">
-          <b>Holy Communion</b>
-
-          ${serviceRoles
-            .filter(r =>
-              r.role.includes("Station") ||
-              r.role === "Standby" ||
-              r.role === "Min Deaf"
-            )
-            .map(r => `
-              <div class="row">
-                <span>${r.role}</span>
-                <span>${r.staff?.name || "-"}</span>
-              </div>
-            `).join("")}
-        </div>
-        ` : ""}
-
-        <div class="section">
           <b>Attendance</b>
 
           <div class="row">
@@ -314,9 +298,7 @@ async function load() {
   }
 }
 
-/* IMPORTANT FIX */
 window.load = load;
-
 load();
 
 </script>
