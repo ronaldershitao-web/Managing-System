@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Service Command Post v2</title>
+  <title>Service Command Post (Stable v6)</title>
 
   <style>
     body {
@@ -20,31 +20,28 @@
       font-weight:bold;
     }
 
-    .wrap {
-      padding:10px;
-    }
-
-    .matrix {
+    .grid {
       display:grid;
       grid-template-columns: repeat(4, 1fr);
       gap:10px;
+      padding:10px;
     }
 
     .card {
       background:#111827;
-      border:1px solid #1f2937;
+      padding:12px;
       border-radius:10px;
-      padding:10px;
-      min-height:220px;
+      border:1px solid #1f2937;
+      min-height:240px;
     }
 
     .title {
-      font-size:14px;
+      font-size:15px;
       font-weight:bold;
       color:#60a5fa;
     }
 
-    .sub {
+    .tag {
       font-size:12px;
       color:#94a3b8;
     }
@@ -64,36 +61,53 @@
 
     .good { color:#22c55e; }
     .bad { color:#ef4444; }
-    .warn { color:#f59e0b; }
   </style>
 </head>
 
 <body>
 
 <header>
-  ⛪ Service Command Post
+  ⛪ Service Command Post (Stable)
   <button onclick="load()" style="background:#3b82f6;color:white;border:none;padding:6px 10px;border-radius:6px;">
     Refresh
   </button>
 </header>
 
-<div class="wrap">
-  <div class="matrix" id="grid"></div>
-</div>
+<div class="grid" id="grid"></div>
 
 <script type="module">
 import { db } from "../assets/app.js";
 
-/* =========================
-   SAFE DATE
-========================= */
-function safeDate(d) {
-  return new Date(`${d}T00:00:00`);
+/* =================================================
+   🔥 FIXED DATE PARSER (NO TIMEZONE SHIFT BUG)
+================================================= */
+function safeDate(dateStr) {
+  if (!dateStr) return new Date();
+
+  const parts = dateStr.split("-");
+  return new Date(
+    Number(parts[0]),
+    Number(parts[1]) - 1,
+    Number(parts[2])
+  );
 }
 
-/* =========================
-   LOAD
-========================= */
+/* =================================================
+   🔥 FORMAT DATE (CONSISTENT DISPLAY)
+================================================= */
+function formatDate(d) {
+  const day = d.toLocaleDateString("en-SG", { weekday: "long" });
+
+  const date = `${String(d.getDate()).padStart(2,'0')} ${
+    d.toLocaleDateString("en-SG", { month: "short" })
+  } ${String(d.getFullYear()).slice(-2)}`;
+
+  return { day, date };
+}
+
+/* =================================================
+   🔥 MAIN LOAD
+================================================= */
 async function load() {
 
   const [
@@ -114,39 +128,64 @@ async function load() {
     db.from("staff_availability").select("*").eq("status","unavailable")
   ]);
 
-  const services = servicesRes.data || [];
+  let services = servicesRes.data || [];
   const roles = rolesRes.data || [];
   const staff = staffRes.data || [];
   const unavailable = availabilityRes.data || [];
 
-  const grid = document.getElementById("grid");
-  grid.innerHTML = "";
+  /* =================================================
+     🔥 FIX 1: ONLY RUNNING WINDOW (NO 2027 BUG)
+  ================================================= */
+  const today = new Date();
+  const min = new Date(today);
+  const max = new Date(today);
+  max.setDate(today.getDate() + 60);
 
-  /* =========================
-     GROUP BY SERVICE SLOT
-  ========================= */
-  const slots = {};
+  services = services.filter(s => {
+    const d = safeDate(s.service_date);
+    return d >= min && d <= max;
+  });
+
+  /* =================================================
+     🔥 FIX 2: ONLY WEEKEND SERVICES
+  ================================================= */
+  services = services.filter(s => {
+    const d = safeDate(s.service_date);
+    const day = d.getDay();
+    return day === 0 || day === 6;
+  });
+
+  /* =================================================
+     🔥 FIX 3: GROUP UNIQUE SERVICES (NO DUPLICATES)
+  ================================================= */
+  const grouped = {};
 
   services.forEach(s => {
-    const key = s.service_slot_id || s.id;
+    const key = `${s.service_date}_${s.service_slot_id}`;
 
-    if (!slots[key]) {
-      slots[key] = {
+    if (!grouped[key]) {
+      grouped[key] = {
         service: s,
         roles: roles.filter(r => r.service_id === s.id)
       };
     }
   });
 
-  /* =========================
-     RENDER EACH SERVICE COLUMN
-  ========================= */
-  Object.values(slots).forEach(obj => {
+  const grid = document.getElementById("grid");
+  grid.innerHTML = "";
+
+  /* =================================================
+     🔥 RENDER
+  ================================================= */
+  Object.values(grouped).forEach(obj => {
 
     const s = obj.service;
     const serviceRoles = obj.roles;
 
     const slot = s.service_slots || {};
+
+    const d = safeDate(s.service_date);
+    const { day, date } = formatDate(d);
 
     /* AVAILABLE STAFF */
     const unavailableIds = new Set(
@@ -167,6 +206,7 @@ async function load() {
 
     const floating = availableStaff.length - assignedIds.size;
 
+    /* ATTENDANCE */
     const attendance = s.attendance || {};
 
     const totalAttendance =
@@ -174,30 +214,19 @@ async function load() {
       (attendance.online || 0) +
       (attendance.communicants || 0);
 
-    const d = safeDate(s.service_date);
-
-    const day = d.toLocaleDateString("en-SG", { weekday:"long" });
-
-    const datePretty = d.toLocaleDateString("en-SG", {
-      day:"2-digit",
-      month:"short"
-    });
-
-    /* =========================
-       CARD
-    ========================= */
     grid.innerHTML += `
       <div class="card">
 
+        <!-- HEADER -->
         <div class="title">
           ${slot.label || "Service"}
         </div>
 
-        <div class="sub">
-          ${day} | ${datePretty}
+        <div class="tag">
+          ${day} | ${date}
         </div>
 
-        <div class="sub">
+        <div class="tag">
           ⏰ ${slot.time || ""} | 📍 ${slot.location || ""}
         </div>
 
@@ -227,7 +256,7 @@ async function load() {
 
           ${serviceRoles
             .filter(r =>
-              ["Service Pastor","Anchor","Welcome IC"].includes(r.role)
+              ["Service Pastor","Anchor","Welcome IC","Hospitality Cell"].includes(r.role)
             )
             .map(r => `
               <div class="row">
