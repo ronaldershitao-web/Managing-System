@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Command Post (Availability Corrected)</title>
+  <title>Command Post (Welcome IC Hierarchy)</title>
 
   <style>
     body {
@@ -68,14 +68,13 @@
 
     .good { color:#22c55e; }
     .bad { color:#ef4444; }
-    .warn { color:#f59e0b; }
   </style>
 </head>
 
 <body>
 
 <header>
-  ⛪ Command Post (Availability Engine)
+  ⛪ Command Post (Welcome IC Hierarchy System)
   <button onclick="load()" style="background:#3b82f6;color:white;border:none;padding:6px 10px;border-radius:6px;">
     Refresh
   </button>
@@ -87,7 +86,7 @@
 import { db } from "../assets/app.js";
 
 /* =========================
-   DATE SAFE (SGT SAFE)
+   DATE SAFE
 ========================= */
 function parseDate(d) {
   if (!d) return new Date(0);
@@ -113,7 +112,7 @@ function inWindow(dateStr) {
 }
 
 /* =========================
-   SLOT ORDER (4 COLUMN FIXED)
+   SLOT INDEX (4 COLUMN)
 ========================= */
 function getSlotIndex(s) {
 
@@ -142,19 +141,10 @@ async function load() {
     rolesRes,
     availabilityRes
   ] = await Promise.all([
-    db.from("services").select(`
-      *,
-      service_slots(label,time,location)
-    `),
-
-    db.from("staff_service_templates")
-      .select("staff_id, template_id"),
-
-    db.from("service_roles")
-      .select(`*, staff(name)`),
-
-    db.from("staff_availability")
-      .select("*")
+    db.from("services").select(`*, service_slots(label,time,location)`),
+    db.from("staff_service_templates").select("staff_id, template_id"),
+    db.from("service_roles").select(`*, staff(name)`),
+    db.from("staff_availability").select("*")
   ]);
 
   let services = servicesRes.data || [];
@@ -170,7 +160,7 @@ async function load() {
     parseDate(a.service_date) - parseDate(b.service_date)
   );
 
-  /* SPLIT INTO 4 COLUMNS */
+  /* SPLIT COLUMNS */
   const cols = [[],[],[],[]];
 
   for (const s of services) {
@@ -190,18 +180,18 @@ async function load() {
         ${col.map(s => {
 
           /* =========================
-             TEMPLATE STAFF (BASELINE)
+             TEMPLATE STAFF
           ========================= */
-          const assignedStaff = templateStaff.filter(
+          const assigned = templateStaff.filter(
             t => t.template_id === s.service_template_id
           );
 
           const assignedIds = new Set(
-            assignedStaff.map(a => a.staff_id)
+            assigned.map(a => a.staff_id)
           );
 
           /* =========================
-             UNAVAILABLE STAFF (PER SERVICE INSTANCE)
+             UNAVAILABLE
           ========================= */
           const unavailableIds = new Set(
             availability
@@ -213,20 +203,56 @@ async function load() {
               .map(a => a.staff_id)
           );
 
-          /* =========================
-             AVAILABLE STAFF (CORE LOGIC)
-          ========================= */
+          /* AVAILABLE */
           const availableIds = [...assignedIds]
             .filter(id => !unavailableIds.has(id));
 
           /* =========================
-             ROLE ASSIGNMENTS
+             ROLE DATA
           ========================= */
           const serviceRoles = roles.filter(r => r.service_id === s.id);
 
           /* =========================
-             DATE
+             KEY ROLES
           ========================= */
+          const KEY_ROLES = [
+            "Service Pastor",
+            "Anchor",
+            "Welcome IC",
+            "Hospitality Cell"
+          ];
+
+          const keyAppointments = KEY_ROLES.map(role => {
+            const found = serviceRoles.find(r => r.role === role);
+            return {
+              role,
+              name: found?.staff?.name || "-"
+            };
+          });
+
+          /* =========================
+             WELCOME IC SUBTEAM
+          ========================= */
+          const WELCOME_SUBTEAM = {
+            "Welcome Members": 2,
+            "Plaza": 2
+          };
+
+          const welcomeSubteam = Object.entries(WELCOME_SUBTEAM).map(
+            ([role, count]) => {
+
+              const members = serviceRoles
+                .filter(r => r.role === role)
+                .map(r => r.staff?.name || "-");
+
+              while (members.length < count) {
+                members.push("-");
+              }
+
+              return { role, members: members.slice(0, count) };
+            }
+          );
+
           const d = parseDate(s.service_date);
 
           const day = d.toLocaleDateString("en-SG",{weekday:"long"});
@@ -251,7 +277,7 @@ async function load() {
                 <b>Staff Summary</b>
 
                 <div class="row">
-                  <span>Assigned (Template)</span>
+                  <span>Assigned</span>
                   <b>${assignedIds.size}</b>
                 </div>
 
@@ -269,25 +295,29 @@ async function load() {
               <div class="section">
                 <b>Key Appointments</b>
 
-                ${serviceRoles
-                  .filter(r =>
-                    ["Service Pastor","Anchor","Welcome IC","Hospitality Cell"].includes(r.role)
-                  )
-                  .map(r => `
-                    <div class="row">
-                      <span>${r.role}</span>
-                      <b>${r.staff?.name || "-"}</b>
-                    </div>
-                  `).join("")}
+                ${keyAppointments.map(k => `
+                  <div class="row">
+                    <span>${k.role}</span>
+                    <b>${k.name}</b>
+                  </div>
+                `).join("")}
               </div>
 
               <div class="section">
-                <b>Attendance</b>
+                <b>Welcome IC Sub-Team</b>
 
-                <div class="row">
-                  <span>Total Roles Filled</span>
-                  <b>${serviceRoles.filter(r => r.staff_id).length}</b>
-                </div>
+                ${welcomeSubteam.map(group => `
+                  <div style="margin-top:6px;">
+                    <b style="color:#60a5fa;">${group.role}</b>
+
+                    ${group.members.map(m => `
+                      <div class="row">
+                        <span>Member</span>
+                        <b>${m}</b>
+                      </div>
+                    `).join("")}
+                  </div>
+                `).join("")}
               </div>
 
             </div>
