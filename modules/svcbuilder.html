@@ -118,25 +118,73 @@ async function loadServices() {
 
   const today = new Date().toISOString().split("T")[0];
 
-  const { data } = await db
+  const { data, error } = await db
     .from("services")
-    .select("id, service_date, is_communion_service, service_slot_id")
+    .select(`
+      id,
+      service_date,
+      is_communion_service,
+      service_slot_id,
+      service_slots (
+        label,
+        time,
+        location
+      )
+    `)
     .gte("service_date", today)
     .order("service_date", { ascending:true });
+
+  if (error) {
+    console.error("Service load error:", error);
+    return;
+  }
 
   const box = document.getElementById("services");
   box.innerHTML = "";
 
   (data || []).forEach(s => {
 
+    const slot = s.service_slots || {};
+
+    // 📆 DAY FORMAT
+    const day = new Date(s.service_date)
+      .toLocaleDateString("en-SG", { weekday: "long" });
+
+    // ⏰ TIME FORMAT (from DB: "08:30:00")
+    let time = slot.time || "";
+    if (time) {
+      const [h, m] = time.split(":");
+      const hour = parseInt(h);
+      const ampm = hour >= 12 ? "PM" : "AM";
+      const displayHour = hour % 12 || 12;
+      time = `${displayHour}:${m} ${ampm}`;
+    }
+
+    const label = slot.label || "Service";
+    const location = slot.location || "";
+
     box.innerHTML += `
       <div class="card ${selectedService?.id === s.id ? 'active' : ''}"
         onclick="selectService('${s.id}', '${s.service_slot_id}', '${s.service_date}', ${s.is_communion_service})">
 
-        <b>${s.service_date}</b>
+        <b>${day}</b>
 
-        <div class="tag">
-          ${s.is_communion_service ? "🕊 Communion" : "Standard"}
+        <div class="tag">${s.service_date}</div>
+
+        <div style="margin-top:6px;">
+          ⏰ ${time} ${label ? `(${label})` : ""}
+        </div>
+
+        ${
+          location
+          ? `<div class="tag">📍 ${location}</div>`
+          : ""
+        }
+
+        <div style="margin-top:6px;">
+          ${s.is_communion_service
+            ? "🕊 Communion Service"
+            : "Standard Service"}
         </div>
 
       </div>
