@@ -373,6 +373,101 @@
     }
 
     window.onload = load;
+
+
+    async function loadCommandPost() {
+
+  const { data: services } = await db
+    .from("services")
+    .select("*")
+    .order("service_date", { ascending:true });
+
+  const box = document.getElementById("commandPost");
+  box.innerHTML = "";
+
+  for (const s of services || []) {
+
+    const roles = await db
+      .from("service_roles")
+      .select(`*, staff(name)`)
+      .eq("service_id", s.id);
+
+    const staff = await db.from("staff").select("*");
+
+    const attendance = await db
+      .from("service_attendance")
+      .select("*")
+      .eq("service_id", s.id)
+      .single();
+
+    // UNIQUE ASSIGNED
+    const assignedIds = new Set(
+      (roles.data || [])
+        .filter(r => r.staff_id)
+        .map(r => r.staff_id)
+    );
+
+    // AVAILABLE STAFF (not unavailable)
+    const availableStaff = staff.data.length;
+
+    const floating =
+      availableStaff - assignedIds.size;
+
+    box.innerHTML += `
+      <div style="flex:1; background:#111827; padding:10px; border-radius:10px;">
+
+        <h3>${s.service_date}</h3>
+
+        <!-- KEY APPOINTMENTS -->
+        <div>
+          <b>Key Appointments</b>
+          ${(roles.data || [])
+            .filter(r => ["Service Pastor","Anchor"].includes(r.role))
+            .map(r => `<div>${r.role}: ${r.staff?.name || "-"}</div>`)
+            .join("")}
+        </div>
+
+        <!-- ROLES -->
+        <div style="margin-top:10px;">
+          <b>Roles</b>
+          ${(roles.data || [])
+            .map(r => `<div>${r.role}: ${r.staff?.name || "-"}</div>`)
+            .join("")}
+        </div>
+
+        <!-- FLOATING -->
+        <div style="margin-top:10px;">
+          <b>Floating:</b> ${floating}
+        </div>
+
+        <!-- ATTENDANCE -->
+        <div style="margin-top:10px;">
+          <b>Attendance</b>
+
+          <input type="number" placeholder="On Site"
+            value="${attendance.data?.onsite || 0}"
+            onchange="updateAttendance('${s.id}','onsite', this.value)" />
+
+          <input type="number" placeholder="Online"
+            value="${attendance.data?.online || 0}"
+            onchange="updateAttendance('${s.id}','online', this.value)" />
+
+          <input type="number" placeholder="Communicants"
+            value="${attendance.data?.communicants || 0}"
+            onchange="updateAttendance('${s.id}','communicants', this.value)" />
+
+          <div>
+            Total: ${
+              (attendance.data?.onsite || 0) +
+              (attendance.data?.online || 0)
+            }
+          </div>
+        </div>
+
+      </div>
+    `;
+  }
+}
   </script>
 </head>
 
@@ -388,6 +483,7 @@
   <div id="cellIndicator"></div>
   <div id="groups"></div>
   <div id="newcomers"></div>
+  <div id="commandPost" style="display:flex; gap:10px;"></div>
 </div>
 
 </body>
