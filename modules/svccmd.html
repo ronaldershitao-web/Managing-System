@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Command Post (Stable Ordered System)</title>
+  <title>Command Post (Template-Based Count)</title>
 
   <style>
     body {
@@ -38,7 +38,6 @@
     .title {
       font-weight:bold;
       color:#60a5fa;
-      margin-bottom:6px;
     }
 
     .tag {
@@ -60,14 +59,13 @@
     }
 
     .good { color:#22c55e; }
-    .bad { color:#ef4444; }
   </style>
 </head>
 
 <body>
 
 <header>
-  ⛪ Command Post (Stable Ordered View)
+  ⛪ Command Post (Template-Based Staffing)
   <button onclick="load()" style="background:#3b82f6;color:white;border:none;padding:6px 10px;border-radius:6px;">
     Refresh
   </button>
@@ -78,21 +76,16 @@
 <script type="module">
 import { db } from "../assets/app.js";
 
-
-
 /* =========================
-   SAFE DATE (CRITICAL FIX)
+   SAFE DATE
 ========================= */
 function parseDate(dateStr) {
-  if (!dateStr) return new Date(0);
   const [y, m, d] = dateStr.split("-");
-  return new Date(Number(y), Number(m) - 1, Number(d));
+  return new Date(Number(y), Number(m)-1, Number(d));
 }
 
-
-
 /* =========================
-   WINDOW FILTER (-7 / +7 DAYS)
+   WINDOW FILTER
 ========================= */
 function inWindow(dateStr) {
   const today = new Date();
@@ -108,174 +101,82 @@ function inWindow(dateStr) {
   return d >= min && d <= max;
 }
 
-
-
 /* =========================
-   FIXED SLOT ORDER (IMPORTANT)
-========================= */
-function getSlotIndex(s) {
-
-  const label = (s.service_slots?.label || "").toLowerCase();
-  const time = (s.service_slots?.time || "").toLowerCase();
-  const location = (s.service_slots?.location || "").toLowerCase();
-
-  const text = `${label} ${time} ${location}`;
-
-  if (text.includes("saturday")) return 0;
-  if (text.includes("8.30") || text.includes("0830")) return 1;
-  if (text.includes("10.45") || text.includes("1045")) return 2;
-  if (text.includes("jurong")) return 3;
-
-  return -1;
-}
-
-
-
-/* =========================
-   LOAD COMMAND POST
+   LOAD
 ========================= */
 async function load() {
 
   const [
     servicesRes,
-    rolesRes,
-    staffRes
+    templateStaffRes
   ] = await Promise.all([
-    db.from("services").select(`*, service_slots(label,time,location,id)`),
-    db.from("service_roles").select(`*, staff(name)`),
-    db.from("staff").select("*")
+    db.from("services").select(`*, service_slots(label,time,location)`),
+    db.from("staff_service_templates").select("staff_id, template_id")
   ]);
 
   let services = servicesRes.data || [];
-  const roles = rolesRes.data || [];
-  const staff = staffRes.data || [];
-
-
+  const templateStaff = templateStaffRes.data || [];
 
   /* =========================
-     FILTER WINDOW ONLY
+     FILTER WINDOW
   ========================= */
   services = services.filter(s => inWindow(s.service_date));
 
-
-
-  /* =========================
-     SORT ASCENDING
-  ========================= */
-  services.sort((a, b) =>
-    parseDate(a.service_date) - parseDate(b.service_date)
-  );
-
-
-
-  /* =========================
-     CREATE FIXED 4 COLUMNS
-  ========================= */
-  const slots = [[], [], [], []];
-
-  services.forEach(s => {
-    const idx = getSlotIndex(s);
-    if (idx >= 0) slots[idx].push(s);
-  });
-
-
-
-  /* =========================
-     SORT INSIDE EACH COLUMN
-  ========================= */
-  slots.forEach(col => {
-    col.sort((a, b) =>
-      parseDate(a.service_date) - parseDate(b.service_date)
-    );
-  });
-
-
-
-  /* =========================
-     RENDER
-  ========================= */
   const grid = document.getElementById("grid");
   grid.innerHTML = "";
 
+  for (const s of services) {
 
+    const templateId = s.service_template_id;
 
-  slots.forEach(col => {
+    /* =========================
+       FIXED: TOTAL STAFF ASSIGNED
+    ========================= */
+    const assignedStaff = templateStaff
+      .filter(t => t.template_id === templateId);
+
+    const totalAssigned = new Set(
+      assignedStaff.map(a => a.staff_id)
+    ).size;
+
+    const d = parseDate(s.service_date);
+
+    const day = d.toLocaleDateString("en-SG", { weekday:"long" });
+
+    const datePretty = d.toLocaleDateString("en-SG", {
+      day:"2-digit",
+      month:"short"
+    });
 
     grid.innerHTML += `
       <div class="card">
 
-        ${
-          col.map(s => {
+        <div class="title">
+          ${s.service_slots?.label || "Service"}
+        </div>
 
-            const rolesForService =
-              roles.filter(r => r.service_id === s.id);
+        <div class="tag">
+          ${day} | ${datePretty}
+        </div>
 
-            const d = parseDate(s.service_date);
+        <div class="tag">
+          ⏰ ${s.service_slots?.time || ""}
+        </div>
 
-            const day = d.toLocaleDateString("en-SG", {
-              weekday: "long"
-            });
+        <div class="section">
+          <b>Total Staff Assigned (Template Based)</b>
 
-            const datePretty = d.toLocaleDateString("en-SG", {
-              day:"2-digit",
-              month:"short",
-              year:"numeric"
-            });
-
-            return `
-              <div style="margin-bottom:14px;">
-
-                <div class="title">
-                  ${s.service_slots?.label || "Service"}
-                </div>
-
-                <div class="tag">
-                  ${day} | ${datePretty}
-                </div>
-
-                <div class="tag">
-                  ⏰ ${s.service_slots?.time || ""}
-                </div>
-
-                <div class="section">
-                  <b>Key Appointment</b>
-
-                  ${rolesForService
-                    .filter(r =>
-                      ["Service Pastor","Anchor","Welcome IC"].includes(r.role)
-                    )
-                    .map(r => `
-                      <div class="row">
-                        <span>${r.role}</span>
-                        <b>${r.staff?.name || "-"}</b>
-                      </div>
-                    `).join("")}
-                </div>
-
-                <div class="section">
-                  <b>Roles</b>
-
-                  ${rolesForService.map(r => `
-                    <div class="row">
-                      <span>${r.role}</span>
-                      <span>${r.staff?.name || "-"}</span>
-                    </div>
-                  `).join("")}
-                </div>
-
-              </div>
-            `;
-          }).join("")
-        }
+          <div class="row">
+            <span>Assigned Staff</span>
+            <b class="good">${totalAssigned}</b>
+          </div>
+        </div>
 
       </div>
     `;
-  });
+  }
 }
 
-
-
-/* INIT */
 window.load = load;
 load();
 
