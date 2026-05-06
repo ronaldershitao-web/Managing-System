@@ -16,7 +16,6 @@
       flex-direction:column;
     }
 
-    /* TOP BAR */
     header {
       padding:14px;
       background:#0b1220;
@@ -26,14 +25,12 @@
       align-items:center;
     }
 
-    /* MAIN LAYOUT */
     .container {
       display:grid;
       grid-template-columns: 260px 1fr;
       height:100%;
     }
 
-    /* LEFT MENU */
     .sidebar {
       background:#0b1220;
       border-right:1px solid #1f2937;
@@ -69,7 +66,6 @@
       background:#0f172a;
     }
 
-    /* RIGHT PANEL (SHELL) */
     .content {
       padding:10px;
     }
@@ -88,10 +84,8 @@
       width:100%;
       height:100%;
       border:none;
-      background:#0f172a;
     }
 
-    /* TOP LABEL INSIDE SHELL */
     .shell-header {
       position:absolute;
       top:0;
@@ -104,7 +98,6 @@
       border-bottom:1px solid #1f2937;
       z-index:10;
     }
-
   </style>
 </head>
 
@@ -117,7 +110,7 @@
 
 <div class="container">
 
-  <!-- LEFT NAV -->
+  <!-- SIDEBAR -->
   <div class="sidebar">
 
     <div class="menu-title">CORE MODULES</div>
@@ -126,8 +119,8 @@
       🔥 Service Command Post
     </button>
 
-    <button class="btn active" onclick="loadModule('command.html', this)">
-      🔥 Service Command
+    <button class="btn" onclick="loadModule('command.html', this)">
+      📊 Service Command
     </button>
 
     <button class="btn" onclick="loadModule('modules/people.html', this)">
@@ -146,30 +139,33 @@
       ⚠️ Risk Cockpit
     </button>
 
-    <div class="menu-title">SYSTEM</div>
-
-    <button class="btn" onclick="loadModule('modules/timeline.html', this)">
-      📊 Timeline
-    </button>
-
   </div>
 
+  <!-- CONTENT SHELL (FIXED - WAS MISSING) -->
+  <div class="content">
 
- 
+    <div class="shell">
+
+      <div class="shell-header" id="shellHeader">
+        Loading Service Command Post...
+      </div>
+
+      <iframe id="frame" src="modules/svccmd.html"></iframe>
+
+    </div>
+
+  </div>
 
 </div>
 
 <script>
 function loadModule(page, btn) {
 
-  // LOAD PAGE
   document.getElementById("frame").src = page + "?v=" + Date.now();
 
-  // UPDATE TITLE
-  document.getElementById("shellTitle").innerText =
+  document.getElementById("shellHeader").innerText =
     "Loading: " + page.replace("modules/","");
 
-  // ACTIVE STATE
   document.querySelectorAll(".btn").forEach(b => b.classList.remove("active"));
   btn.classList.add("active");
 }
