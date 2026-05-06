@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Command Post (Fixed Weekend Filter)</title>
+  <title>Command Post (Stable Weekend Filter)</title>
 
   <style>
     body {
@@ -66,7 +66,7 @@
 <body>
 
 <header>
-  ⛪ Command Post (Weekend Only)
+  ⛪ Command Post (Fixed Weekend Filter)
   <button onclick="load()" style="background:#3b82f6;border:none;color:white;padding:6px 10px;border-radius:6px;">
     Refresh
   </button>
@@ -78,29 +78,38 @@
 import { db } from "../assets/app.js";
 
 /* =========================
-   WEEKEND CHECK
+   SAFE DATE HANDLING (CRITICAL FIX)
+========================= */
+
+function parseDate(dateStr) {
+  return new Date(dateStr + "T00:00:00");
+}
+
+/* =========================
+   WEEKEND CHECK (FIXED)
 ========================= */
 
 function isWeekend(dateStr) {
-  const d = new Date(dateStr);
+  const d = parseDate(dateStr);
   const day = d.getDay();
   return day === 0 || day === 6;
 }
 
 /* =========================
-   WEEK NUMBER GROUPING
+   ISO WEEK KEY (STABLE)
 ========================= */
 
 function getWeekKey(dateStr) {
-  const d = new Date(dateStr);
-  const year = d.getFullYear();
+  const d = parseDate(dateStr);
 
-  const start = new Date(year, 0, 1);
-  const diff = Math.floor((d - start) / (1000 * 60 * 60 * 24));
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
 
-  const week = Math.ceil((diff + start.getDay() + 1) / 7);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
 
-  return `${year}-W${week}`;
+  return `${date.getUTCFullYear()}-W${weekNo}`;
 }
 
 /* =========================
@@ -137,13 +146,13 @@ async function load() {
   const unavailableList = availabilityRes.data || [];
 
   /* =========================
-     FILTER 1: WEEKEND ONLY
+     FIX 1: ONLY WEEKEND SERVICES
   ========================= */
 
   services = services.filter(s => isWeekend(s.service_date));
 
   /* =========================
-     FILTER 2: ONLY 2 WEEKENDS
+     FIX 2: GROUP BY WEEK (STABLE)
   ========================= */
 
   const grouped = {};
@@ -154,9 +163,15 @@ async function load() {
     grouped[key].push(s);
   });
 
-  services = Object.values(grouped)
+  /* =========================
+     FIX 3: ONLY 2 WEEKENDS
+  ========================= */
+
+  const sortedWeeks = Object.keys(grouped).sort();
+
+  services = sortedWeeks
     .slice(0, 2)
-    .flat();
+    .flatMap(k => grouped[k]);
 
   /* =========================
      RENDER
@@ -233,7 +248,10 @@ async function load() {
           <b>Key Appointments</b>
 
           ${serviceRoles
-            .filter(r => ["Service Pastor","Anchor","Welcome IC","Hospitality Cell"].includes(r.role))
+            .filter(r =>
+              ["Service Pastor","Anchor","Welcome IC","Hospitality Cell"]
+              .includes(r.role)
+            )
             .map(r => `
               <div class="row">
                 <span>${r.role}</span>
@@ -246,7 +264,10 @@ async function load() {
           <b>Welcome Team</b>
 
           ${serviceRoles
-            .filter(r => ["Welcome 1","Welcome 2","Plaza 1","Plaza 2"].includes(r.role))
+            .filter(r =>
+              ["Welcome 1","Welcome 2","Plaza 1","Plaza 2"]
+              .includes(r.role)
+            )
             .map(r => `
               <div class="row">
                 <span>${r.role}</span>
