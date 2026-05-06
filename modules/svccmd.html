@@ -1,12 +1,12 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Service Command Post</title>
+  <title>Service Command Post v2</title>
 
   <style>
     body {
       margin:0;
-      font-family:Arial;
+      font-family: Arial;
       background:#0f172a;
       color:white;
     }
@@ -17,40 +17,54 @@
       display:flex;
       justify-content:space-between;
       align-items:center;
+      font-weight:bold;
     }
 
-    .grid {
+    .wrap {
+      padding:10px;
+    }
+
+    .matrix {
       display:grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap:12px;
-      padding:12px;
+      grid-template-columns: repeat(4, 1fr);
+      gap:10px;
     }
 
     .card {
       background:#111827;
-      padding:14px;
-      border-radius:12px;
       border:1px solid #1f2937;
+      border-radius:10px;
+      padding:10px;
+      min-height:220px;
     }
 
-    .title { font-size:18px; font-weight:bold; }
-    .tag { font-size:12px; color:#94a3b8; }
+    .title {
+      font-size:14px;
+      font-weight:bold;
+      color:#60a5fa;
+    }
+
+    .sub {
+      font-size:12px;
+      color:#94a3b8;
+    }
 
     .section {
       margin-top:10px;
-      padding-top:8px;
       border-top:1px solid #1f2937;
+      padding-top:8px;
     }
 
     .row {
       display:flex;
       justify-content:space-between;
-      font-size:13px;
+      font-size:12px;
       margin:3px 0;
     }
 
     .good { color:#22c55e; }
     .bad { color:#ef4444; }
+    .warn { color:#f59e0b; }
   </style>
 </head>
 
@@ -58,128 +72,189 @@
 
 <header>
   ⛪ Service Command Post
-  <button onclick="load()" style="background:#3b82f6;border:none;color:white;padding:6px 10px;border-radius:6px;">
+  <button onclick="load()" style="background:#3b82f6;color:white;border:none;padding:6px 10px;border-radius:6px;">
     Refresh
   </button>
 </header>
 
-<div class="grid" id="grid"></div>
+<div class="wrap">
+  <div class="matrix" id="grid"></div>
+</div>
 
 <script type="module">
 import { db } from "../assets/app.js";
 
 /* =========================
-   SAFE DATE (CRITICAL FIX)
+   SAFE DATE
 ========================= */
-function d(dateStr){
-  return new Date(`${dateStr}T00:00:00`);
-}
-
-/* =========================
-   WEEKEND FILTER (SGT SAFE)
-========================= */
-function isWeekend(dateStr){
-  const day = d(dateStr).getDay();
-  return day === 0 || day === 6;
-}
-
-/* =========================
-   ONLY 2 WEEKENDS WINDOW
-   (RUNNING + NEXT WEEKEND)
-========================= */
-function getWeekKey(dateStr){
-  const date = d(dateStr);
-  const yearStart = new Date(date.getFullYear(),0,1);
-  const diff = Math.floor((date - yearStart)/(1000*60*60*24));
-  return Math.floor(diff/7);
+function safeDate(d) {
+  return new Date(`${d}T00:00:00`);
 }
 
 /* =========================
    LOAD
 ========================= */
-async function load(){
+async function load() {
 
-  const [servicesRes, rolesRes, staffRes] = await Promise.all([
-    db.from("services").select(`*, service_slots(label,time,location,id)`),
+  const [
+    servicesRes,
+    rolesRes,
+    staffRes,
+    availabilityRes
+  ] = await Promise.all([
+    db.from("services").select(`
+      *,
+      service_slots(label,time,location,id)
+    `),
+
     db.from("service_roles").select(`*, staff(name)`),
-    db.from("staff").select("*")
+
+    db.from("staff").select("*"),
+
+    db.from("staff_availability").select("*").eq("status","unavailable")
   ]);
 
-  let services = servicesRes.data || [];
+  const services = servicesRes.data || [];
   const roles = rolesRes.data || [];
   const staff = staffRes.data || [];
-
-  /* FILTER: weekend only */
-  services = services.filter(s => isWeekend(s.service_date));
-
-  /* RUNNING WINDOW (CURRENT + NEXT WEEKEND ONLY) */
-  const grouped = {};
-  services.forEach(s=>{
-    const k = getWeekKey(s.service_date);
-    if(!grouped[k]) grouped[k]=[];
-    grouped[k].push(s);
-  });
-
-  services = Object.values(grouped)
-    .sort((a,b)=>d(a[0].service_date)-d(b[0].service_date))
-    .slice(0,2)
-    .flat();
+  const unavailable = availabilityRes.data || [];
 
   const grid = document.getElementById("grid");
   grid.innerHTML = "";
 
-  for(const s of services){
+  /* =========================
+     GROUP BY SERVICE SLOT
+  ========================= */
+  const slots = {};
+
+  services.forEach(s => {
+    const key = s.service_slot_id || s.id;
+
+    if (!slots[key]) {
+      slots[key] = {
+        service: s,
+        roles: roles.filter(r => r.service_id === s.id)
+      };
+    }
+  });
+
+  /* =========================
+     RENDER EACH SERVICE COLUMN
+  ========================= */
+  Object.values(slots).forEach(obj => {
+
+    const s = obj.service;
+    const serviceRoles = obj.roles;
 
     const slot = s.service_slots || {};
-    const rolesForService = roles.filter(r=>r.service_id===s.id);
 
-    const day = d(s.service_date).toLocaleDateString("en-SG",{weekday:"long"});
-    const datePretty = d(s.service_date).toLocaleDateString("en-SG",{day:"2-digit",month:"short",year:"2-digit"});
+    /* AVAILABLE STAFF */
+    const unavailableIds = new Set(
+      unavailable
+        .filter(a =>
+          a.service_date === s.service_date &&
+          a.service_slot_id === s.service_slot_id
+        )
+        .map(a => a.staff_id)
+    );
 
+    const availableStaff = staff.filter(st => !unavailableIds.has(st.id));
+
+    /* ASSIGNED */
+    const assignedIds = new Set(
+      serviceRoles.map(r => r.staff_id).filter(Boolean)
+    );
+
+    const floating = availableStaff.length - assignedIds.size;
+
+    const attendance = s.attendance || {};
+
+    const totalAttendance =
+      (attendance.onsite || 0) +
+      (attendance.online || 0) +
+      (attendance.communicants || 0);
+
+    const d = safeDate(s.service_date);
+
+    const day = d.toLocaleDateString("en-SG", { weekday:"long" });
+
+    const datePretty = d.toLocaleDateString("en-SG", {
+      day:"2-digit",
+      month:"short"
+    });
+
+    /* =========================
+       CARD
+    ========================= */
     grid.innerHTML += `
       <div class="card">
 
-        <div class="title">${slot.label || "Service"}</div>
+        <div class="title">
+          ${slot.label || "Service"}
+        </div>
 
-        <div class="tag">${day} | ${datePretty}</div>
+        <div class="sub">
+          ${day} | ${datePretty}
+        </div>
 
-        <div class="tag">⏰ ${slot.time || ""}</div>
-        <div class="tag">📍 ${slot.location || ""}</div>
+        <div class="sub">
+          ⏰ ${slot.time || ""} | 📍 ${slot.location || ""}
+        </div>
 
+        <!-- STAFF SUMMARY -->
+        <div class="section">
+          <b>Staff Summary</b>
+
+          <div class="row">
+            <span>Available</span>
+            <b>${availableStaff.length}</b>
+          </div>
+
+          <div class="row">
+            <span>Assigned</span>
+            <b>${assignedIds.size}</b>
+          </div>
+
+          <div class="row">
+            <span>Floating</span>
+            <b class="${floating < 0 ? 'bad' : 'good'}">${floating}</b>
+          </div>
+        </div>
+
+        <!-- KEY APPOINTMENTS -->
         <div class="section">
           <b>Key Appointments</b>
 
-          ${["Service Pastor","Anchor","Welcome IC"].map(role=>{
-            const found = rolesForService.find(r=>r.role===role);
-            return `
-              <div class="row">
-                <span>${role}</span>
-                <b>${found?.staff?.name || "-"}</b>
-              </div>
-            `;
-          }).join("")}
-        </div>
-
-        <div class="section">
-          <b>Welcome Team</b>
-
-          ${rolesForService
-            .filter(r=>["Welcome 1","Welcome 2","Plaza 1","Plaza 2"].includes(r.role))
-            .map(r=>`
+          ${serviceRoles
+            .filter(r =>
+              ["Service Pastor","Anchor","Welcome IC"].includes(r.role)
+            )
+            .map(r => `
               <div class="row">
                 <span>${r.role}</span>
-                <span>${r.staff?.name || "-"}</span>
+                <b>${r.staff?.name || "-"}</b>
               </div>
             `).join("")}
         </div>
 
+        <!-- ATTENDANCE -->
+        <div class="section">
+          <b>Attendance</b>
+
+          <div class="row">
+            <span>Total</span>
+            <b>${totalAttendance}</b>
+          </div>
+        </div>
+
       </div>
     `;
-  }
+  });
 }
 
 window.load = load;
 load();
+
 </script>
 
 </body>
