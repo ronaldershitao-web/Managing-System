@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Service Command Post (Fixed)</title>
+  <title>Command Post Grid</title>
 
   <style>
     body {
@@ -22,69 +22,76 @@
 
     .grid {
       display:grid;
-      grid-template-columns: 1fr;
+      grid-template-columns: repeat(4, 1fr);
       gap:10px;
       padding:10px;
     }
 
     .card {
       background:#111827;
-      padding:14px;
+      padding:12px;
       border-radius:10px;
       border:1px solid #1f2937;
+      min-height:200px;
+    }
+
+    .title {
+      font-size:16px;
+      font-weight:bold;
+    }
+
+    .tag {
+      font-size:12px;
+      color:#94a3b8;
     }
 
     .section {
       margin-top:10px;
-      padding-top:10px;
+      padding-top:8px;
       border-top:1px solid #1f2937;
-    }
-
-    .tag { font-size:12px; color:#94a3b8; }
-
-    input {
-      width:90px;
-      padding:4px;
-      margin-right:6px;
-      border-radius:6px;
-      border:none;
-      background:#0f172a;
-      color:white;
     }
 
     .row {
       display:flex;
       justify-content:space-between;
-      font-size:13px;
-      margin:3px 0;
+      font-size:12px;
+      margin:2px 0;
     }
 
     .good { color:#22c55e; }
-    .bad  { color:#ef4444; }
+    .bad { color:#ef4444; }
+    .warn { color:#f59e0b; }
   </style>
 </head>
 
 <body>
 
 <header>
-  ⛪ Service Command Post
-  <button onclick="location.reload()" style="background:#3b82f6;border:none;color:white;padding:6px 10px;border-radius:6px;">
+  ⛪ Command Post Grid
+  <button onclick="load()" style="background:#3b82f6;border:none;color:white;padding:6px 10px;border-radius:6px;">
     Refresh
   </button>
 </header>
 
-<div class="grid">
-  <div id="commandPost"></div>
-</div>
+<div class="grid" id="grid"></div>
 
 <script type="module">
 import { db } from "../assets/app.js";
 
 /* =========================
-   LOAD
+   HELPERS
 ========================= */
 
-async function loadCommandPost() {
+function isWeekend(dateStr) {
+  const d = new Date(dateStr);
+  return d.getDay() === 0 || d.getDay() === 6;
+}
+
+/* =========================
+   LOAD COMMAND POST
+========================= */
+
+async function load() {
 
   const [
     servicesRes,
@@ -93,78 +100,56 @@ async function loadCommandPost() {
     attendanceRes,
     availabilityRes
   ] = await Promise.all([
-    db.from("services")
-      .select(`
-        *,
-        service_slots(label, time, location, id)
-      `),
-
-    db.from("service_roles")
-      .select(`*, staff(name)`),
-
-    db.from("staff")
-      .select("*"),
-
-    db.from("service_attendance")
-      .select("*"),
-
-    db.from("staff_availability")
-      .select("*")
-      .eq("status", "unavailable")
+    db.from("services").select(`*, service_slots(label,time,location,id)`),
+    db.from("service_roles").select(`*, staff(name)`),
+    db.from("staff").select("*"),
+    db.from("service_attendance").select("*"),
+    db.from("staff_availability").select("*").eq("status","unavailable")
   ]);
 
-  const services = servicesRes.data || [];
+  let services = servicesRes.data || [];
   const roles = rolesRes.data || [];
   const staff = staffRes.data || [];
-  const attendanceList = attendanceRes.data || [];
-  const availability = availabilityRes.data || [];
+  const attendance = attendanceRes.data || [];
+  const unavailable = availabilityRes.data || [];
 
-  const box = document.getElementById("commandPost");
-  box.innerHTML = "";
+  /* =========================
+     FILTER: WEEKEND ONLY + LIMIT 2 WEEKENDS
+  ========================= */
+
+  services = services.filter(s => isWeekend(s.service_date));
+
+  const weekendMap = {};
+  const filtered = [];
 
   for (const s of services) {
+    const weekKey = new Date(s.service_date).getWeek?.() || s.service_date;
+
+    if (!weekendMap[weekKey]) weekendMap[weekKey] = [];
+    weekendMap[weekKey].push(s);
+  }
+
+  Object.values(weekendMap)
+    .slice(0, 2)
+    .forEach(group => filtered.push(...group));
+
+  /* =========================
+     RENDER
+  ========================= */
+
+  const grid = document.getElementById("grid");
+  grid.innerHTML = "";
+
+  for (const s of filtered) {
 
     const slot = s.service_slots || {};
 
-    /* DATE */
-    const dateObj = new Date(s.service_date);
-
-    const day = dateObj.toLocaleDateString("en-SG", {
-      weekday: "long"
-    });
-
-    const datePretty = dateObj.toLocaleDateString("en-SG", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric"
-    });
-
-    /* TIME */
-    let time = slot.time || "";
-    if (time) {
-      const [h, m] = time.split(":");
-      const hour = parseInt(h);
-      const ampm = hour >= 12 ? "PM" : "AM";
-      const displayHour = hour % 12 || 12;
-      time = `${displayHour}:${m} ${ampm}`;
-    }
-
-    /* LOCATION */
-    let location = slot.location || "";
-    location = location.toLowerCase().includes("jurong")
-      ? "COOS Jurong"
-      : "COOS MD";
-
-    /* ROLES (IMPORTANT FIX: SERVICE SCOPED) */
     const serviceRoles = roles.filter(r => r.service_id === s.id);
 
-    const assignedIds = new Set(
-      serviceRoles.filter(r => r.staff_id).map(r => r.staff_id)
-    );
+    const assigned = new Set(serviceRoles.map(r => r.staff_id).filter(Boolean));
 
-    /* SLOT SAFE AVAILABILITY */
     const unavailableIds = new Set(
-      availability
+      unavailable
         .filter(a =>
           a.service_date === s.service_date &&
           a.service_slot_id === s.service_slot_id
@@ -172,48 +157,62 @@ async function loadCommandPost() {
         .map(a => a.staff_id)
     );
 
-    const availableCount =
-      staff.filter(st => !unavailableIds.has(st.id)).length;
+    const availableStaff = staff.filter(st => !unavailableIds.has(st.id));
 
-    const floating = availableCount - assignedIds.size;
+    const floating = availableStaff.length - assigned.size;
 
-    /* ATTENDANCE */
-    const attendance =
-      attendanceList.find(a => a.service_id === s.id) || {};
+    const attendanceRow = attendance.find(a => a.service_id === s.id) || {};
 
     const totalAttendance =
-      (attendance.onsite || 0) +
-      (attendance.online || 0) +
-      (attendance.communicants || 0);
+      (attendanceRow.onsite || 0) +
+      (attendanceRow.online || 0) +
+      (attendanceRow.communicants || 0);
 
-    /* RENDER */
-    box.innerHTML += `
+    /* =========================
+       CARD
+    ========================= */
+
+    grid.innerHTML += `
       <div class="card">
 
-        <div style="font-size:18px;font-weight:bold;">
-          ${day}
+        <div class="title">
+          ${slot.label || "Service"}
         </div>
 
         <div class="tag">
-          ${datePretty}
-        </div>
-
-        <div style="margin-top:6px;">
-          ⏰ ${time}
+          ${s.service_date} | ${slot.time || ""}
         </div>
 
         <div class="tag">
-          📍 ${location}
+          📍 ${slot.location || ""}
         </div>
 
-        <div style="margin-top:6px;">
-          ${s.is_communion_service ? "🕊 Communion Service" : "Standard Service"}
+        <div class="section">
+          <b>Staff Summary</b>
+
+          <div class="row">
+            <span>Total Available</span>
+            <b>${availableStaff.length}</b>
+          </div>
+
+          <div class="row">
+            <span>Unassigned Roles</span>
+            <b>${serviceRoles.filter(r => !r.staff_id).length}</b>
+          </div>
+
+          <div class="row">
+            <span>Floating</span>
+            <b class="${floating < 0 ? 'bad' : 'good'}">
+              ${floating}
+            </b>
+          </div>
         </div>
 
         <div class="section">
           <b>Key Appointments</b>
+
           ${serviceRoles
-            .filter(r => ["Service Pastor","Anchor"].includes(r.role))
+            .filter(r => ["Service Pastor","Anchor","Welcome IC","Hospitality Cell"].includes(r.role))
             .map(r => `
               <div class="row">
                 <span>${r.role}</span>
@@ -223,8 +222,10 @@ async function loadCommandPost() {
         </div>
 
         <div class="section">
-          <b>All Roles</b>
+          <b>Welcome Team</b>
+
           ${serviceRoles
+            .filter(r => ["Welcome 1","Welcome 2","Plaza 1","Plaza 2"].includes(r.role))
             .map(r => `
               <div class="row">
                 <span>${r.role}</span>
@@ -233,32 +234,27 @@ async function loadCommandPost() {
             `).join("")}
         </div>
 
+        ${s.is_communion_service ? `
         <div class="section">
-          <b>Floating</b>
-          <div class="${floating < 0 ? 'bad' : 'good'}">
-            ${floating}
-          </div>
+          <b>Holy Communion</b>
+
+          ${serviceRoles
+            .filter(r => r.role.includes("Station") || r.role === "Standby" || r.role === "Min Deaf")
+            .map(r => `
+              <div class="row">
+                <span>${r.role}</span>
+                <span>${r.staff?.name || "-"}</span>
+              </div>
+            `).join("")}
         </div>
+        ` : ""}
 
         <div class="section">
           <b>Attendance</b>
 
-          <div style="margin-top:6px;">
-            <input type="number"
-              value="${attendance.onsite || 0}"
-              onchange="updateAttendance('${s.id}','onsite', this.value)" />
-
-            <input type="number"
-              value="${attendance.online || 0}"
-              onchange="updateAttendance('${s.id}','online', this.value)" />
-
-            <input type="number"
-              value="${attendance.communicants || 0}"
-              onchange="updateAttendance('${s.id}','communicants', this.value)" />
-          </div>
-
-          <div style="margin-top:6px;">
-            <b>Total:</b> ${totalAttendance}
+          <div class="row">
+            <span>Total</span>
+            <b>${totalAttendance}</b>
           </div>
         </div>
 
@@ -267,35 +263,16 @@ async function loadCommandPost() {
   }
 }
 
-/* UPDATE */
-window.updateAttendance = async (serviceId, field, value) => {
+load();
 
-  const { data } = await db
-    .from("service_attendance")
-    .select("*")
-    .eq("service_id", serviceId);
-
-  if ((data || []).length > 0) {
-
-    await db
-      .from("service_attendance")
-      .update({ [field]: parseInt(value || 0) })
-      .eq("service_id", serviceId);
-
-  } else {
-
-    await db
-      .from("service_attendance")
-      .insert({
-        service_id: serviceId,
-        [field]: parseInt(value || 0)
-      });
-  }
-
-  loadCommandPost();
+/* OPTIONAL WEEK FUNCTION */
+Date.prototype.getWeek = function () {
+  const d = new Date(Date.UTC(this.getFullYear(), this.getMonth(), this.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
+  return Math.ceil((((d - yearStart) / 86400000) + 1)/7);
 };
-
-loadCommandPost();
 
 </script>
 
