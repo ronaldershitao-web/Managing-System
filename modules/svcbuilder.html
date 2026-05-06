@@ -351,14 +351,68 @@ async function loadStaff() {
 
 window.assign = async (staffId) => {
 
-  const { error } = await db
+  if (!selectedService || !selectedRole) {
+    alert("Select service and role first");
+    return;
+  }
+
+  // 🔥 Get all roles for this service
+  const { data: assignments, error } = await db
     .from("service_roles")
-    .update({ staff_id: staffId })
-    .eq("id", selectedRole.roleId);
+    .select("*")
+    .eq("service_id", selectedService.id);
 
   if (error) {
     console.error(error);
     alert(error.message);
+    return;
+  }
+
+  const staffRoles = assignments.filter(r => r.staff_id === staffId);
+
+  const roleData = assignments.find(r => r.id === selectedRole.roleId);
+
+  const hasPastor = staffRoles.some(r => r.role === "Service Pastor");
+  const hasCommunion = staffRoles.some(r => r.is_communion_role);
+  const normalRoles = staffRoles.filter(r => !r.is_communion_role);
+
+  // 🚫 RULE 1: Pastor → only Anchor allowed next
+  if (hasPastor && roleData.role !== "Anchor") {
+    alert("Service Pastor can only be assigned Anchor next");
+    return;
+  }
+
+  // 🚫 RULE 2: Only 1 normal role
+  if (!roleData.is_communion_role && normalRoles.length >= 1) {
+    alert("Staff already has a role");
+    return;
+  }
+
+  // 🚫 RULE 3: Communion limit
+  if (selectedService.isComm) {
+    if (roleData.is_communion_role && hasCommunion) {
+      alert("Already assigned a Communion role");
+      return;
+    }
+  }
+
+  // 🚫 RULE 4: Availability
+  const unavailable = await isUnavailable(staffId);
+  if (unavailable) {
+    alert("Staff is unavailable");
+    return;
+  }
+
+  // ✅ SAFE ASSIGN
+  const { error: updateError } = await db
+    .from("service_roles")
+    .update({ staff_id: staffId })
+    .eq("id", selectedRole.roleId);
+
+  if (updateError) {
+    console.error(updateError);
+    alert(updateError.message);
+    return;
   }
 
   await loadRoles();
