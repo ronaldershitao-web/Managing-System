@@ -1,12 +1,12 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Command Post (SGT Stable Filter)</title>
+  <title>Service Command Post (Stable v5)</title>
 
   <style>
     body {
       margin:0;
-      font-family:Arial;
+      font-family: Arial;
       background:#0f172a;
       color:white;
     }
@@ -32,11 +32,18 @@
       padding:12px;
       border-radius:10px;
       border:1px solid #1f2937;
-      min-height:200px;
+      min-height:220px;
     }
 
-    .title { font-size:16px; font-weight:bold; }
-    .tag { font-size:12px; color:#94a3b8; }
+    .title {
+      font-size:16px;
+      font-weight:bold;
+    }
+
+    .tag {
+      font-size:12px;
+      color:#94a3b8;
+    }
 
     .section {
       margin-top:10px;
@@ -53,13 +60,14 @@
 
     .good { color:#22c55e; }
     .bad { color:#ef4444; }
+    .warn { color:#f59e0b; }
   </style>
 </head>
 
 <body>
 
 <header>
-  ⛪ Command Post (SGT Fixed + Weekend Filter)
+  ⛪ Command Post (Weekend View - Stable)
   <button onclick="load()" style="background:#3b82f6;border:none;color:white;padding:6px 10px;border-radius:6px;">
     Refresh
   </button>
@@ -70,55 +78,38 @@
 <script type="module">
 import { db } from "../assets/app.js";
 
-
-// =========================
-// SGT SAFE DATE FUNCTIONS
-// =========================
-
-function getSGTNow() {
-  return new Date(
-    new Date().toLocaleString("en-US", { timeZone: "Asia/Singapore" })
-  );
+/* =========================
+   SAFE DATE PARSING (CRITICAL FIX)
+========================= */
+function safeDate(d) {
+  return new Date(`${d}T00:00:00`);
 }
 
-function parseDate(dateStr) {
-  return new Date(dateStr + "T00:00:00+08:00");
-}
-
+/* =========================
+   WEEKEND FILTER
+========================= */
 function isWeekend(dateStr) {
-  const d = parseDate(dateStr);
+  const d = safeDate(dateStr);
   const day = d.getDay();
   return day === 0 || day === 6;
 }
 
-function isInWindow(dateStr) {
-  const today = getSGTNow();
-  const d = parseDate(dateStr);
+/* =========================
+   WEEK GROUP (2 WEEKENDS ONLY)
+========================= */
+function getWeekStart(dateStr) {
+  const d = safeDate(dateStr);
+  const day = d.getDay();
 
-  const diffDays = (d - today) / (1000 * 60 * 60 * 24);
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  const monday = new Date(d.setDate(diff));
 
-  return diffDays >= -1 && diffDays <= 60;
+  return monday.toISOString().split("T")[0];
 }
 
-// ISO week grouping (stable)
-function getWeekKey(dateStr) {
-  const d = parseDate(dateStr);
-
-  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const dayNum = date.getUTCDay() || 7;
-  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
-
-  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
-  const weekNo = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
-
-  return `${date.getUTCFullYear()}-W${weekNo}`;
-}
-
-
-// =========================
-// LOAD
-// =========================
-
+/* =========================
+   LOAD COMMAND POST
+========================= */
 async function load() {
 
   const [
@@ -148,163 +139,183 @@ async function load() {
   const attendanceList = attendanceRes.data || [];
   const unavailableList = availabilityRes.data || [];
 
+  /* =========================
+     FIX 1: ONLY CURRENT + FUTURE WINDOW (PREVENT 2027 BUG)
+  ========================= */
+  const today = new Date();
+  const min = new Date(today);
+  const max = new Date(today);
+  max.setDate(today.getDate() + 60);
 
-// =========================
-// FILTER PIPELINE (FIXED)
-// =========================
+  services = services.filter(s => {
+    const d = safeDate(s.service_date);
+    return d >= min && d <= max;
+  });
 
-// 1. window filter
-services = services.filter(s => isInWindow(s.service_date));
+  /* =========================
+     FIX 2: WEEKEND ONLY
+  ========================= */
+  services = services.filter(s => isWeekend(s.service_date));
 
-// 2. weekend only
-services = services.filter(s => isWeekend(s.service_date));
+  /* =========================
+     FIX 3: ONLY 2 WEEKENDS
+  ========================= */
+  const grouped = {};
 
-// 3. group by week
-const grouped = {};
+  services.forEach(s => {
+    const key = getWeekStart(s.service_date);
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(s);
+  });
 
-services.forEach(s => {
-  const key = getWeekKey(s.service_date);
-  if (!grouped[key]) grouped[key] = [];
-  grouped[key].push(s);
-});
+  services = Object.values(grouped).slice(0, 2).flat();
 
-// 4. take only next 2 weekends
-const sortedWeeks = Object.keys(grouped).sort();
+  /* =========================
+     RENDER
+  ========================= */
+  const grid = document.getElementById("grid");
+  grid.innerHTML = "";
 
-services = sortedWeeks
-  .slice(0, 2)
-  .flatMap(k => grouped[k]);
+  for (const s of services) {
 
+    const slot = s.service_slots || {};
 
-// =========================
-// RENDER
-// =========================
+    const serviceRoles = roles.filter(r => r.service_id === s.id);
 
-const grid = document.getElementById("grid");
-grid.innerHTML = "";
+    const assignedIds = new Set(
+      serviceRoles.map(r => r.staff_id).filter(Boolean)
+    );
 
-for (const s of services) {
+    const unavailableIds = new Set(
+      unavailableList
+        .filter(a =>
+          a.service_date === s.service_date &&
+          a.service_slot_id === s.service_slot_id
+        )
+        .map(a => a.staff_id)
+    );
 
-  const slot = s.service_slots || {};
+    const availableStaff = staff.filter(st => !unavailableIds.has(st.id));
 
-  const serviceRoles = roles.filter(r => r.service_id === s.id);
+    const floating = availableStaff.length - assignedIds.size;
 
-  const assigned = new Set(
-    serviceRoles.map(r => r.staff_id).filter(Boolean)
-  );
+    const attendance =
+      attendanceList.find(a => a.service_id === s.id) || {};
 
-  const unavailableIds = new Set(
-    unavailableList
-      .filter(a =>
-        a.service_date === s.service_date &&
-        a.service_slot_id === s.service_slot_id
-      )
-      .map(a => a.staff_id)
-  );
+    const total =
+      (attendance.onsite || 0) +
+      (attendance.online || 0) +
+      (attendance.communicants || 0);
 
-  const availableStaff = staff.filter(st => !unavailableIds.has(st.id));
+    const d = safeDate(s.service_date);
 
-  const floating = availableStaff.length - assigned.size;
+    const day = d.toLocaleDateString("en-SG", { weekday:"long" });
 
-  const attendance = attendanceList.find(a => a.service_id === s.id) || {};
+    const datePretty = d.toLocaleDateString("en-SG", {
+      day:"2-digit",
+      month:"short",
+      year:"numeric"
+    });
 
-  const totalAttendance =
-    (attendance.onsite || 0) +
-    (attendance.online || 0) +
-    (attendance.communicants || 0);
+    grid.innerHTML += `
+      <div class="card">
 
-
-  grid.innerHTML += `
-    <div class="card">
-
-      <div class="title">${slot.label || "Service"}</div>
-
-      <div class="tag">
-        ${s.service_date} | ${slot.time || ""}
-      </div>
-
-      <div class="tag">
-        📍 ${slot.location || ""}
-      </div>
-
-      <div class="section">
-        <b>Staff Summary</b>
-
-        <div class="row">
-          <span>Available</span>
-          <b>${availableStaff.length}</b>
+        <div class="title">
+          ${slot.label || "Service"}
         </div>
 
-        <div class="row">
-          <span>Assigned</span>
-          <b>${assigned.size}</b>
+        <div class="tag">
+          ${day} | ${datePretty}
         </div>
 
-        <div class="row">
-          <span>Floating</span>
-          <b class="${floating < 0 ? 'bad' : 'good'}">${floating}</b>
+        <div class="tag">
+          ⏰ ${slot.time || ""}
         </div>
-      </div>
 
-      <div class="section">
-        <b>Key Appointments</b>
-
-        ${serviceRoles
-          .filter(r => ["Service Pastor","Anchor","Welcome IC","Hospitality Cell"].includes(r.role))
-          .map(r => `
-            <div class="row">
-              <span>${r.role}</span>
-              <b>${r.staff?.name || "-"}</b>
-            </div>
-          `).join("")}
-      </div>
-
-      <div class="section">
-        <b>Welcome Team</b>
-
-        ${serviceRoles
-          .filter(r => ["Welcome 1","Welcome 2","Plaza 1","Plaza 2"].includes(r.role))
-          .map(r => `
-            <div class="row">
-              <span>${r.role}</span>
-              <span>${r.staff?.name || "-"}</span>
-            </div>
-          `).join("")}
-      </div>
-
-      ${s.is_communion_service ? `
-      <div class="section">
-        <b>Holy Communion</b>
-
-        ${serviceRoles
-          .filter(r =>
-            r.role.includes("Station") ||
-            r.role === "Standby" ||
-            r.role === "Min Deaf"
-          )
-          .map(r => `
-            <div class="row">
-              <span>${r.role}</span>
-              <span>${r.staff?.name || "-"}</span>
-            </div>
-          `).join("")}
-      </div>
-      ` : ""}
-
-      <div class="section">
-        <b>Attendance</b>
-
-        <div class="row">
-          <span>Total</span>
-          <b>${totalAttendance}</b>
+        <div class="tag">
+          📍 ${slot.location || ""}
         </div>
-      </div>
 
-    </div>
-  `;
+        <div class="section">
+          <b>Staff Summary</b>
+
+          <div class="row">
+            <span>Available</span>
+            <b>${availableStaff.length}</b>
+          </div>
+
+          <div class="row">
+            <span>Assigned</span>
+            <b>${assignedIds.size}</b>
+          </div>
+
+          <div class="row">
+            <span>Floating</span>
+            <b class="${floating < 0 ? 'bad' : 'good'}">${floating}</b>
+          </div>
+        </div>
+
+        <div class="section">
+          <b>Key Appointments</b>
+
+          ${serviceRoles
+            .filter(r => ["Service Pastor","Anchor","Welcome IC","Hospitality Cell"].includes(r.role))
+            .map(r => `
+              <div class="row">
+                <span>${r.role}</span>
+                <b>${r.staff?.name || "-"}</b>
+              </div>
+            `).join("")}
+        </div>
+
+        <div class="section">
+          <b>Welcome Team</b>
+
+          ${serviceRoles
+            .filter(r => ["Welcome 1","Welcome 2","Plaza 1","Plaza 2"].includes(r.role))
+            .map(r => `
+              <div class="row">
+                <span>${r.role}</span>
+                <span>${r.staff?.name || "-"}</span>
+              </div>
+            `).join("")}
+        </div>
+
+        ${s.is_communion_service ? `
+        <div class="section">
+          <b>Holy Communion</b>
+
+          ${serviceRoles
+            .filter(r =>
+              r.role.includes("Station") ||
+              r.role === "Standby" ||
+              r.role === "Min Deaf"
+            )
+            .map(r => `
+              <div class="row">
+                <span>${r.role}</span>
+                <span>${r.staff?.name || "-"}</span>
+              </div>
+            `).join("")}
+        </div>
+        ` : ""}
+
+        <div class="section">
+          <b>Attendance</b>
+
+          <div class="row">
+            <span>Total</span>
+            <b>${total}</b>
+          </div>
+        </div>
+
+      </div>
+    `;
+  }
 }
 
-}
+/* IMPORTANT FIX */
+window.load = load;
 
 load();
 
