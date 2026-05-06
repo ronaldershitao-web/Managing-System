@@ -1,12 +1,12 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Service Command Post (Running Stable)</title>
+  <title>Service Command Post</title>
 
   <style>
     body {
       margin:0;
-      font-family: Arial;
+      font-family:Arial;
       background:#0f172a;
       color:white;
     }
@@ -16,7 +16,6 @@
       background:#111827;
       display:flex;
       justify-content:space-between;
-      align-items:center;
       font-weight:bold;
     }
 
@@ -34,15 +33,9 @@
       border:1px solid #1f2937;
     }
 
-    .title {
-      font-size:16px;
-      font-weight:bold;
-    }
+    .title { font-weight:bold; font-size:16px; }
 
-    .tag {
-      font-size:12px;
-      color:#94a3b8;
-    }
+    .tag { font-size:12px; color:#94a3b8; }
 
     .section {
       margin-top:10px;
@@ -65,8 +58,8 @@
 <body>
 
 <header>
-  ⛪ Command Post (Running Weekend View)
-  <button onclick="load()" style="background:#3b82f6;border:none;color:white;padding:6px 10px;border-radius:6px;">
+  ⛪ Service Command Post
+  <button onclick="load()" style="background:#3b82f6;color:white;border:none;padding:6px 10px;border-radius:6px;">
     Refresh
   </button>
 </header>
@@ -74,135 +67,38 @@
 <div class="grid" id="grid"></div>
 
 <script type="module">
-import { db } from "../assets/app.js";
+import { db } from "./assets/app.js";
+import { getRunningServices, parseSG, formatDate } from "./assets/serviceEngine.js";
 
-/* =========================
-   SAFE SG DATE PARSER
-========================= */
-function parseSG(dateStr) {
-  return new Date(dateStr + "T00:00:00+08:00");
-}
-
-/* =========================
-   FORMAT DATE
-========================= */
-function formatDate(d) {
-  return d.toLocaleDateString("en-SG", {
-    day: "2-digit",
-    month: "short",
-    year: "2-digit"
-  });
-}
-
-/* =========================
-   WEEKEND CHECK
-========================= */
-function isWeekend(d) {
-  const day = d.getDay();
-  return day === 0 || day === 6;
-}
-
-/* =========================
-   GET WEEK START (MONDAY)
-========================= */
-function getWeekKey(d) {
-  const copy = new Date(d);
-  const day = copy.getDay();
-  const diff = copy.getDate() - day + (day === 0 ? -6 : 1);
-  const monday = new Date(copy.setDate(diff));
-  return monday.toDateString();
-}
-
-/* =========================
-   GET RUNNING WINDOW (2 BACK + 2 FORWARD WEEKS)
-========================= */
-function isInWindow(date) {
-  const today = new Date();
-
-  const start = new Date(today);
-  start.setDate(today.getDate() - 14); // 2 weeks back
-
-  const end = new Date(today);
-  end.setDate(today.getDate() + 14); // 2 weeks forward
-
-  return date >= start && date <= end;
-}
-
-/* =========================
-   LOAD
-========================= */
 async function load() {
 
   const [
     servicesRes,
     rolesRes,
     staffRes,
-    attendanceRes,
-    availabilityRes
+    attendanceRes
   ] = await Promise.all([
-    db.from("services")
-      .select(`*, service_slots(label,time,location,id)`),
-
-    db.from("service_roles")
-      .select(`*, staff(name)`),
-
-    db.from("staff")
-      .select("*"),
-
-    db.from("service_attendance")
-      .select("*"),
-
-    db.from("staff_availability")
-      .select("*")
-      .eq("status","unavailable")
+    db.from("services").select(`*, service_slots(label,time,location,id)`),
+    db.from("service_roles").select(`*, staff(name)`),
+    db.from("staff").select("*"),
+    db.from("service_attendance").select("*")
   ]);
 
   let services = servicesRes.data || [];
   const roles = rolesRes.data || [];
   const staff = staffRes.data || [];
   const attendanceList = attendanceRes.data || [];
-  const unavailableList = availabilityRes.data || [];
 
-  /* =========================
-     FIX 1: PARSE DATES SAFELY
-  ========================= */
-  services = services.map(s => ({
-    ...s,
-    _dateObj: parseSG(s.service_date)
-  }));
+  // 🔥 FIXED LOGIC ENGINE
+  services = getRunningServices(services);
 
-  /* =========================
-     FIX 2: RUNNING WINDOW FILTER
-  ========================= */
-  services = services.filter(s => isInWindow(s._dateObj));
-
-  /* =========================
-     FIX 3: ONLY WEEKENDS
-  ========================= */
-  services = services.filter(s => isWeekend(s._dateObj));
-
-  /* =========================
-     FIX 4: GROUP WEEKENDS (2 WEEK BLOCKS)
-  ========================= */
-  const grouped = {};
-
-  services.forEach(s => {
-    const key = getWeekKey(s._dateObj);
-    if (!grouped[key]) grouped[key] = [];
-    grouped[key].push(s);
-  });
-
-  services = Object.values(grouped).slice(0, 2).flat();
-
-  /* =========================
-     RENDER
-  ========================= */
   const grid = document.getElementById("grid");
   grid.innerHTML = "";
 
   for (const s of services) {
 
     const slot = s.service_slots || {};
+    const d = parseSG(s.service_date);
 
     const serviceRoles = roles.filter(r => r.service_id === s.id);
 
@@ -210,83 +106,40 @@ async function load() {
       serviceRoles.map(r => r.staff_id).filter(Boolean)
     );
 
-    const unavailableIds = new Set(
-      unavailableList
-        .filter(a =>
-          a.service_date === s.service_date &&
-          a.service_slot_id === s.service_slot_id
-        )
-        .map(a => a.staff_id)
-    );
-
-    const availableStaff = staff.filter(st => !unavailableIds.has(st.id));
-
-    const floating = availableStaff.length - assigned.size;
-
-    const attendance =
-      attendanceList.find(a => a.service_id === s.id) || {};
+    const attendance = attendanceList.find(a => a.service_id === s.id) || {};
 
     const total =
       (attendance.onsite || 0) +
       (attendance.online || 0) +
       (attendance.communicants || 0);
 
-    const day = s._dateObj.toLocaleDateString("en-SG", { weekday: "long" });
-
     grid.innerHTML += `
       <div class="card">
 
-        <div class="title">
-          ${slot.label || "Service"}
-        </div>
+        <div class="title">${slot.label || "Service"}</div>
 
         <div class="tag">
-          ${day} | ${formatDate(s._dateObj)}
+          ${d.toLocaleDateString("en-SG",{weekday:"long"})} | ${formatDate(s.service_date)}
         </div>
 
-        <div class="tag">
-          ⏰ ${slot.time || ""}
-        </div>
-
-        <div class="tag">
-          📍 ${slot.location || ""}
-        </div>
-
-        <div class="section">
-          <b>Staff Summary</b>
-
-          <div class="row">
-            <span>Available</span>
-            <b>${availableStaff.length}</b>
-          </div>
-
-          <div class="row">
-            <span>Assigned</span>
-            <b>${assigned.size}</b>
-          </div>
-
-          <div class="row">
-            <span>Floating</span>
-            <b class="${floating < 0 ? 'bad' : 'good'}">${floating}</b>
-          </div>
-        </div>
+        <div class="tag">⏰ ${slot.time || ""}</div>
+        <div class="tag">📍 ${slot.location || ""}</div>
 
         <div class="section">
           <b>Key Appointments</b>
 
           ${serviceRoles
-            .filter(r => ["Service Pastor","Anchor","Welcome IC","Hospitality Cell"].includes(r.role))
+            .filter(r => ["Service Pastor","Anchor","Welcome IC"].includes(r.role))
             .map(r => `
               <div class="row">
                 <span>${r.role}</span>
-                <b>${r.staff?.name || "-"}</b>
+                <b>${r.staff?.name ?? "—"}</b>
               </div>
             `).join("")}
         </div>
 
         <div class="section">
           <b>Attendance</b>
-
           <div class="row">
             <span>Total</span>
             <b>${total}</b>
