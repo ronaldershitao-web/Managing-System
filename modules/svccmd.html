@@ -16,25 +16,24 @@
       background:#111827;
       display:flex;
       justify-content:space-between;
-      font-weight:bold;
+      align-items:center;
     }
 
     .grid {
       display:grid;
       grid-template-columns: repeat(2, 1fr);
-      gap:10px;
-      padding:10px;
+      gap:12px;
+      padding:12px;
     }
 
     .card {
       background:#111827;
-      padding:12px;
-      border-radius:10px;
+      padding:14px;
+      border-radius:12px;
       border:1px solid #1f2937;
     }
 
-    .title { font-weight:bold; font-size:16px; }
-
+    .title { font-size:18px; font-weight:bold; }
     .tag { font-size:12px; color:#94a3b8; }
 
     .section {
@@ -46,7 +45,7 @@
     .row {
       display:flex;
       justify-content:space-between;
-      font-size:12px;
+      font-size:13px;
       margin:3px 0;
     }
 
@@ -59,7 +58,7 @@
 
 <header>
   ⛪ Service Command Post
-  <button onclick="load()" style="background:#3b82f6;color:white;border:none;padding:6px 10px;border-radius:6px;">
+  <button onclick="load()" style="background:#3b82f6;border:none;color:white;padding:6px 10px;border-radius:6px;">
     Refresh
   </button>
 </header>
@@ -68,59 +67,81 @@
 
 <script type="module">
 import { db } from "./assets/app.js";
-import { getRunningServices, parseSG, formatDate } from "./assets/serviceEngine.js";
 
-async function load() {
+/* =========================
+   SAFE DATE (CRITICAL FIX)
+========================= */
+function d(dateStr){
+  return new Date(`${dateStr}T00:00:00`);
+}
 
-  const [
-    servicesRes,
-    rolesRes,
-    staffRes,
-    attendanceRes
-  ] = await Promise.all([
+/* =========================
+   WEEKEND FILTER (SGT SAFE)
+========================= */
+function isWeekend(dateStr){
+  const day = d(dateStr).getDay();
+  return day === 0 || day === 6;
+}
+
+/* =========================
+   ONLY 2 WEEKENDS WINDOW
+   (RUNNING + NEXT WEEKEND)
+========================= */
+function getWeekKey(dateStr){
+  const date = d(dateStr);
+  const yearStart = new Date(date.getFullYear(),0,1);
+  const diff = Math.floor((date - yearStart)/(1000*60*60*24));
+  return Math.floor(diff/7);
+}
+
+/* =========================
+   LOAD
+========================= */
+async function load(){
+
+  const [servicesRes, rolesRes, staffRes] = await Promise.all([
     db.from("services").select(`*, service_slots(label,time,location,id)`),
     db.from("service_roles").select(`*, staff(name)`),
-    db.from("staff").select("*"),
-    db.from("service_attendance").select("*")
+    db.from("staff").select("*")
   ]);
 
   let services = servicesRes.data || [];
   const roles = rolesRes.data || [];
   const staff = staffRes.data || [];
-  const attendanceList = attendanceRes.data || [];
 
-  // 🔥 FIXED LOGIC ENGINE
-  services = getRunningServices(services);
+  /* FILTER: weekend only */
+  services = services.filter(s => isWeekend(s.service_date));
+
+  /* RUNNING WINDOW (CURRENT + NEXT WEEKEND ONLY) */
+  const grouped = {};
+  services.forEach(s=>{
+    const k = getWeekKey(s.service_date);
+    if(!grouped[k]) grouped[k]=[];
+    grouped[k].push(s);
+  });
+
+  services = Object.values(grouped)
+    .sort((a,b)=>d(a[0].service_date)-d(b[0].service_date))
+    .slice(0,2)
+    .flat();
 
   const grid = document.getElementById("grid");
   grid.innerHTML = "";
 
-  for (const s of services) {
+  for(const s of services){
 
     const slot = s.service_slots || {};
-    const d = parseSG(s.service_date);
+    const rolesForService = roles.filter(r=>r.service_id===s.id);
 
-    const serviceRoles = roles.filter(r => r.service_id === s.id);
-
-    const assigned = new Set(
-      serviceRoles.map(r => r.staff_id).filter(Boolean)
-    );
-
-    const attendance = attendanceList.find(a => a.service_id === s.id) || {};
-
-    const total =
-      (attendance.onsite || 0) +
-      (attendance.online || 0) +
-      (attendance.communicants || 0);
+    const day = d(s.service_date).toLocaleDateString("en-SG",{weekday:"long"});
+    const datePretty = d(s.service_date).toLocaleDateString("en-SG",{day:"2-digit",month:"short",year:"2-digit"});
 
     grid.innerHTML += `
       <div class="card">
 
         <div class="title">${slot.label || "Service"}</div>
 
-        <div class="tag">
-          ${d.toLocaleDateString("en-SG",{weekday:"long"})} | ${formatDate(s.service_date)}
-        </div>
+        <div class="tag">${day} | ${datePretty}</div>
 
         <div class="tag">⏰ ${slot.time || ""}</div>
         <div class="tag">📍 ${slot.location || ""}</div>
@@ -128,22 +149,28 @@ async function load() {
         <div class="section">
           <b>Key Appointments</b>
 
-          ${serviceRoles
-            .filter(r => ["Service Pastor","Anchor","Welcome IC"].includes(r.role))
-            .map(r => `
+          ${["Service Pastor","Anchor","Welcome IC"].map(role=>{
+            const found = rolesForService.find(r=>r.role===role);
+            return `
               <div class="row">
-                <span>${r.role}</span>
-                <b>${r.staff?.name ?? "—"}</b>
+                <span>${role}</span>
+                <b>${found?.staff?.name || "-"}</b>
               </div>
-            `).join("")}
+            `;
+          }).join("")}
         </div>
 
         <div class="section">
-          <b>Attendance</b>
-          <div class="row">
-            <span>Total</span>
-            <b>${total}</b>
-          </div>
+          <b>Welcome Team</b>
+
+          ${rolesForService
+            .filter(r=>["Welcome 1","Welcome 2","Plaza 1","Plaza 2"].includes(r.role))
+            .map(r=>`
+              <div class="row">
+                <span>${r.role}</span>
+                <span>${r.staff?.name || "-"}</span>
+              </div>
+            `).join("")}
         </div>
 
       </div>
@@ -153,7 +180,6 @@ async function load() {
 
 window.load = load;
 load();
-
 </script>
 
 </body>
