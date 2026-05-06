@@ -468,6 +468,33 @@
     `;
   }
 }
+
+    window.updateAttendance = async (serviceId, field, value) => {
+
+  const { data } = await db
+    .from("service_attendance")
+    .select("*")
+    .eq("service_id", serviceId);
+
+  if ((data || []).length > 0) {
+
+    await db
+      .from("service_attendance")
+      .update({ [field]: parseInt(value) })
+      .eq("service_id", serviceId);
+
+  } else {
+
+    await db
+      .from("service_attendance")
+      .insert({
+        service_id: serviceId,
+        [field]: parseInt(value)
+      });
+  }
+
+  loadCommandPost();
+};
   </script>
 </head>
 
