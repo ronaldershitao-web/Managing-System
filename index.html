@@ -6,165 +6,91 @@
   <style>
     body {
       margin:0;
-      font-family: ui-sans-serif, system-ui, Arial;
+      font-family: Arial;
+      background: linear-gradient(135deg,#0f172a,#1e293b);
       color:white;
-      min-height:100vh;
-
-      background: linear-gradient(
-        135deg,
-        #020617 0%,
-        #0f172a 35%,
-        #1e1b4b 70%,
-        #312e81 100%
-      );
-
-      overflow:hidden;
-    }
-
-    body::before {
-      content:"";
-      position:fixed;
-      top:-200px;
-      left:-200px;
-      width:600px;
-      height:600px;
-      background: radial-gradient(circle,
-        rgba(59,130,246,0.25),
-        transparent 60%);
-      filter: blur(40px);
-      z-index:0;
-    }
-
-    body::after {
-      content:"";
-      position:fixed;
-      bottom:-200px;
-      right:-200px;
-      width:600px;
-      height:600px;
-      background: radial-gradient(circle,
-        rgba(168,85,247,0.20),
-        transparent 60%);
-      filter: blur(50px);
-      z-index:0;
-    }
-
-    header {
-      position:relative;
-      z-index:1;
-      padding:18px 24px;
       display:flex;
-      justify-content:space-between;
+      height:100vh;
       align-items:center;
-      backdrop-filter: blur(10px);
-      background: rgba(15, 23, 42, 0.4);
-      border-bottom:1px solid rgba(255,255,255,0.05);
+      justify-content:center;
     }
 
-    .layout {
+    .grid {
       display:grid;
-      grid-template-columns: 260px 1fr;
-      height: calc(100vh - 60px);
-      position:relative;
-      z-index:1;
+      grid-template-columns: repeat(3, 220px);
+      gap:20px;
     }
 
-    .sidebar {
-      padding:16px;
-      border-right:1px solid rgba(255,255,255,0.05);
-      background: rgba(15, 23, 42, 0.3);
-      backdrop-filter: blur(12px);
-    }
-
-    .nav-item {
-      padding:12px;
-      margin-bottom:10px;
-      border-radius:10px;
-      background: rgba(17,24,39,0.6);
-      border:1px solid rgba(255,255,255,0.05);
-      cursor:pointer;
-      transition:0.2s;
-      font-size:14px;
-    }
-
-    .nav-item:hover {
-      transform: translateX(4px);
-      border-color:#3b82f6;
-    }
-
-    .active {
-      border-color:#22c55e;
-    }
-
-    /* MAIN PANEL */
-    .content {
-      padding:12px;
-    }
-
-    iframe {
-      width:100%;
-      height:100%;
-      border:none;
+    .card {
+      background:#111827;
+      padding:22px;
       border-radius:14px;
-      background:#0f172a;
+      text-align:center;
+      cursor:pointer;
+      border:1px solid #1f2937;
+      transition:0.25s;
+      font-weight:bold;
     }
 
+    .card:hover {
+      transform: translateY(-5px);
+      border-color:#3b82f6;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+    }
+
+    .service {
+      background: linear-gradient(135deg,#1d4ed8,#2563eb);
+    }
+
+    .pastoral {
+      background: linear-gradient(135deg,#16a34a,#22c55e);
+    }
+
+    .risk {
+      background: linear-gradient(135deg,#ef4444,#f97316);
+    }
   </style>
 </head>
 
 <body>
 
-<header>
-  <div>⛪ Ministry OS Hub</div>
-  <div style="font-size:12px;color:#94a3b8;">Live Operational System</div>
-</header>
+<div class="grid">
 
-<div class="layout">
-
-  <!-- SIDEBAR -->
-  <div class="sidebar">
-
-    <div class="nav-item" onclick="loadPage('modules/svccmd.html')">
-      🔥 Service Command Post
-    </div>
-
-    <div class="nav-item" onclick="loadPage('command.html')">
-      🔥 Command Center
-    </div>
-
-    <div class="nav-item" onclick="loadPage('modules/groups.html')">
-      🏠 Groups
-    </div>
-
-    <div class="nav-item" onclick="loadPage('modules/people.html')">
-      👥 People
-    </div>
-
-    <div class="nav-item" onclick="loadPage('modules/visit.html')">
-      📍 Cell Visit
-    </div>
-
-    <div class="nav-item" onclick="loadPage('modules/tasks.html')">
-      📌 Tasks
-    </div>
-
-    <div class="nav-item" onclick="loadPage('modules/risk.html')">
-      ⚠️ Risk Cockpit
-    </div>
-
+  <div class="card service" onclick="go('modules/svccmd.html')">
+    ⛪ Service Command Post
   </div>
 
-  <!-- DYNAMIC CONTENT AREA -->
-  <div class="content">
-    <iframe id="viewer" src="command.html"></iframe>
+  <div class="card service" onclick="go('command.html')">
+    ⛪ Service Command Post
+  </div>
+
+  <div class="card pastoral" onclick="go('modules/people.html')">
+    👥 People & Pastoral Care
+  </div>
+
+  <div class="card risk" onclick="go('modules/risk.html')">
+    ⚠️ Risk Cockpit
+  </div>
+
+  <div class="card" onclick="go('modules/groups.html')">
+    🏠 Groups
+  </div>
+
+  <div class="card" onclick="go('modules/visit.html')">
+    🔥 Cell Visitations
+  </div>
+
+  <div class="card" onclick="go('modules/tasks.html')">
+    📌 Tasks
   </div>
 
 </div>
 
 <script>
-  function loadPage(page) {
-    document.getElementById("viewer").src = page;
-  }
+function go(page){
+  // cache-busting fix
+  window.location.href = page + "?v=" + new Date().getTime();
+}
 </script>
 
 </body>
