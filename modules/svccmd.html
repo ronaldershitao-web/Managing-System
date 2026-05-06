@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Service Command Post</title>
+
+  <style>
+    body {
+      margin:0;
+      font-family:Arial;
+      background:#0f172a;
+      color:white;
+    }
+
+    header {
+      padding:12px;
+      background:#111827;
+      font-weight:bold;
+      display:flex;
+      justify-content:space-between;
+    }
+
+    .grid {
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:10px;
+      padding:10px;
+    }
+
+    .card {
+      background:#111827;
+      padding:14px;
+      border-radius:10px;
+      border:1px solid #1f2937;
+    }
+
+    .section {
+      margin-top:10px;
+      padding-top:10px;
+      border-top:1px solid #1f2937;
+    }
+
+    .tag {
+      font-size:12px;
+      color:#94a3b8;
+    }
+
+    input {
+      width:90px;
+      padding:4px;
+      margin-right:6px;
+      border-radius:6px;
+      border:none;
+      background:#0f172a;
+      color:white;
+    }
+
+    .row {
+      display:flex;
+      justify-content:space-between;
+      font-size:13px;
+      margin:3px 0;
+    }
+
+    .good { color:#22c55e; }
+    .warn { color:#f59e0b; }
+    .bad  { color:#ef4444; }
+  </style>
+</head>
+
+<body>
+
+<header>
+  ⛪ Service Command Post
+  <button onclick="location.reload()" style="background:#3b82f6;border:none;color:white;padding:6px 10px;border-radius:6px;">
+    Refresh
+  </button>
+</header>
+
+<div class="grid">
+  <div id="commandPost"></div>
+</div>
+
+<script type="module">
+import { db } from "../assets/app.js";
+
+/* =========================
+   LOAD COMMAND POST
+========================= */
+
+async function loadCommandPost() {
+
+  const [
+    servicesRes,
+    rolesRes,
+    staffRes,
+    attendanceRes,
+    availabilityRes
+  ] = await Promise.all([
+    db.from("services")
+      .select(`*, service_slots(label, time, location, id as slot_id)`),
+
+    db.from("service_roles")
+      .select(`*, staff(name)`),
+
+    db.from("staff")
+      .select("*"),
+
+    db.from("service_attendance")
+      .select("*"),
+
+    db.from("staff_availability")
+      .select("*")
+      .eq("status", "unavailable")
+  ]);
+
+  const services = servicesRes.data || [];
+  const roles = rolesRes.data || [];
+  const staff = staffRes.data || [];
+  const attendanceList = attendanceRes.data || [];
+  const availability = availabilityRes.data || [];
+
+  const box = document.getElementById("commandPost");
+  box.innerHTML = "";
+
+  for (const s of services) {
+
+    const slot = s.service_slots || {};
+
+    /* ---------------- FORMAT DATE ---------------- */
+    const dateObj = new Date(s.service_date);
+
+    const day = dateObj.toLocaleDateString("en-SG", {
+      weekday: "long"
+    });
+
+    const datePretty = dateObj.toLocaleDateString("en-SG", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric"
+    });
+
+    /* ---------------- FORMAT TIME ---------------- */
+    let time = slot.time || "";
+    if (time) {
+      const [h, m] = time.split(":");
+      const hour = parseInt(h);
+      const ampm = hour >= 12 ? "PM" : "AM";
+      const displayHour = hour % 12 || 12;
+      time = `${displayHour}:${m} ${ampm}`;
+    }
+
+    /* ---------------- LOCATION NORMALISE ---------------- */
+    let location = slot.location || "";
+    location = location.toLowerCase().includes("jurong")
+      ? "COOS Jurong"
+      : "COOS MD";
+
+    /* ---------------- SERVICE ROLES ---------------- */
+    const serviceRoles = roles.filter(r => r.service_id === s.id);
+
+    const assignedIds = new Set(
+      serviceRoles.filter(r => r.staff_id).map(r => r.staff_id)
+    );
+
+    /* ---------------- SLOT SAFE AVAILABILITY ---------------- */
+    const unavailableIds = new Set(
+      availability
+        .filter(a =>
+          a.service_date === s.service_date &&
+          a.service_slot_id === s.service_slot_id
+        )
+        .map(a => a.staff_id)
+    );
+
+    const availableCount =
+      staff.filter(st => !unavailableIds.has(st.id)).length;
+
+    const floating = availableCount - assignedIds.size;
+
+    /* ---------------- ATTENDANCE ---------------- */
+    const attendance =
+      attendanceList.find(a => a.service_id === s.id) || {};
+
+    const totalAttendance =
+      (attendance.onsite || 0) +
+      (attendance.online || 0);
+
+    /* ---------------- RENDER ---------------- */
+    box.innerHTML += `
+      <div class="card">
+
+        <!-- HEADER -->
+        <div style="font-size:18px;font-weight:bold;">
+          ${day}
+        </div>
+
+        <div class="tag">
+          ${datePretty}
+        </div>
+
+        <div style="margin-top:6px;">
+          ⏰ ${time}
+        </div>
+
+        <div class="tag">
+          📍 ${location}
+        </div>
+
+        <div style="margin-top:6px;">
+          ${s.is_communion_service
+            ? "🕊 Communion Service"
+            : "Standard Service"}
+        </div>
+
+        <!-- KEY APPOINTMENTS -->
+        <div class="section">
+          <b>Key Appointments</b>
+
+          ${serviceRoles
+            .filter(r => ["Service Pastor","Anchor"].includes(r.role))
+            .map(r => `
+              <div class="row">
+                <span>${r.role}</span>
+                <b>${r.staff?.name || "-"}</b>
+              </div>
+            `).join("")}
+        </div>
+
+        <!-- ALL ROLES -->
+        <div class="section">
+          <b>Roles</b>
+
+          ${serviceRoles
+            .map(r => `
+              <div class="row">
+                <span>${r.role}</span>
+                <span>${r.staff?.name || "-"}</span>
+              </div>
+            `).join("")}
+        </div>
+
+        <!-- FLOATING -->
+        <div class="section">
+          <b>Floating Staff</b>
+          <div class="${floating < 0 ? 'bad' : 'good'}">
+            ${floating}
+          </div>
+        </div>
+
+        <!-- ATTENDANCE -->
+        <div class="section">
+          <b>Attendance</b>
+
+          <div style="margin-top:6px;">
+            <input type="number"
+              placeholder="On Site"
+              value="${attendance.onsite || 0}"
+              onchange="updateAttendance('${s.id}','onsite', this.value)" />
+
+            <input type="number"
+              placeholder="Online"
+              value="${attendance.online || 0}"
+              onchange="updateAttendance('${s.id}','online', this.value)" />
+
+            <input type="number"
+              placeholder="Communicants"
+              value="${attendance.communicants || 0}"
+              onchange="updateAttendance('${s.id}','communicants', this.value)" />
+          </div>
+
+          <div style="margin-top:6px;">
+            <b>Total:</b> ${totalAttendance}
+          </div>
+        </div>
+
+      </div>
+    `;
+  }
+}
+
+/* =========================
+   UPDATE ATTENDANCE
+========================= */
+
+window.updateAttendance = async (serviceId, field, value) => {
+
+  const { data } = await db
+    .from("service_attendance")
+    .select("*")
+    .eq("service_id", serviceId);
+
+  if ((data || []).length > 0) {
+
+    await db
+      .from("service_attendance")
+      .update({ [field]: parseInt(value || 0) })
+      .eq("service_id", serviceId);
+
+  } else {
+
+    await db
+      .from("service_attendance")
+      .insert({
+        service_id: serviceId,
+        [field]: parseInt(value || 0)
+      });
+  }
+
+  loadCommandPost();
+};
+
+/* INIT */
+loadCommandPost();
+
+</script>
+
+</body>
+</html>
