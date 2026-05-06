@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Command Post Grid</title>
+  <title>Command Post (Fixed Weekend Filter)</title>
 
   <style>
     body {
@@ -14,10 +14,10 @@
     header {
       padding:12px;
       background:#111827;
-      font-weight:bold;
       display:flex;
       justify-content:space-between;
       align-items:center;
+      font-weight:bold;
     }
 
     .grid {
@@ -55,19 +55,18 @@
       display:flex;
       justify-content:space-between;
       font-size:12px;
-      margin:2px 0;
+      margin:3px 0;
     }
 
     .good { color:#22c55e; }
     .bad { color:#ef4444; }
-    .warn { color:#f59e0b; }
   </style>
 </head>
 
 <body>
 
 <header>
-  ⛪ Command Post Grid
+  ⛪ Command Post (Weekend Only)
   <button onclick="load()" style="background:#3b82f6;border:none;color:white;padding:6px 10px;border-radius:6px;">
     Refresh
   </button>
@@ -79,12 +78,29 @@
 import { db } from "../assets/app.js";
 
 /* =========================
-   HELPERS
+   WEEKEND CHECK
 ========================= */
 
 function isWeekend(dateStr) {
   const d = new Date(dateStr);
-  return d.getDay() === 0 || d.getDay() === 6;
+  const day = d.getDay();
+  return day === 0 || day === 6;
+}
+
+/* =========================
+   WEEK NUMBER GROUPING
+========================= */
+
+function getWeekKey(dateStr) {
+  const d = new Date(dateStr);
+  const year = d.getFullYear();
+
+  const start = new Date(year, 0, 1);
+  const diff = Math.floor((d - start) / (1000 * 60 * 60 * 24));
+
+  const week = Math.ceil((diff + start.getDay() + 1) / 7);
+
+  return `${year}-W${week}`;
 }
 
 /* =========================
@@ -100,38 +116,47 @@ async function load() {
     attendanceRes,
     availabilityRes
   ] = await Promise.all([
-    db.from("services").select(`*, service_slots(label,time,location,id)`),
+    db.from("services").select(`
+      *,
+      service_slots(label,time,location,id)
+    `),
+
     db.from("service_roles").select(`*, staff(name)`),
+
     db.from("staff").select("*"),
+
     db.from("service_attendance").select("*"),
+
     db.from("staff_availability").select("*").eq("status","unavailable")
   ]);
 
   let services = servicesRes.data || [];
   const roles = rolesRes.data || [];
   const staff = staffRes.data || [];
-  const attendance = attendanceRes.data || [];
-  const unavailable = availabilityRes.data || [];
+  const attendanceList = attendanceRes.data || [];
+  const unavailableList = availabilityRes.data || [];
 
   /* =========================
-     FILTER: WEEKEND ONLY + LIMIT 2 WEEKENDS
+     FILTER 1: WEEKEND ONLY
   ========================= */
 
   services = services.filter(s => isWeekend(s.service_date));
 
-  const weekendMap = {};
-  const filtered = [];
+  /* =========================
+     FILTER 2: ONLY 2 WEEKENDS
+  ========================= */
 
-  for (const s of services) {
-    const weekKey = new Date(s.service_date).getWeek?.() || s.service_date;
+  const grouped = {};
 
-    if (!weekendMap[weekKey]) weekendMap[weekKey] = [];
-    weekendMap[weekKey].push(s);
-  }
+  services.forEach(s => {
+    const key = getWeekKey(s.service_date);
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(s);
+  });
 
-  Object.values(weekendMap)
+  services = Object.values(grouped)
     .slice(0, 2)
-    .forEach(group => filtered.push(...group));
+    .flat();
 
   /* =========================
      RENDER
@@ -140,16 +165,18 @@ async function load() {
   const grid = document.getElementById("grid");
   grid.innerHTML = "";
 
-  for (const s of filtered) {
+  for (const s of services) {
 
     const slot = s.service_slots || {};
 
     const serviceRoles = roles.filter(r => r.service_id === s.id);
 
-    const assigned = new Set(serviceRoles.map(r => r.staff_id).filter(Boolean));
+    const assigned = new Set(
+      serviceRoles.map(r => r.staff_id).filter(Boolean)
+    );
 
     const unavailableIds = new Set(
-      unavailable
+      unavailableList
         .filter(a =>
           a.service_date === s.service_date &&
           a.service_slot_id === s.service_slot_id
@@ -161,16 +188,12 @@ async function load() {
 
     const floating = availableStaff.length - assigned.size;
 
-    const attendanceRow = attendance.find(a => a.service_id === s.id) || {};
+    const attendance = attendanceList.find(a => a.service_id === s.id) || {};
 
     const totalAttendance =
-      (attendanceRow.onsite || 0) +
-      (attendanceRow.online || 0) +
-      (attendanceRow.communicants || 0);
-
-    /* =========================
-       CARD
-    ========================= */
+      (attendance.onsite || 0) +
+      (attendance.online || 0) +
+      (attendance.communicants || 0);
 
     grid.innerHTML += `
       <div class="card">
@@ -191,20 +214,18 @@ async function load() {
           <b>Staff Summary</b>
 
           <div class="row">
-            <span>Total Available</span>
+            <span>Available</span>
             <b>${availableStaff.length}</b>
           </div>
 
           <div class="row">
-            <span>Unassigned Roles</span>
-            <b>${serviceRoles.filter(r => !r.staff_id).length}</b>
+            <span>Assigned</span>
+            <b>${assigned.size}</b>
           </div>
 
           <div class="row">
             <span>Floating</span>
-            <b class="${floating < 0 ? 'bad' : 'good'}">
-              ${floating}
-            </b>
+            <b class="${floating < 0 ? 'bad' : 'good'}">${floating}</b>
           </div>
         </div>
 
@@ -239,7 +260,11 @@ async function load() {
           <b>Holy Communion</b>
 
           ${serviceRoles
-            .filter(r => r.role.includes("Station") || r.role === "Standby" || r.role === "Min Deaf")
+            .filter(r =>
+              r.role.includes("Station") ||
+              r.role === "Standby" ||
+              r.role === "Min Deaf"
+            )
             .map(r => `
               <div class="row">
                 <span>${r.role}</span>
@@ -264,15 +289,6 @@ async function load() {
 }
 
 load();
-
-/* OPTIONAL WEEK FUNCTION */
-Date.prototype.getWeek = function () {
-  const d = new Date(Date.UTC(this.getFullYear(), this.getMonth(), this.getDate()));
-  const dayNum = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
-  return Math.ceil((((d - yearStart) / 86400000) + 1)/7);
-};
 
 </script>
 
