@@ -116,14 +116,19 @@ function inWindow(dateStr) {
 ========================= */
 function getSlotIndex(s) {
 
-  const t = (s.service_slots?.time || "").toLowerCase();
-  const l = (s.service_slots?.location || "").toLowerCase();
+  const time = (s.service_slots?.time || "").toLowerCase();
+  const label = (s.service_slots?.label || "").toLowerCase();
+  const loc = (s.service_slots?.location || "").toLowerCase();
 
-  const text = `${t} ${l}`;
+  const text = `${label} ${time} ${loc}`;
 
-  if (text.includes("sat") || text.includes("14:30")) return 0;
-  if (text.includes("8.30") || text.includes("0830")) return 1;
-  if (text.includes("10.45") || text.includes("1045")) return 2;
+  // normalize time formats
+  if (text.includes("14:30") || text.includes("2:30") || text.includes("sat")) return 0;
+
+  if (text.includes("08:30") || text.includes("8:30") || text.includes("830")) return 1;
+
+  if (text.includes("10:45") || text.includes("1045")) return 2;
+
   if (text.includes("jurong")) return 3;
 
   return -1;
