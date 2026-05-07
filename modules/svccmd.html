@@ -100,19 +100,47 @@ function inWindow(d){
   return dt>=min && dt<=max;
 }
 
-/* ================= SLOT ORDER ================= */
+/* ================= SLOT ORDER (FIXED) ================= */
 function slotIndex(s){
-  const t=(s.service_slots?.time||"").toLowerCase();
-  const l=(s.service_slots?.location||"").toLowerCase();
 
-  const x=`${t} ${l}`;
+  const time = (s.service_slots?.time || "").toLowerCase();
+  const location = (s.service_slots?.location || "").toLowerCase();
 
-  if(x.includes("sat")||x.includes("14:30")) return 0;
-  if(x.includes("8.30")||x.includes("08:30")||x.includes("830")) return 1;
-  if(x.includes("10.45")||x.includes("1045")) return 2;
-  if(x.includes("jurong")) return 3;
+  // normalize
+  const t = time.replace(":", "");
+
+  if(t.includes("1430")) return 0;
+  if(t.includes("0830")) return 1;
+  if(t.includes("1045") && !location.includes("jurong")) return 2;
+  if(location.includes("jurong")) return 3;
 
   return -1;
+}
+
+/* ================= ROLE GROUPING ================= */
+function getAppointment(serviceRoles, roleType){
+
+  if(roleType === "Service Pastor"){
+    return serviceRoles.find(r => r.role === "Service Pastor");
+  }
+
+  if(roleType === "Anchor"){
+    return serviceRoles.find(r => r.role === "Anchor");
+  }
+
+  if(roleType === "Welcome IC"){
+    return serviceRoles.find(r => r.role === "Welcome IC");
+  }
+
+  if(roleType === "Hospitality Cell"){
+    // GROUP LOGIC (important)
+    return serviceRoles.find(r =>
+      r.role.includes("Welcome Member") ||
+      r.role.includes("Plaza")
+    );
+  }
+
+  return null;
 }
 
 /* ================= LOAD ================= */
@@ -126,7 +154,7 @@ async function load(){
     staffRes
   ] = await Promise.all([
     db.from("services").select("*, service_slots(label,time,location)"),
-    db.from("service_roles").select("*, staff(name)"),
+    db.from("service_roles").select("*"),
     db.from("staff_service_templates").select("*"),
     db.from("staff_availability").select("*"),
     db.from("staff").select("*")
@@ -138,12 +166,17 @@ async function load(){
   const availability = availabilityRes.data||[];
   const staff = staffRes.data||[];
 
+  /* ================= STAFF MAP ================= */
   const staffMap = {};
   staff.forEach(s=>staffMap[s.id]=s.name);
 
+  /* ================= FILTER ================= */
   services = services.filter(s=>inWindow(s.service_date));
+
+  /* ================= SORT ================= */
   services.sort((a,b)=>parseDate(a.service_date)-parseDate(b.service_date));
 
+  /* ================= COLUMNS ================= */
   const cols=[[],[],[],[]];
 
   services.forEach(s=>{
@@ -183,15 +216,21 @@ async function load(){
           /* ROLES */
           const serviceRoles = roles.filter(r=>r.service_id===s.id);
 
-          const KEY = ["Service Pastor","Anchor","Welcome IC","Hospitality Cell"];
+          const KEY = [
+            "Service Pastor",
+            "Anchor",
+            "Welcome IC",
+            "Hospitality Cell"
+          ];
 
           const appointments = KEY.map(role=>{
-            const found = serviceRoles.find(r=>r.role===role);
+
+            const found = getAppointment(serviceRoles, role);
 
             return {
               role,
               name: found
-                ? (staffMap[found.staff_id] || "-")
+                ? (staffMap[found.staff_id] || "⚠ Missing Staff")
                 : "-"
             };
           });
