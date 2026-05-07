@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Command Post (Fixed Names + Stable)</title>
+  <title>Command Post (Stable + Fixed Staff Names)</title>
 
   <style>
     body {
@@ -46,6 +46,7 @@
     .title {
       font-weight:bold;
       color:#60a5fa;
+      margin-bottom:5px;
     }
 
     .tag {
@@ -54,7 +55,7 @@
     }
 
     .section {
-      margin-top:8px;
+      margin-top:10px;
       padding-top:8px;
       border-top:1px solid #1f2937;
     }
@@ -63,19 +64,35 @@
       display:flex;
       justify-content:space-between;
       font-size:12px;
-      margin:3px 0;
+      margin:4px 0;
     }
 
-    .good { color:#22c55e; }
-    .bad { color:#ef4444; }
+    .good {
+      color:#22c55e;
+    }
+
+    .bad {
+      color:#ef4444;
+    }
   </style>
 </head>
 
 <body>
 
 <header>
-  ⛪ Command Post (Stable + Name Fix)
-  <button onclick="load()" style="background:#3b82f6;color:white;border:none;padding:6px 10px;border-radius:6px;">
+  ⛪ Command Post (Stable + Fixed Staff Names)
+
+  <button
+    onclick="load()"
+    style="
+      background:#3b82f6;
+      color:white;
+      border:none;
+      padding:6px 10px;
+      border-radius:6px;
+      cursor:pointer;
+    "
+  >
     Refresh
   </button>
 </header>
@@ -83,16 +100,23 @@
 <div class="grid" id="grid"></div>
 
 <script type="module">
+
 import { db } from "../assets/app.js";
 
 /* =========================
    SAFE DATE
 ========================= */
 function parseDate(d) {
+
   if (!d) return new Date(0);
 
   const [y,m,day] = d.split("-");
-  return new Date(Number(y), Number(m)-1, Number(day));
+
+  return new Date(
+    Number(y),
+    Number(m)-1,
+    Number(day)
+  );
 }
 
 /* =========================
@@ -118,9 +142,14 @@ function inWindow(dateStr) {
 ========================= */
 function getSlotIndex(s) {
 
-  const time = (s.service_slots?.time || "").toLowerCase();
-  const label = (s.service_slots?.label || "").toLowerCase();
-  const loc = (s.service_slots?.location || "").toLowerCase();
+  const time =
+    (s.service_slots?.time || "").toLowerCase();
+
+  const label =
+    (s.service_slots?.label || "").toLowerCase();
+
+  const loc =
+    (s.service_slots?.location || "").toLowerCase();
 
   const text = `${label} ${time} ${loc}`;
 
@@ -129,38 +158,53 @@ function getSlotIndex(s) {
     text.includes("14:30") ||
     text.includes("2:30") ||
     text.includes("sat")
-  ) return 0;
+  ) {
+    return 0;
+  }
 
-  // Sunday 8.30am
+  // Sunday 8.30
   if (
     text.includes("08:30") ||
     text.includes("8:30") ||
     text.includes("830")
-  ) return 1;
+  ) {
+    return 1;
+  }
 
-  // Sunday 10.45am Main
+  // Sunday 10.45 Main
   if (
     text.includes("10:45") &&
     !text.includes("jurong")
-  ) return 2;
+  ) {
+    return 2;
+  }
 
   // Jurong
   if (
     text.includes("jurong")
-  ) return 3;
+  ) {
+    return 3;
+  }
 
   return 0;
 }
 
 /* =========================
-   ROLE MATCH
+   FIND ROLE
 ========================= */
 function findRole(serviceRoles, roleName) {
 
   return serviceRoles.find(r =>
-    (r.role || "")
+
+    String(r.role || "")
       .trim()
-      .toLowerCase() === roleName.toLowerCase()
+      .toLowerCase()
+
+    ===
+
+    String(roleName || "")
+      .trim()
+      .toLowerCase()
   );
 }
 
@@ -177,50 +221,58 @@ async function load() {
     staffRes
   ] = await Promise.all([
 
-    db.from("services")
+    db
+      .from("services")
       .select(`
         *,
-        service_slots(label,time,location)
+        service_slots(
+          label,
+          time,
+          location
+        )
       `),
 
-    db.from("staff_service_templates")
-      .select("staff_id, template_id"),
-
-    db.from("service_roles")
+    db
+      .from("staff_service_templates")
       .select("*"),
 
-    db.from("staff_availability")
+    db
+      .from("service_roles")
       .select("*"),
 
-    db.from("staff")
+    db
+      .from("staff_availability")
+      .select("*"),
+
+    db
+      .from("staff")
       .select("*")
   ]);
 
-  let services = servicesRes.data || [];
+  let services =
+    servicesRes.data || [];
 
-  const templateStaff = templateStaffRes.data || [];
-  const roles = rolesRes.data || [];
-  const availability = availabilityRes.data || [];
-  const staff = staffRes.data || [];
+  const templateStaff =
+    templateStaffRes.data || [];
+
+  const roles =
+    rolesRes.data || [];
+
+  const availability =
+    availabilityRes.data || [];
+
+  const staff =
+    staffRes.data || [];
 
   /* =========================
-     STAFF LOOKUP MAP
-  ========================= */
-  const staffMap = {};
-
-  staff.forEach(s => {
-    staffMap[s.id] = s.name;
-  });
-
-  /* =========================
-     FILTER WINDOW
+     FILTER DATE WINDOW
   ========================= */
   services = services.filter(s =>
     inWindow(s.service_date)
   );
 
   /* =========================
-     SORT
+     SORT ASCENDING
   ========================= */
   services.sort((a,b) =>
     parseDate(a.service_date) -
@@ -239,13 +291,14 @@ async function load() {
     cols[idx].push(s);
   });
 
-  const grid = document.getElementById("grid");
-
-  grid.innerHTML = "";
-
   /* =========================
      RENDER
   ========================= */
+  const grid =
+    document.getElementById("grid");
+
+  grid.innerHTML = "";
+
   cols.forEach(col => {
 
     grid.innerHTML += `
@@ -256,41 +309,67 @@ async function load() {
           /* =========================
              TEMPLATE STAFF
           ========================= */
-          const assigned = templateStaff.filter(
-            t => t.template_id === s.service_template_id
-          );
+          const assigned =
+            templateStaff.filter(t =>
 
-          const assignedIds = new Set(
-            assigned.map(a => a.staff_id)
-          );
+              String(t.template_id)
+              ===
+              String(s.service_template_id)
+            );
+
+          const assignedIds =
+            new Set(
+              assigned.map(a => a.staff_id)
+            );
 
           /* =========================
              UNAVAILABLE
           ========================= */
-          const unavailableIds = new Set(
-            availability
-              .filter(a =>
-                a.service_date === s.service_date &&
-                a.service_slot_id === s.service_slot_id &&
-                a.status === "unavailable"
-              )
-              .map(a => a.staff_id)
-          );
+          const unavailableIds =
+            new Set(
+
+              availability
+                .filter(a =>
+
+                  String(a.service_date)
+                  ===
+                  String(s.service_date)
+
+                  &&
+
+                  String(a.service_slot_id)
+                  ===
+                  String(s.service_slot_id)
+
+                  &&
+
+                  String(a.status)
+                    .toLowerCase()
+                  ===
+                  "unavailable"
+                )
+                .map(a => a.staff_id)
+            );
 
           /* =========================
              AVAILABLE
           ========================= */
-          const availableIds = [...assignedIds]
-            .filter(id =>
-              !unavailableIds.has(id)
-            );
+          const availableIds =
+            [...assignedIds]
+              .filter(id =>
+                !unavailableIds.has(id)
+              );
 
           /* =========================
-             SERVICE ROLES
+             ROLES
           ========================= */
-          const serviceRoles = roles.filter(r =>
-            r.service_id === s.id
-          );
+          const serviceRoles =
+            roles.filter(r =>
+
+              String(r.service_id)
+              ===
+              String(s.id)
+            );
 
           /* =========================
              KEY APPOINTMENTS
@@ -302,31 +381,55 @@ async function load() {
             "Hospitality Cell"
           ];
 
-          const keyAppointments = KEY_ROLES.map(role => {
+          const keyAppointments =
+            KEY_ROLES.map(role => {
 
-            const found = findRole(serviceRoles, role);
+              const found =
+                findRole(serviceRoles, role);
 
-            return {
-              role,
-              name: found
-                ? (staffMap[found.staff_id] || "-")
-                : "-"
-            };
-          });
+              let name = "-";
+
+              if (found?.staff_id) {
+
+                const matchedStaff =
+                  staff.find(st =>
+
+                    String(st.id).trim()
+                    ===
+                    String(found.staff_id).trim()
+                  );
+
+                if (matchedStaff) {
+                  name = matchedStaff.name;
+                }
+              }
+
+              return {
+                role,
+                name
+              };
+            });
 
           /* =========================
              DATE DISPLAY
           ========================= */
-          const d = parseDate(s.service_date);
+          const d =
+            parseDate(s.service_date);
 
-          const day = d.toLocaleDateString("en-SG",{
-            weekday:"long"
-          });
+          const day =
+            d.toLocaleDateString(
+              "en-SG",
+              { weekday:"long" }
+            );
 
-          const date = d.toLocaleDateString("en-SG",{
-            day:"2-digit",
-            month:"short"
-          });
+          const date =
+            d.toLocaleDateString(
+              "en-SG",
+              {
+                day:"2-digit",
+                month:"short"
+              }
+            );
 
           return `
             <div class="card">
@@ -349,7 +452,9 @@ async function load() {
 
                 <div class="row">
                   <span>Assigned</span>
-                  <b>${assignedIds.size}</b>
+                  <b>
+                    ${assignedIds.size}
+                  </b>
                 </div>
 
                 <div class="row">
@@ -374,8 +479,15 @@ async function load() {
 
                 ${keyAppointments.map(k => `
                   <div class="row">
-                    <span>${k.role}</span>
-                    <b>${k.name}</b>
+
+                    <span>
+                      ${k.role}
+                    </span>
+
+                    <b>
+                      ${k.name}
+                    </b>
+
                   </div>
                 `).join("")}
 
