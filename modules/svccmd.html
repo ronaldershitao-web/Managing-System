@@ -32,6 +32,7 @@
       border:1px solid #1f2937;
       border-radius:10px;
       padding:10px;
+      min-height:300px;
     }
 
     .card{
@@ -64,10 +65,17 @@
       justify-content:space-between;
       font-size:12px;
       margin:4px 0;
+      gap:10px;
     }
 
     .good{ color:#22c55e; }
     .bad{ color:#ef4444; }
+
+    .appointment-name{
+      text-align:right;
+      font-weight:bold;
+      color:white;
+    }
   </style>
 </head>
 
@@ -87,11 +95,19 @@
 import { db } from "../assets/app.js";
 
 /* =========================
-   DATE
+   SAFE DATE
 ========================= */
 function parseDate(d){
+
+  if(!d) return new Date(0);
+
   const [y,m,day] = d.split("-");
-  return new Date(Number(y), Number(m)-1, Number(day));
+
+  return new Date(
+    Number(y),
+    Number(m)-1,
+    Number(day)
+  );
 }
 
 /* =========================
@@ -117,39 +133,57 @@ function inWindow(dateStr){
 ========================= */
 function getSlotIndex(service){
 
-  const label = (service.service_slots?.label || "").toLowerCase();
-  const time = (service.service_slots?.time || "").toLowerCase();
-  const location = (service.service_slots?.location || "").toLowerCase();
+  const label =
+    (service.service_slots?.label || "").toLowerCase();
+
+  const time =
+    (service.service_slots?.time || "").toLowerCase();
+
+  const location =
+    (service.service_slots?.location || "").toLowerCase();
 
   const text = `${label} ${time} ${location}`;
 
-  if(text.includes("sat") || text.includes("14:30")) return 0;
+  /* SATURDAY */
+  if(
+    text.includes("sat") ||
+    text.includes("14:30")
+  ) return 0;
 
+  /* JURONG MUST COME BEFORE 10:45 */
+  if(
+    location.includes("jurong")
+  ) return 3;
+
+  /* SUNDAY 8:30 */
   if(
     text.includes("8.30") ||
     text.includes("08:30") ||
+    text.includes("8:30") ||
+    text.includes("0830") ||
     text.includes("830")
   ) return 1;
 
+  /* SUNDAY 10:45 */
   if(
     text.includes("10.45") ||
     text.includes("10:45") ||
     text.includes("1045")
   ) return 2;
 
-  if(location.includes("jurong")) return 3;
-
   return -1;
 }
 
 /* =========================
-   ROLE FINDER
+   FIND ROLE
 ========================= */
 function findRole(serviceRoles, role){
 
   return serviceRoles.find(r =>
-    (r.role || "").trim().toLowerCase()
-    === role.toLowerCase()
+    (r.role || "")
+      .trim()
+      .toLowerCase()
+      === role.toLowerCase()
   );
 }
 
@@ -169,7 +203,11 @@ async function load(){
     db.from("services")
       .select(`
         *,
-        service_slots(label,time,location)
+        service_slots(
+          label,
+          time,
+          location
+        )
       `),
 
     db.from("staff_service_templates")
@@ -185,34 +223,36 @@ async function load(){
       .select("*")
   ]);
 
-  let services = servicesRes.data || [];
+  let services =
+    servicesRes.data || [];
 
-  const templateStaff = templateRes.data || [];
-  const roles = rolesRes.data || [];
-  const availability = availabilityRes.data || [];
-  const staff = staffRes.data || [];
+  const templateStaff =
+    templateRes.data || [];
+
+  const roles =
+    rolesRes.data || [];
+
+  const availability =
+    availabilityRes.data || [];
+
+  const staff =
+    staffRes.data || [];
 
   /* =========================
      FILTER DATE WINDOW
   ========================= */
-  services = services.filter(s => inWindow(s.service_date));
-
-  /* =========================
-     SORT
-  ========================= */
-  services.sort((a,b)=>
-    parseDate(a.service_date) - parseDate(b.service_date)
+  services = services.filter(s =>
+    inWindow(s.service_date)
   );
 
   /* =========================
-     SPLIT INTO 4 COLS
+     SORT ASCENDING
   ========================= */
-  const cols = [[],[],[],[]];
-
-  services.forEach(s=>{
-    const idx = getSlotIndex(s);
-    if(idx >= 0) cols[idx].push(s);
-  });
+  services.sort((a,b)=>
+    parseDate(a.service_date)
+    -
+    parseDate(b.service_date)
+  );
 
   /* =========================
      STAFF MAP
@@ -224,9 +264,25 @@ async function load(){
   });
 
   /* =========================
+     CREATE 4 FIXED COLUMNS
+  ========================= */
+  const cols = [[],[],[],[]];
+
+  services.forEach(service=>{
+
+    const idx = getSlotIndex(service);
+
+    if(idx >= 0){
+      cols[idx].push(service);
+    }
+  });
+
+  /* =========================
      RENDER
   ========================= */
-  const grid = document.getElementById("grid");
+  const grid =
+    document.getElementById("grid");
+
   grid.innerHTML = "";
 
   cols.forEach(col=>{
@@ -237,42 +293,63 @@ async function load(){
         ${col.map(service=>{
 
           /* =========================
-             TEMPLATE STAFF
+             TEMPLATE ASSIGNED STAFF
           ========================= */
-          const assignedTemplate = templateStaff.filter(
-            t => t.template_id === service.service_template_id
-          );
+          const assignedTemplate =
+            templateStaff.filter(
+              t =>
+                t.template_id ===
+                service.service_template_id
+            );
 
-          const assignedIds = new Set(
-            assignedTemplate.map(a => a.staff_id)
-          );
+          const assignedIds =
+            new Set(
+              assignedTemplate.map(
+                a => a.staff_id
+              )
+            );
 
           /* =========================
-             UNAVAILABLE
+             UNAVAILABLE STAFF
           ========================= */
-          const unavailableIds = new Set(
+          const unavailableIds =
+            new Set(
 
-            availability
-              .filter(a =>
+              availability
+                .filter(a =>
 
-                a.service_date === service.service_date &&
-                a.service_slot_id === service.service_slot_id &&
-                a.status === "unavailable"
-              )
-              .map(a => a.staff_id)
-          );
+                  a.service_date
+                    === service.service_date
 
+                  &&
+
+                  a.service_slot_id
+                    === service.service_slot_id
+
+                  &&
+
+                  a.status === "unavailable"
+                )
+                .map(a => a.staff_id)
+            );
+
+          /* =========================
+             AVAILABLE STAFF
+          ========================= */
           const availableCount =
             [...assignedIds]
-            .filter(id => !unavailableIds.has(id))
-            .length;
+              .filter(id =>
+                !unavailableIds.has(id)
+              )
+              .length;
 
           /* =========================
              SERVICE ROLES
           ========================= */
-          const serviceRoles = roles.filter(
-            r => r.service_id === service.id
-          );
+          const serviceRoles =
+            roles.filter(
+              r => r.service_id === service.id
+            );
 
           /* =========================
              KEY APPOINTMENTS
@@ -284,28 +361,41 @@ async function load(){
             "Hospitality Cell"
           ];
 
-          const appointments = keyRoles.map(role=>{
+          const appointments =
+            keyRoles.map(role=>{
 
-            const found = findRole(serviceRoles, role);
+              const found =
+                findRole(serviceRoles, role);
 
-            return {
-              role,
-              name: found
-                ? (staffMap[found.staff_id] || "-")
-                : "-"
-            };
-          });
+              return {
+                role,
+                name:
+                  found
+                    ? (staffMap[found.staff_id] || "-")
+                    : "-"
+              };
+            });
 
-          const d = parseDate(service.service_date);
+          /* =========================
+             DATE DISPLAY
+          ========================= */
+          const d =
+            parseDate(service.service_date);
 
-          const day = d.toLocaleDateString("en-SG",{
-            weekday:"long"
-          });
+          const day =
+            d.toLocaleDateString(
+              "en-SG",
+              { weekday:"long" }
+            );
 
-          const date = d.toLocaleDateString("en-SG",{
-            day:"2-digit",
-            month:"short"
-          });
+          const date =
+            d.toLocaleDateString(
+              "en-SG",
+              {
+                day:"2-digit",
+                month:"short"
+              }
+            );
 
           return `
             <div class="card">
@@ -333,12 +423,16 @@ async function load(){
 
                 <div class="row">
                   <span>Unavailable</span>
-                  <b class="bad">${unavailableIds.size}</b>
+                  <b class="bad">
+                    ${unavailableIds.size}
+                  </b>
                 </div>
 
                 <div class="row">
                   <span>Available</span>
-                  <b class="good">${availableCount}</b>
+                  <b class="good">
+                    ${availableCount}
+                  </b>
                 </div>
 
               </div>
@@ -348,10 +442,19 @@ async function load(){
                 <b>Key Appointments</b>
 
                 ${appointments.map(a=>`
+
                   <div class="row">
-                    <span>${a.role}</span>
-                    <b>${a.name}</b>
+
+                    <span>
+                      ${a.role}
+                    </span>
+
+                    <span class="appointment-name">
+                      ${a.name}
+                    </span>
+
                   </div>
+
                 `).join("")}
 
               </div>
