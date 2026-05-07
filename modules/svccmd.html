@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Command Post (FINAL FIXED)</title>
+  <title>Command Post (FIXED ROLE RENDERING)</title>
 
   <style>
     body{
@@ -73,7 +73,7 @@
 <body>
 
 <header>
-  ⛪ Command Post (FINAL FIXED)
+  ⛪ Command Post (FIXED)
   <button onclick="load()" style="background:#3b82f6;color:white;border:none;padding:6px 10px;border-radius:6px;">
     Refresh
   </button>
@@ -100,13 +100,10 @@ function inWindow(d){
   return dt>=min && dt<=max;
 }
 
-/* ================= SLOT ORDER (FIXED) ================= */
+/* ================= SLOT ORDER ================= */
 function slotIndex(s){
-
   const time = (s.service_slots?.time || "").toLowerCase();
   const location = (s.service_slots?.location || "").toLowerCase();
-
-  // normalize
   const t = time.replace(":", "");
 
   if(t.includes("1430")) return 0;
@@ -117,7 +114,7 @@ function slotIndex(s){
   return -1;
 }
 
-/* ================= ROLE GROUPING ================= */
+/* ================= ROLE GROUPING FIXED ================= */
 function getAppointment(serviceRoles, roleType){
 
   if(roleType === "Service Pastor"){
@@ -133,8 +130,8 @@ function getAppointment(serviceRoles, roleType){
   }
 
   if(roleType === "Hospitality Cell"){
-    // GROUP LOGIC (important)
-    return serviceRoles.find(r =>
+    // FIX: return MULTIPLE instead of first match
+    return serviceRoles.filter(r =>
       r.role.includes("Welcome Member") ||
       r.role.includes("Plaza")
     );
@@ -168,15 +165,13 @@ async function load(){
 
   /* ================= STAFF MAP ================= */
   const staffMap = {};
-  staff.forEach(s=>staffMap[s.id]=s.name);
+  staff.forEach(s=>{
+    staffMap[s.id] = s.name;
+  });
 
-  /* ================= FILTER ================= */
   services = services.filter(s=>inWindow(s.service_date));
-
-  /* ================= SORT ================= */
   services.sort((a,b)=>parseDate(a.service_date)-parseDate(b.service_date));
 
-  /* ================= COLUMNS ================= */
   const cols=[[],[],[],[]];
 
   services.forEach(s=>{
@@ -188,32 +183,11 @@ async function load(){
   grid.innerHTML="";
 
   cols.forEach(col=>{
-
     grid.innerHTML+=`
       <div class="col">
 
         ${col.map(s=>{
 
-          /* TEMPLATE STAFF */
-          const assigned = templates.filter(t=>t.template_id===s.service_template_id);
-          const assignedIds = new Set(assigned.map(a=>a.staff_id));
-
-          /* UNAVAILABLE */
-          const unavailableIds = new Set(
-            availability
-              .filter(a =>
-                a.service_date===s.service_date &&
-                a.service_slot_id===s.service_slot_id &&
-                a.status==="unavailable"
-              )
-              .map(a=>a.staff_id)
-          );
-
-          const availableCount = [...assignedIds]
-            .filter(id=>!unavailableIds.has(id))
-            .length;
-
-          /* ROLES */
           const serviceRoles = roles.filter(r=>r.service_id===s.id);
 
           const KEY = [
@@ -227,9 +201,26 @@ async function load(){
 
             const found = getAppointment(serviceRoles, role);
 
+            // FIX: handle multi-role (Hospitality Cell)
+            if(role === "Hospitality Cell"){
+
+              if(!found || found.length === 0){
+                return { role, name: "-" };
+              }
+
+              const names = found
+                .map(f => staffMap[f.staff_id])
+                .filter(Boolean);
+
+              return {
+                role,
+                name: names.length ? names.join(", ") : "⚠ Missing Staff"
+              };
+            }
+
             return {
               role,
-              name: found
+              name: found?.staff_id
                 ? (staffMap[found.staff_id] || "⚠ Missing Staff")
                 : "-"
             };
@@ -248,25 +239,6 @@ async function load(){
 
               <div class="tag">${day} | ${date}</div>
               <div class="tag">⏰ ${s.service_slots?.time||""}</div>
-
-              <div class="section">
-                <b>Staff Summary</b>
-
-                <div class="row">
-                  <span>Assigned</span>
-                  <b>${assignedIds.size}</b>
-                </div>
-
-                <div class="row">
-                  <span>Unavailable</span>
-                  <b class="bad">${unavailableIds.size}</b>
-                </div>
-
-                <div class="row">
-                  <span>Available</span>
-                  <b class="good">${availableCount}</b>
-                </div>
-              </div>
 
               <div class="section">
                 <b>Key Appointments</b>
