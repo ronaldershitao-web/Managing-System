@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Command Post (Fixed Staff Names)</title>
+  <title>Command Post (Full Stable + Stats)</title>
 
   <style>
     body{
@@ -32,13 +32,14 @@
       border:1px solid #1f2937;
       border-radius:10px;
       padding:10px;
+      min-height:200px;
     }
 
     .card{
       background:#0f172a;
       border:1px solid #334155;
-      padding:10px;
       border-radius:8px;
+      padding:10px;
       margin-bottom:10px;
     }
 
@@ -53,9 +54,9 @@
     }
 
     .section{
-      margin-top:8px;
-      border-top:1px solid #1f2937;
+      margin-top:10px;
       padding-top:8px;
+      border-top:1px solid #1f2937;
     }
 
     .row{
@@ -67,14 +68,16 @@
 
     .good{ color:#22c55e; }
     .bad{ color:#ef4444; }
+    .warn{ color:#fbbf24; }
   </style>
 </head>
 
 <body>
 
 <header>
-  ⛪ Command Post (Staff Fix Final)
-  <button onclick="load()" style="background:#3b82f6;border:none;color:white;padding:6px 10px;border-radius:6px;">
+  ⛪ Command Post (Full System + Stats)
+  <button onclick="load()"
+    style="background:#3b82f6;border:none;color:white;padding:6px 10px;border-radius:6px;">
     Refresh
   </button>
 </header>
@@ -88,16 +91,17 @@ import { db } from "../assets/app.js";
 function parseDate(d){
   if(!d) return new Date(0);
   const [y,m,day] = d.split("-");
-  return new Date(+y, +m-1, +day);
+  return new Date(+y,+m-1,+day);
 }
 
 /* ================= WINDOW ================= */
 function inWindow(d){
   const today = new Date();
-  const min = new Date(today);
-  const max = new Date(today);
 
+  const min = new Date(today);
   min.setDate(today.getDate()-7);
+
+  const max = new Date(today);
   max.setDate(today.getDate()+7);
 
   const date = parseDate(d);
@@ -122,35 +126,57 @@ function slotIndex(s){
 /* ================= LOAD ================= */
 async function load(){
 
-  const { data: services } = await db
-    .from("services")
-    .select(`*, service_slots(label,time,location)`);
+  const [
+    servicesRes,
+    templateRes,
+    rolesRes,
+    availabilityRes,
+    staffRes
+  ] = await Promise.all([
 
-  const { data: roles } = await db
-    .from("service_roles")
-    .select(`
-      id,
-      role,
-      service_id,
-      staff_id,
-      staff:staff_id (
+    db.from("services")
+      .select(`*, service_slots(label,time,location, id)`),
+
+    db.from("staff_service_templates")
+      .select("staff_id, template_id"),
+
+    db.from("service_roles")
+      .select(`
         id,
-        name
-      )
-    `);
+        role,
+        service_id,
+        staff_id,
+        staff:staff_id (
+          id,
+          name
+        )
+      `),
 
-  let list = services || [];
-  const roleData = roles || [];
+    db.from("staff_availability")
+      .select("*"),
 
-  list = list.filter(s => inWindow(s.service_date));
+    db.from("staff")
+      .select("*")
+  ]);
 
-  list.sort((a,b) =>
+  let services = servicesRes.data || [];
+  const templates = templateRes.data || [];
+  const roles = rolesRes.data || [];
+  const availability = availabilityRes.data || [];
+  const staff = staffRes.data || [];
+
+  /* FILTER WINDOW */
+  services = services.filter(s => inWindow(s.service_date));
+
+  /* SORT */
+  services.sort((a,b)=>
     parseDate(a.service_date) - parseDate(b.service_date)
   );
 
+  /* 4 COLUMNS */
   const cols = [[],[],[],[]];
 
-  list.forEach(s=>{
+  services.forEach(s=>{
     const i = slotIndex(s);
     if(i>=0) cols[i].push(s);
   });
@@ -158,26 +184,64 @@ async function load(){
   const grid = document.getElementById("grid");
   grid.innerHTML = "";
 
+  /* ================= STAFF ASSIGNED MAP ================= */
+  const staffMap = {};
+  staff.forEach(s => staffMap[s.id] = s.name);
+
+  /* ================= RENDER ================= */
   cols.forEach(col=>{
 
     grid.innerHTML += `
       <div class="col">
 
-        ${col.map(s=>{
+        ${col.map(service=>{
 
-          const serviceRoles =
-            roleData.filter(r => r.service_id === s.id);
+          /* ASSIGNED STAFF */
+          const assigned = templates.filter(
+            t => t.template_id === service.service_template_id
+          );
 
-          const d = parseDate(s.service_date);
+          const assignedIds = new Set(assigned.map(a => a.staff_id));
+
+          /* UNAVAILABLE */
+          const unavailableIds = new Set(
+            availability
+              .filter(a =>
+                a.service_date === service.service_date &&
+                a.service_slot_id === service.service_slot_id &&
+                a.status === "unavailable"
+              )
+              .map(a => a.staff_id)
+          );
+
+          /* AVAILABLE */
+          const availableCount =
+            [...assignedIds].filter(id => !unavailableIds.has(id)).length;
+
+          const d = parseDate(service.service_date);
 
           const day = d.toLocaleDateString("en-SG",{weekday:"long"});
           const date = d.toLocaleDateString("en-SG",{day:"2-digit",month:"short"});
+
+          /* KEY ROLES */
+          const keyRoles = ["Service Pastor","Anchor","Welcome IC","Hospitality Cell"];
+
+          const serviceRoles = roles.filter(r => r.service_id === service.id);
+
+          const appointments = keyRoles.map(role=>{
+            const found = serviceRoles.find(r => r.role === role);
+
+            return {
+              role,
+              name: found?.staff?.name || "-"
+            };
+          });
 
           return `
             <div class="card">
 
               <div class="title">
-                ${s.service_slots?.label || "Service"}
+                ${service.service_slots?.label || "Service"}
               </div>
 
               <div class="tag">
@@ -185,24 +249,44 @@ async function load(){
               </div>
 
               <div class="tag">
-                ⏰ ${s.service_slots?.time || ""}
+                ⏰ ${service.service_slots?.time || ""}
               </div>
 
+              <!-- ================= STATS ================= -->
+              <div class="section">
+                <b>Staff Summary</b>
+
+                <div class="row">
+                  <span>Assigned</span>
+                  <b>${assignedIds.size}</b>
+                </div>
+
+                <div class="row">
+                  <span>Unavailable</span>
+                  <b class="bad">${unavailableIds.size}</b>
+                </div>
+
+                <div class="row">
+                  <span>Available</span>
+                  <b class="good">${availableCount}</b>
+                </div>
+
+                <div class="row">
+                  <span>Floating</span>
+                  <b class="warn">${availableCount - keyRoles.length}</b>
+                </div>
+              </div>
+
+              <!-- ================= KEY ROLES ================= -->
               <div class="section">
                 <b>Key Appointments</b>
 
-                ${["Service Pastor","Anchor","Welcome IC","Hospitality Cell"].map(role=>{
-
-                  const found = serviceRoles.find(r => r.role === role);
-
-                  return `
-                    <div class="row">
-                      <span>${role}</span>
-                      <b>${found?.staff?.name || "-"}</b>
-                    </div>
-                  `;
-                }).join("")}
-
+                ${appointments.map(a=>`
+                  <div class="row">
+                    <span>${a.role}</span>
+                    <b>${a.name}</b>
+                  </div>
+                `).join("")}
               </div>
 
             </div>
