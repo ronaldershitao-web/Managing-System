@@ -200,6 +200,7 @@ import { db } from "../assets/app.js";
 let staffList = [];
 let templates = [];
 let availability = [];
+let availabilityServices = [];
 
 let currentService = null;
 let currentRole = null;
@@ -284,7 +285,7 @@ async function load(){
   let displayServices =
     allServices.filter(s => inWindow(s.service_date));
 
-  let availabilityServices =
+  availabilityServices =
     allServices.filter(s => in60Days(s.service_date));
 
   templates = templateRes.data || [];
@@ -356,8 +357,6 @@ async function load(){
 
   const grid = document.getElementById("grid");
   grid.innerHTML = "";
-
-  /* ================= SERVICE COLUMNS ================= */
 
   cols.forEach(col=>{
 
@@ -513,73 +512,66 @@ async function load(){
     `;
   });
 
-  /* ================= 5TH COLUMN ================= */
+  const uniqueDates =
+    [...new Set(
+      availabilityServices.map(s => s.service_date)
+    )];
 
-/* ================= 5TH COLUMN ================= */
+  grid.innerHTML += `
 
-const uniqueDates =
-  [...new Set(
-    availabilityServices.map(s => s.service_date)
-  )];
+    <div class="col">
 
-grid.innerHTML += `
+      <h3>Staff Availability</h3>
 
-  <div class="col">
+      <div class="card">
 
-    <h3>Staff Availability</h3>
+        <div class="tag">Select Date</div>
 
-    <div class="card">
+        <select id="manageDate" onchange="refreshServiceOptions()">
+          ${
+            uniqueDates.map(d => `
+              <option value="${d}">
+                ${formatDate(d)}
+              </option>
+            `).join("")
+          }
+        </select>
 
-      <div class="tag">Select Date</div>
+        <div class="tag" style="margin-top:10px;">
+          Select Service
+        </div>
 
-      <select id="manageDate" onchange="refreshServiceOptions()">
-        ${
-          uniqueDates.map(d => `
-            <option value="${d}">
-              ${formatDate(d)}
-            </option>
-          `).join("")
-        }
-      </select>
+        <select
+          id="manageService"
+          onchange="refreshStaffOptions()">
+        </select>
 
-      <div class="tag" style="margin-top:10px;">
-        Select Service
+        <div class="tag" style="margin-top:10px;">
+          Select Staff
+        </div>
+
+        <select id="manageStaff"></select>
+
+        <button class="danger"
+          onclick="markUnavailable()">
+
+          Mark Unavailable
+
+        </button>
+
+        <button class="save"
+          onclick="returnAvailable()">
+
+          Return Available
+
+        </button>
+
       </div>
-
-      <select id="manageService"></select>
-
-      <div class="tag" style="margin-top:10px;">
-        Select Staff
-      </div>
-
-      <select id="manageStaff">
-        ${
-          staffList.map(s => `
-            <option value="${s.id}">
-              ${s.name}
-            </option>
-          `).join("")
-        }
-      </select>
-
-      <button class="danger"
-        onclick="markUnavailable()">
-
-        Mark Unavailable
-
-      </button>
-
-      <button class="save"
-        onclick="returnAvailable()">
-
-        Return Available
-
-      </button>
 
     </div>
+  `;
 
-  </div>
-`;
+  refreshServiceOptions();
 }
 
 /* ================= SERVICE FILTER ================= */
@@ -601,8 +593,7 @@ window.refreshServiceOptions = function(){
     filteredServices.map(s => `
 
       <option
-        value="${s.service_slot_id}"
-        data-service-id="${s.id}">
+        value="${s.id}">
 
         ${s.service_slots?.label}
         (${s.service_slots?.time})
@@ -610,8 +601,51 @@ window.refreshServiceOptions = function(){
       </option>
 
     `).join("");
+
+  refreshStaffOptions();
 };
-  
+
+/* ================= STAFF FILTER ================= */
+
+window.refreshStaffOptions = function(){
+
+  const selectedServiceId =
+    document.getElementById("manageService").value;
+
+  const service =
+    availabilityServices.find(s =>
+      String(s.id) === String(selectedServiceId)
+    );
+
+  if(!service) return;
+
+  const templateStaff =
+    templates.filter(t =>
+      String(t.template_id) ===
+      String(service.service_template_id)
+    );
+
+  const eligibleIds =
+    new Set(
+      templateStaff.map(t => String(t.staff_id))
+    );
+
+  const staffDropdown =
+    document.getElementById("manageStaff");
+
+  const eligibleStaff =
+    staffList.filter(s =>
+      eligibleIds.has(String(s.id))
+    );
+
+  staffDropdown.innerHTML =
+    eligibleStaff.map(s => `
+      <option value="${s.id}">
+        ${s.name}
+      </option>
+    `).join("");
+};
+
 /* ================= ASSIGN ================= */
 
 window.openAssign = function(
@@ -738,8 +772,15 @@ window.markUnavailable = async function(){
   const serviceDate =
     document.getElementById("manageDate").value;
 
-  const slotId =
+  const serviceId =
     document.getElementById("manageService").value;
+
+  const service =
+    availabilityServices.find(s =>
+      String(s.id) === String(serviceId)
+    );
+
+  const slotId = service.service_slot_id;
 
   await db.from("staff_availability").upsert({
 
@@ -763,8 +804,15 @@ window.returnAvailable = async function(){
   const serviceDate =
     document.getElementById("manageDate").value;
 
-  const slotId =
+  const serviceId =
     document.getElementById("manageService").value;
+
+  const service =
+    availabilityServices.find(s =>
+      String(s.id) === String(serviceId)
+    );
+
+  const slotId = service.service_slot_id;
 
   await db.from("staff_availability")
     .delete()
@@ -774,13 +822,10 @@ window.returnAvailable = async function(){
 
   load();
 };
+
 window.load = load;
 
 load();
-
-  setTimeout(() => {
-  refreshServiceOptions();
-}, 300);
 
 </script>
 
