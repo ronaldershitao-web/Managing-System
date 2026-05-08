@@ -121,17 +121,10 @@ async function load(){
     availabilityRes,
     staffRes
   ] = await Promise.all([
-    db.from("services").select(`
-      *,
-      service_slots(label,time,location)
-    `),
-
+    db.from("services").select(`*, service_slots(label,time,location)`),
     db.from("service_roles").select("id, role, service_id, staff_id"),
-
     db.from("staff_service_templates").select("*"),
-
     db.from("staff_availability").select("*"),
-
     db.from("staff").select("*")
   ]);
 
@@ -141,16 +134,18 @@ async function load(){
   const availability = availabilityRes.data || [];
   const staff = staffRes.data || [];
 
-  /* ================= MAPS ================= */
+  /* ================= MAPS (FIXED) ================= */
 
   const staffMap = new Map(
-    staff.map(s => [String(s.id), s.name])
+    staff.map(s => [String(s.id).trim(), s.name])
   );
 
+  // 🔥 FIXED: force service_id string normalization
   const roleMap = new Map();
 
   roles.forEach(r => {
-    const key = String(r.service_id);
+    const key = String(r.service_id).trim();
+
     if (!roleMap.has(key)) roleMap.set(key, []);
     roleMap.get(key).push(r);
   });
@@ -158,7 +153,7 @@ async function load(){
   const templateMap = new Map();
 
   templates.forEach(t => {
-    const key = t.template_id;
+    const key = String(t.template_id).trim();
     if (!templateMap.has(key)) templateMap.set(key, []);
     templateMap.get(key).push(t);
   });
@@ -197,11 +192,12 @@ async function load(){
 
         ${col.map(s => {
 
-          const serviceRoles =
-            roleMap.get(String(s.service_id ?? s.id)) || [];
+          // 🔥 FIXED KEY (CRITICAL)
+          const serviceKey = String(s.service_id || s.id).trim();
+          const serviceRoles = roleMap.get(serviceKey) || [];
 
           const assigned =
-            templateMap.get(s.service_template_id) || [];
+            templateMap.get(String(s.service_template_id)) || [];
 
           const assignedIds = new Set(
             assigned.map(a => String(a.staff_id))
@@ -239,12 +235,11 @@ async function load(){
                 (r.role || "").trim().toLowerCase() === role.toLowerCase()
               );
 
-              return {
-                role,
-                name: found?.staff_id
-                  ? (staffMap.get(String(found.staff_id)) || "-")
-                  : "-"
-              };
+              const name = found?.staff_id
+                ? staffMap.get(String(found.staff_id).trim())
+                : "-";
+
+              return { role, name: name || "-" };
             }
 
             if (role === "Hospitality Cell") {
@@ -255,7 +250,7 @@ async function load(){
               );
 
               const names = found
-                .map(r => staffMap.get(String(r.staff_id)))
+                .map(r => staffMap.get(String(r.staff_id).trim()))
                 .filter(Boolean);
 
               return {
