@@ -200,6 +200,10 @@ async function load(){
   const availability = availabilityRes.data || [];
   const staff = staffRes.data || [];
 
+  console.log("SERVICES:", services);
+console.log("ROLES:", roles);
+console.log("STAFF:", staff);
+
   /* ================= STAFF MAP ================= */
   const staffMap = {};
 
@@ -245,6 +249,9 @@ async function load(){
           const serviceRoles = roles.filter(
             r=>r.service_id===s.id
           );
+
+          console.log("SERVICE:", s.id);
+console.log("SERVICE ROLES:", serviceRoles);
 
           /* ================= TEMPLATE STAFF ================= */
           const assigned = templates.filter(
@@ -294,6 +301,10 @@ async function load(){
               const found = serviceRoles.find(
                 r => r.role === role
               );
+
+              console.log("LOOKUP ROLE:", role);
+console.log("FOUND:", found);
+console.log("STAFF NAME:", found?.staff?.name);
 
               return {
                 role,
