@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Command Post (Roster + Reporting + Assignment)</title>
+  <title>Command Post (RESTORED CORE)</title>
 
   <style>
     body{
@@ -45,7 +45,6 @@
     .title{
       color:#60a5fa;
       font-weight:bold;
-      margin-bottom:4px;
     }
 
     .tag{
@@ -65,9 +64,6 @@
       font-size:12px;
       margin:4px 0;
     }
-
-    .good{ color:#22c55e; }
-    .bad{ color:#ef4444; }
 
     button.small{
       font-size:10px;
@@ -105,14 +101,13 @@
     }
 
     .save{ background:#22c55e; color:white; }
-    .danger{ background:#ef4444; color:white; }
   </style>
 </head>
 
 <body>
 
 <header>
-  ⛪ Command Post (FULL OPS SYSTEM)
+  ⛪ Command Post (RESTORED CORE)
   <button onclick="load()">Refresh</button>
 </header>
 
@@ -122,7 +117,9 @@
 <div class="modal" id="modal">
   <div class="modal-content">
     <div id="modalTitle">Assign</div>
+
     <select id="staffSelect"></select>
+
     <button class="save" onclick="saveAssign()">Assign / Reassign</button>
   </div>
 </div>
@@ -137,7 +134,7 @@ let currentRole = null;
 /* ================= DATE ================= */
 function parseDate(d){
   const [y,m,day] = d.split("-");
-  return new Date(y, m-1, day);
+  return new Date(y,m-1,day);
 }
 
 /* ================= WINDOW ================= */
@@ -152,18 +149,15 @@ function inWindow(d){
 /* ================= LOAD ================= */
 async function load(){
 
-  const [servicesRes, rolesRes, availRes, staffRes, attendanceRes] = await Promise.all([
+  const [servicesRes, rolesRes, attendanceRes, staffRes] = await Promise.all([
     db.from("services").select(`*, service_slots(label,time,location)`),
     db.from("service_roles").select("*"),
-    db.from("staff_availability").select("*"),
-    db.from("staff").select("*"),
-    db.from("staff_service_attendance").select("*")
+    db.from("staff_service_attendance").select("*"),
+    db.from("staff").select("*")
   ]);
 
   let services = (servicesRes.data || []).filter(s => inWindow(s.service_date));
-
   const roles = rolesRes.data || [];
-  const availability = availRes.data || [];
   const attendance = attendanceRes.data || [];
   staffList = staffRes.data || [];
 
@@ -177,6 +171,9 @@ async function load(){
   });
 
   services.sort((a,b)=>parseDate(a.service_date)-parseDate(b.service_date));
+
+  const grid = document.getElementById("grid");
+  grid.innerHTML="";
 
   const cols = [[],[],[],[]];
 
@@ -193,12 +190,10 @@ async function load(){
     if(i>=0) cols[i].push(s);
   });
 
-  const grid = document.getElementById("grid");
-  grid.innerHTML="";
-
   cols.forEach(col=>{
     grid.innerHTML += `
       <div class="col">
+
         ${col.map(s=>{
 
           const serviceRoles = roleMap.get(String(s.id)) || [];
@@ -227,7 +222,7 @@ async function load(){
               role,
               staffId,
               name: staffId ? staffMap.get(String(staffId)) : "-",
-              status: attendanceRecord?.status || null
+              status: attendanceRecord?.status || "-"
             };
           });
 
@@ -243,6 +238,7 @@ async function load(){
                 ${appointments.map(a=>`
                   <div class="row">
                     <span>${a.role}</span>
+
                     <span>
                       ${a.name}
 
@@ -265,6 +261,7 @@ async function load(){
             </div>
           `;
         }).join("")}
+
       </div>
     `;
   });
@@ -289,7 +286,7 @@ window.saveAssign = async function(){
     service_id: currentService,
     role: currentRole,
     staff_id: staffId
-  }, {
+  },{
     onConflict:"service_id,role"
   });
 
@@ -297,7 +294,7 @@ window.saveAssign = async function(){
   load();
 };
 
-/* ================= REPORTING ================= */
+/* ================= REPORT ================= */
 window.report = async (serviceId, staffId, status)=>{
 
   await db.from("staff_service_attendance").upsert({
@@ -312,8 +309,8 @@ window.report = async (serviceId, staffId, status)=>{
   load();
 };
 
-load();
 window.load = load;
+load();
 
 </script>
 
