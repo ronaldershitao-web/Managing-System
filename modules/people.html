@@ -14,23 +14,59 @@
 
 <div id="list"></div>
 
+  <div style="padding:15px;">
+  <h3>➕ Add Person</h3>
+
+  <input id="name" placeholder="Name" style="padding:8px; margin:5px; width:200px;" />
+  <input id="email" placeholder="Email" style="padding:8px; margin:5px; width:200px;" />
+
+  <button onclick="addPerson()" style="padding:8px 12px; margin:5px;">
+    Add
+  </button>
+</div>
+
 <script type="module">
 import { db } from "../assets/app.js";
 
-const { data: people } = await db.from("people").select("*");
+const listEl = document.getElementById("list");
 
-window.openPerson = (id) => {
-  location.href = `person.html?id=${id}`;
-};
+async function loadPeople() {
+  const { data: people } = await db.from("people").select("*").order("created_at", { ascending: false });
 
-document.getElementById("list").innerHTML =
-  people.map(p => `
+  listEl.innerHTML = people.map(p => `
     <div class="card" onclick="openPerson('${p.id}')">
       👤 ${p.name}<br>
       <small>${p.email || ""}</small>
     </div>
   `).join("");
+}
 
+window.openPerson = (id) => {
+  location.href = `person.html?id=${id}`;
+};
+
+window.addPerson = async () => {
+  const name = document.getElementById("name").value;
+  const email = document.getElementById("email").value;
+
+  if (!name) return alert("Name is required");
+
+  const { error } = await db.from("people").insert([
+    { name, email }
+  ]);
+
+  if (error) {
+    alert("Error: " + error.message);
+    return;
+  }
+
+  document.getElementById("name").value = "";
+  document.getElementById("email").value = "";
+
+  loadPeople(); // refresh list
+};
+
+loadPeople();
 </script>
 
 </body>
