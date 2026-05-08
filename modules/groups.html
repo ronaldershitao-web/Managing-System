@@ -60,6 +60,26 @@
 
 <div id="groups"></div>
 
+  <div class="card">
+  <h3>➕ Create Group</h3>
+
+  <input id="groupName" placeholder="Group name" />
+  <input id="groupLocation" placeholder="Location" />
+  
+  <select id="groupDay">
+    <option value="">Select Day</option>
+    <option>Monday</option>
+    <option>Tuesday</option>
+    <option>Wednesday</option>
+    <option>Thursday</option>
+    <option>Friday</option>
+    <option>Saturday</option>
+    <option>Sunday</option>
+  </select>
+
+  <button onclick="createGroup()">Create</button>
+</div>
+
 <script type="module">
 import { db } from "../assets/app.js";
 
@@ -300,6 +320,34 @@ window.removeMember = async function (id) {
 };
 
 fetchData();
+
+  window.createGroup = async function () {
+
+  const name = document.getElementById("groupName").value;
+  const location = document.getElementById("groupLocation").value;
+  const meeting_day = document.getElementById("groupDay").value;
+
+  if (!name) return alert("Group name required");
+
+  const { error } = await db.from("groups").insert([
+    {
+      name,
+      location,
+      meeting_day
+    }
+  ]);
+
+  if (error) {
+    console.error(error);
+    return alert(error.message);
+  }
+
+  document.getElementById("groupName").value = "";
+  document.getElementById("groupLocation").value = "";
+  document.getElementById("groupDay").value = "";
+
+  await fetchData(); // refresh dashboard
+};
 
 </script>
 
