@@ -290,9 +290,12 @@ console.log("SERVICE ROLES:", serviceRoles);
               role === "Welcome IC"
             ){
 
-              const found = serviceRoles.find(
-                r => r.role === role
-              );
+              const found = serviceRoles.find(r =>
+
+  (r.role || "").trim().toLowerCase() ===
+  role.trim().toLowerCase()
+
+);
 
               console.log("LOOKUP ROLE:", role);
 console.log("FOUND:", found);
