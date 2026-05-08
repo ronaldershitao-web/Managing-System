@@ -133,7 +133,7 @@
 
     <select id="staffSelect"></select>
 
-    <button class="save-btn" onclick="saveAssign()">Assign</button>
+    <button class="save-btn" onclick="saveAssign()">Assign / Reassign</button>
     <button class="close-btn" onclick="closeModal()">Close</button>
   </div>
 </div>
@@ -158,8 +158,11 @@ function inWindow(d){
   if(!dt) return false;
 
   const now = new Date();
-  const min = new Date(now); min.setDate(now.getDate() - 7);
-  const max = new Date(now); max.setDate(now.getDate() + 7);
+  const min = new Date(now);
+  min.setDate(now.getDate() - 7);
+
+  const max = new Date(now);
+  max.setDate(now.getDate() + 7);
 
   return dt >= min && dt <= max;
 }
@@ -187,8 +190,11 @@ async function load(){
   const availability = availabilityRes.data || [];
   staffList = staffRes.data || [];
 
-  const staffMap = new Map(staffList.map(s => [String(s.id), s.name]));
+  const staffMap = new Map(
+    staffList.map(s => [String(s.id), s.name])
+  );
 
+  /* FIX: correct mapping */
   const roleMap = new Map();
   roles.forEach(r => {
     const key = String(r.service_id);
@@ -233,12 +239,15 @@ async function load(){
 
         ${col.map(s => {
 
-          const serviceKey = String(s.service_id || s.id);
-          const serviceRoles = roleMap.get(serviceKey) || [];
+          const serviceRoles =
+            roleMap.get(String(s.id)) || [];
 
-          const assigned = templateMap.get(String(s.service_template_id)) || [];
+          const assigned =
+            templateMap.get(String(s.service_template_id)) || [];
 
-          const assignedIds = new Set(assigned.map(a => String(a.staff_id)));
+          const assignedIds = new Set(
+            assigned.map(a => String(a.staff_id))
+          );
 
           const unavailableIds = new Set(
             availability
@@ -291,7 +300,6 @@ async function load(){
                 ⏰ ${s.service_slots?.time || ""}
               </div>
 
-              <!-- ================= STATS RESTORED ================= -->
               <div class="section">
                 <b>Staff Summary</b>
 
@@ -311,7 +319,6 @@ async function load(){
                 </div>
               </div>
 
-              <!-- ================= APPOINTMENTS ================= -->
               <div class="section">
                 <b>Key Appointments</b>
 
@@ -321,12 +328,10 @@ async function load(){
                     <span>
                       ${a.name}
 
-                      ${a.name === "-" ? `
-                        <button class="small"
-                          onclick="openAssign('${s.id}','${a.role}')">
-                          Assign
-                        </button>
-                      ` : ""}
+                      <button class="small"
+                        onclick="openAssign('${s.id}','${a.role}')">
+                        Assign / Reassign
+                      </button>
                     </span>
                   </div>
                 `).join("")}
@@ -352,6 +357,7 @@ window.openAssign = function(serviceId, role){
     `Assign ${role}`;
 
   const select = document.getElementById("staffSelect");
+
   select.innerHTML = staffList.map(s =>
     `<option value="${s.id}">${s.name}</option>`
   ).join("");
@@ -363,14 +369,17 @@ window.closeModal = function(){
   document.getElementById("modal").style.display = "none";
 };
 
+/* UPSERT FIX */
 window.saveAssign = async function(){
 
   const staffId = document.getElementById("staffSelect").value;
 
-  const { error } = await db.from("service_roles").insert({
+  const { error } = await db.from("service_roles").upsert({
     service_id: currentServiceId,
     role: currentRole,
     staff_id: staffId
+  }, {
+    onConflict: "service_id,role"
   });
 
   if(error){
