@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Command Post (5 Column Ops System)</title>
+  <title>Command Post (Full Ops + Availability Control)</title>
 
   <style>
     body{
@@ -16,12 +16,13 @@
       background:#111827;
       display:flex;
       justify-content:space-between;
+      align-items:center;
       font-weight:bold;
     }
 
     .grid{
       display:grid;
-      grid-template-columns:repeat(5,1fr); /* ⭐ UPDATED */
+      grid-template-columns:repeat(5,1fr);
       gap:10px;
       padding:10px;
     }
@@ -31,6 +32,8 @@
       border:1px solid #1f2937;
       border-radius:10px;
       padding:10px;
+      min-height:85vh;
+      overflow:auto;
     }
 
     .card{
@@ -41,9 +44,16 @@
       margin-bottom:10px;
     }
 
-    .title{ color:#60a5fa; font-weight:bold; }
+    .title{
+      color:#60a5fa;
+      font-weight:bold;
+      margin-bottom:4px;
+    }
 
-    .tag{ font-size:12px; color:#94a3b8; }
+    .tag{
+      font-size:12px;
+      color:#94a3b8;
+    }
 
     .section{
       margin-top:10px;
@@ -56,14 +66,20 @@
       justify-content:space-between;
       font-size:12px;
       margin:4px 0;
+      gap:8px;
     }
 
     .good{ color:#22c55e; }
-    .bad{ color:#ef4444; }
+    .bad{
+      color:#ef4444;
+      cursor:pointer;
+      font-weight:bold;
+    }
 
     button.small{
       font-size:10px;
       padding:2px 6px;
+      margin-left:4px;
       border-radius:4px;
       border:none;
       background:#3b82f6;
@@ -71,21 +87,60 @@
       cursor:pointer;
     }
 
-    select, button{
-      width:100%;
-      padding:8px;
-      margin-top:8px;
-      border-radius:6px;
-      border:none;
+    .modal{
+      display:none;
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,0.7);
+      justify-content:center;
+      align-items:center;
+      z-index:999;
     }
 
-    .save{ background:#22c55e; color:white; }
-    .danger{ background:#ef4444; color:white; }
+    .modal-content{
+      background:#111827;
+      padding:20px;
+      border-radius:10px;
+      width:360px;
+      max-height:80vh;
+      overflow:auto;
+      border:1px solid #334155;
+    }
 
-    .panel-title{
-      font-weight:bold;
-      margin-bottom:8px;
-      color:#93c5fd;
+    select, button, input{
+      width:100%;
+      padding:8px;
+      margin-top:10px;
+      border-radius:6px;
+      border:none;
+      box-sizing:border-box;
+    }
+
+    .save{
+      background:#22c55e;
+      color:white;
+    }
+
+    .danger{
+      background:#ef4444;
+      color:white;
+    }
+
+    .secondary{
+      background:#334155;
+      color:white;
+    }
+
+    .staff-item{
+      padding:8px;
+      border:1px solid #334155;
+      border-radius:6px;
+      margin-top:6px;
+      font-size:12px;
+    }
+
+    h3{
+      margin-top:0;
     }
   </style>
 </head>
@@ -93,11 +148,45 @@
 <body>
 
 <header>
-  ⛪ Command Post (OPS + AVAILABILITY CONTROL)
+  ⛪ Command Post (Full Ops + Availability Control)
   <button onclick="load()">Refresh</button>
 </header>
 
 <div class="grid" id="grid"></div>
+
+<!-- ASSIGN MODAL -->
+<div class="modal" id="assignModal">
+  <div class="modal-content">
+
+    <div id="modalTitle">Assign</div>
+
+    <select id="staffSelect"></select>
+
+    <button class="save" onclick="saveAssign()">
+      Assign / Reassign
+    </button>
+
+    <button class="secondary" onclick="closeAssignModal()">
+      Close
+    </button>
+
+  </div>
+</div>
+
+<!-- UNAVAILABLE MODAL -->
+<div class="modal" id="unavailableModal">
+  <div class="modal-content">
+
+    <h3>Unavailable Staff</h3>
+
+    <div id="unavailableList"></div>
+
+    <button class="secondary" onclick="closeUnavailableModal()">
+      Close
+    </button>
+
+  </div>
+</div>
 
 <script type="module">
 import { db } from "../assets/app.js";
@@ -106,40 +195,117 @@ let staffList = [];
 let templates = [];
 let availability = [];
 
+let currentService = null;
+let currentRole = null;
+
+/* ================= DATE ================= */
+
+function parseDate(d){
+  const [y,m,day] = d.split("-");
+  return new Date(y,m-1,day);
+}
+
+function inWindow(d){
+
+  const dt = parseDate(d);
+
+  const now = new Date();
+
+  const min = new Date();
+  min.setDate(now.getDate()-7);
+
+  const max = new Date();
+  max.setDate(now.getDate()+7);
+
+  return dt >= min && dt <= max;
+}
+
 /* ================= LOAD ================= */
+
 async function load(){
 
-  const [servicesRes, templateRes, availRes, staffRes] = await Promise.all([
-    db.from("services").select(`*, service_slots(label,time,location)`),
-    db.from("staff_service_templates").select("*"),
-    db.from("staff_availability").select("*"),
-    db.from("staff").select("*")
+  const [
+    servicesRes,
+    templateRes,
+    availRes,
+    staffRes,
+    rolesRes
+  ] = await Promise.all([
+
+    db.from("services")
+      .select(`*, service_slots(label,time,location)`),
+
+    db.from("staff_service_templates")
+      .select("*"),
+
+    db.from("staff_availability")
+      .select("*"),
+
+    db.from("staff")
+      .select("*"),
+
+    db.from("service_roles")
+      .select("*")
   ]);
 
-  const services = servicesRes.data || [];
+  let services =
+    (servicesRes.data || [])
+      .filter(s => inWindow(s.service_date));
+
   templates = templateRes.data || [];
   availability = availRes.data || [];
   staffList = staffRes.data || [];
 
-  const staffMap = new Map(staffList.map(s => [String(s.id), s.name]));
+  const roles = rolesRes.data || [];
+
+  const staffMap =
+    new Map(staffList.map(s => [String(s.id), s.name]));
 
   const templateMap = new Map();
-  templates.forEach(t=>{
+
+  templates.forEach(t => {
+
     const key = String(t.template_id);
-    if(!templateMap.has(key)) templateMap.set(key, []);
+
+    if(!templateMap.has(key)){
+      templateMap.set(key, []);
+    }
+
     templateMap.get(key).push(t);
   });
 
-  const grid = document.getElementById("grid");
-  grid.innerHTML = "";
+  const roleMap = new Map();
 
-  const cols = [[],[],[],[],[]]; // ⭐ 5 columns
+  roles.forEach(r => {
+
+    const key = String(r.service_id);
+
+    if(!roleMap.has(key)){
+      roleMap.set(key, []);
+    }
+
+    roleMap.get(key).push(r);
+  });
+
+  services.sort((a,b)=>
+    parseDate(a.service_date) -
+    parseDate(b.service_date)
+  );
+
+  const cols = [[],[],[],[]];
 
   services.forEach(s=>{
-    const t = (s.service_slots?.time||"").replace(":","");
-    const loc = (s.service_slots?.location||"").toLowerCase();
 
-    let i=-1;
+    const t =
+      (s.service_slots?.time || "")
+      .replace(":","");
+
+    const loc =
+      (s.service_slots?.location || "")
+      .toLowerCase();
+
+    let i = -1;
+
     if(t.includes("1430")) i=0;
     else if(t.includes("0830")) i=1;
     else if(t.includes("1045") && !loc.includes("jurong")) i=2;
@@ -148,35 +314,94 @@ async function load(){
     if(i>=0) cols[i].push(s);
   });
 
-  /* ================= ROSTER COLUMNS ================= */
-  cols.slice(0,4).forEach(col=>{
+  const grid = document.getElementById("grid");
+  grid.innerHTML = "";
+
+  /* ================= SERVICE COLUMNS ================= */
+
+  cols.forEach(col=>{
+
     grid.innerHTML += `
       <div class="col">
+
         ${col.map(s=>{
 
           const templateStaff =
             templateMap.get(String(s.service_template_id)) || [];
 
-          const assignedIds = new Set(templateStaff.map(t=>String(t.staff_id)));
+          const assignedIds =
+            new Set(
+              templateStaff.map(t => String(t.staff_id))
+            );
 
-          const unavailable = availability.filter(a =>
-            a.service_date === s.service_date &&
-            a.service_slot_id === s.service_slot_id &&
-            a.status === "unavailable"
-          );
+          const unavailableRecords =
+            availability.filter(a =>
+              a.service_date === s.service_date &&
+              a.service_slot_id === s.service_slot_id &&
+              a.status === "unavailable"
+            );
 
-          const unavailableIds = new Set(unavailable.map(a=>String(a.staff_id)));
+          const unavailableIds =
+            new Set(
+              unavailableRecords.map(a => String(a.staff_id))
+            );
 
           const availableIds =
-            [...assignedIds].filter(id=>!unavailableIds.has(id));
+            [...assignedIds]
+              .filter(id => !unavailableIds.has(id));
+
+          const KEY = [
+            "Service Pastor",
+            "Anchor",
+            "Welcome IC",
+            "Hospitality Cell"
+          ];
+
+          const appointments = KEY.map(role=>{
+
+            const assignedRole =
+              (roleMap.get(String(s.id)) || [])
+              .find(r =>
+                (r.role || "").toLowerCase() === role.toLowerCase()
+              );
+
+            const templateMatch =
+              templateStaff.find(t =>
+                (t.role || "").toLowerCase() === role.toLowerCase()
+              );
+
+            const staffId =
+              assignedRole?.staff_id ||
+              templateMatch?.staff_id;
+
+            return {
+              role,
+              staffId,
+              name: staffId
+                ? staffMap.get(String(staffId))
+                : "-"
+            };
+          });
 
           return `
             <div class="card">
 
-              <div class="title">${s.service_slots?.label}</div>
-              <div class="tag">${s.service_date}</div>
+              <div class="title">
+                ${s.service_slots?.label || ""}
+              </div>
+
+              <div class="tag">
+                ${s.service_date}
+              </div>
+
+              <div class="tag">
+                ⏰ ${s.service_slots?.time || ""}
+              </div>
 
               <div class="section">
+
+                <b>Staff Summary</b>
+
                 <div class="row">
                   <span>Total Assigned</span>
                   <span>${assignedIds.size}</span>
@@ -184,91 +409,310 @@ async function load(){
 
                 <div class="row">
                   <span>Unavailable</span>
-                  <span class="bad">${unavailableIds.size}</span>
+
+                  <span class="bad"
+                    onclick="showUnavailable(
+                      '${s.service_date}',
+                      '${s.service_slot_id}'
+                    )">
+
+                    ${unavailableIds.size}
+
+                  </span>
                 </div>
 
                 <div class="row">
                   <span>Available</span>
-                  <span class="good">${availableIds.length}</span>
+                  <span class="good">
+                    ${availableIds.length}
+                  </span>
                 </div>
+
+              </div>
+
+              <div class="section">
+
+                <b>Key Appointments</b>
+
+                ${appointments.map(a=>`
+
+                  <div class="row">
+
+                    <span>${a.role}</span>
+
+                    <span>
+
+                      ${a.name}
+
+                      <button class="small"
+                        onclick="openAssign(
+                          '${s.id}',
+                          '${s.service_template_id}',
+                          '${s.service_date}',
+                          '${s.service_slot_id}',
+                          '${a.role}'
+                        )">
+
+                        Assign
+
+                      </button>
+
+                    </span>
+
+                  </div>
+
+                `).join("")}
+
               </div>
 
             </div>
           `;
         }).join("")}
+
       </div>
     `;
   });
 
-  /* ================= 5TH COLUMN (AVAILABILITY CONTROL) ================= */
-  const staffOptions = staffList.map(s =>
-    `<option value="${s.id}">${s.name}</option>`
-  ).join("");
-
-  const serviceOptions = services.map(s =>
-    `<option value="${s.service_date}|${s.service_slot_id}">
-      ${s.service_date} - ${s.service_slots?.label}
-    </option>`
-  ).join("");
-
-  cols[4].push({}); // single panel
+  /* ================= 5TH COLUMN ================= */
 
   grid.innerHTML += `
+
     <div class="col">
 
-      <div class="panel-title">Staff Availability Control</div>
+      <h3>Staff Availability</h3>
 
-      <label>Date + Service</label>
-      <select id="serviceSelect">${serviceOptions}</select>
+      <div class="card">
 
-      <label>Staff</label>
-      <select id="staffSelect">${staffOptions}</select>
+        <div class="tag">Select Date</div>
 
-      <button class="danger" onclick="mark('unavailable')">
-        Mark Unavailable
-      </button>
+        <select id="manageDate">
+          ${
+            [...new Set(
+              services.map(s => s.service_date)
+            )]
+            .map(d => `
+              <option value="${d}">
+                ${d}
+              </option>
+            `)
+            .join("")
+          }
+        </select>
 
-      <button class="save" onclick="mark('available')">
-        Return Available
-      </button>
+        <div class="tag" style="margin-top:10px;">
+          Select Service
+        </div>
+
+        <select id="manageSlot">
+          ${
+            services.map(s => `
+              <option value="${s.service_slot_id}">
+                ${s.service_slots?.label}
+                (${s.service_slots?.time})
+              </option>
+            `).join("")
+          }
+        </select>
+
+        <div class="tag" style="margin-top:10px;">
+          Select Staff
+        </div>
+
+        <select id="manageStaff">
+          ${
+            staffList.map(s => `
+              <option value="${s.id}">
+                ${s.name}
+              </option>
+            `).join("")
+          }
+        </select>
+
+        <button class="danger"
+          onclick="markUnavailable()">
+
+          Mark Unavailable
+
+        </button>
+
+        <button class="save"
+          onclick="returnAvailable()">
+
+          Return Available
+
+        </button>
+
+      </div>
 
     </div>
   `;
 }
 
-/* ================= AVAILABILITY CONTROL ================= */
-window.mark = async function(status){
+/* ================= ASSIGN ================= */
 
-  const service = document.getElementById("serviceSelect").value.split("|");
-  const staffId = document.getElementById("staffSelect").value;
+window.openAssign = function(
+  serviceId,
+  templateId,
+  serviceDate,
+  serviceSlotId,
+  role
+){
 
-  const service_date = service[0];
-  const service_slot_id = service[1];
+  currentService = {
+    id: serviceId,
+    date: serviceDate,
+    slotId: serviceSlotId
+  };
 
-  if(status === "unavailable"){
+  currentRole = role;
 
-    await db.from("staff_availability").upsert({
-      staff_id: staffId,
-      service_date,
-      service_slot_id,
-      status: "unavailable"
-    },{
-      onConflict:"staff_id,service_date,service_slot_id"
-    });
+  const templateStaff =
+    templates.filter(t =>
+      String(t.template_id) === String(templateId)
+    );
 
-  } else {
+  const unavailableIds = new Set(
 
-    await db.from("staff_availability")
-      .delete()
-      .eq("staff_id", staffId)
-      .eq("service_date", service_date)
-      .eq("service_slot_id", service_slot_id);
-  }
+    availability
+      .filter(a =>
+        a.service_date === serviceDate &&
+        a.service_slot_id === serviceSlotId &&
+        a.status === "unavailable"
+      )
+      .map(a => String(a.staff_id))
+  );
+
+  const eligibleStaff = staffList.filter(s => {
+
+    const inTemplate =
+      templateStaff.some(t =>
+        String(t.staff_id) === String(s.id)
+      );
+
+    return inTemplate &&
+      !unavailableIds.has(String(s.id));
+  });
+
+  document.getElementById("staffSelect").innerHTML =
+
+    eligibleStaff.map(s => `
+      <option value="${s.id}">
+        ${s.name}
+      </option>
+    `).join("");
+
+  document.getElementById("modalTitle").innerText =
+    "Assign " + role;
+
+  document.getElementById("assignModal").style.display = "flex";
+};
+
+window.closeAssignModal = function(){
+  document.getElementById("assignModal").style.display = "none";
+};
+
+window.saveAssign = async function(){
+
+  const staffId =
+    document.getElementById("staffSelect").value;
+
+  await db.from("service_roles").upsert({
+
+    service_id: currentService.id,
+    role: currentRole,
+    staff_id: staffId
+
+  },{
+    onConflict:"service_id,role"
+  });
+
+  closeAssignModal();
+  load();
+};
+
+/* ================= UNAVAILABLE LIST ================= */
+
+window.showUnavailable = function(date, slotId){
+
+  const staffMap =
+    new Map(staffList.map(s => [String(s.id), s.name]));
+
+  const list = availability.filter(a =>
+    a.service_date === date &&
+    a.service_slot_id === slotId &&
+    a.status === "unavailable"
+  );
+
+  document.getElementById("unavailableList").innerHTML =
+
+    list.length === 0
+
+    ? `<div class="tag">No unavailable staff</div>`
+
+    : list.map(a => `
+        <div class="staff-item">
+          ${staffMap.get(String(a.staff_id)) || a.staff_id}
+        </div>
+      `).join("");
+
+  document.getElementById("unavailableModal").style.display =
+    "flex";
+};
+
+window.closeUnavailableModal = function(){
+  document.getElementById("unavailableModal").style.display =
+    "none";
+};
+
+/* ================= MANAGE AVAILABILITY ================= */
+
+window.markUnavailable = async function(){
+
+  const staffId =
+    document.getElementById("manageStaff").value;
+
+  const serviceDate =
+    document.getElementById("manageDate").value;
+
+  const slotId =
+    document.getElementById("manageSlot").value;
+
+  await db.from("staff_availability").upsert({
+
+    staff_id: staffId,
+    service_date: serviceDate,
+    service_slot_id: slotId,
+    status: "unavailable"
+
+  },{
+    onConflict:"staff_id,service_date,service_slot_id"
+  });
+
+  load();
+};
+
+window.returnAvailable = async function(){
+
+  const staffId =
+    document.getElementById("manageStaff").value;
+
+  const serviceDate =
+    document.getElementById("manageDate").value;
+
+  const slotId =
+    document.getElementById("manageSlot").value;
+
+  await db.from("staff_availability")
+    .delete()
+    .eq("staff_id", staffId)
+    .eq("service_date", serviceDate)
+    .eq("service_slot_id", slotId);
 
   load();
 };
 
 window.load = load;
+
 load();
 
 </script>
