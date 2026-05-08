@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Command Post (FIXED ROLE RENDERING)</title>
+  <title>Command Post (FINAL WORKING)</title>
 
   <style>
     body{
@@ -45,11 +45,13 @@
     .title{
       color:#60a5fa;
       font-weight:bold;
+      margin-bottom:4px;
     }
 
     .tag{
       font-size:12px;
       color:#94a3b8;
+      margin-bottom:2px;
     }
 
     .section{
@@ -61,20 +63,41 @@
     .row{
       display:flex;
       justify-content:space-between;
+      gap:10px;
       font-size:12px;
       margin:4px 0;
     }
 
-    .good{ color:#22c55e; }
-    .bad{ color:#ef4444; }
+    .row span:last-child{
+      text-align:right;
+      font-weight:bold;
+    }
+
+    .good{
+      color:#22c55e;
+    }
+
+    .bad{
+      color:#ef4444;
+    }
   </style>
 </head>
 
 <body>
 
 <header>
-  ⛪ Command Post (FIXED)
-  <button onclick="load()" style="background:#3b82f6;color:white;border:none;padding:6px 10px;border-radius:6px;">
+  ⛪ Command Post
+  <button
+    onclick="load()"
+    style="
+      background:#3b82f6;
+      color:white;
+      border:none;
+      padding:6px 10px;
+      border-radius:6px;
+      cursor:pointer;
+    "
+  >
     Refresh
   </button>
 </header>
@@ -87,24 +110,34 @@ import { db } from "../assets/app.js";
 /* ================= DATE ================= */
 function parseDate(d){
   if(!d) return new Date(0);
+
   const [y,m,day]=d.split("-");
   return new Date(Number(y),Number(m)-1,Number(day));
 }
 
 /* ================= WINDOW ================= */
 function inWindow(d){
+
   const now = new Date();
-  const min = new Date(now); min.setDate(now.getDate()-7);
-  const max = new Date(now); max.setDate(now.getDate()+7);
+
+  const min = new Date(now);
+  min.setDate(now.getDate()-7);
+
+  const max = new Date(now);
+  max.setDate(now.getDate()+7);
+
   const dt = parseDate(d);
+
   return dt>=min && dt<=max;
 }
 
 /* ================= SLOT ORDER ================= */
 function slotIndex(s){
+
   const time = (s.service_slots?.time || "").toLowerCase();
   const location = (s.service_slots?.location || "").toLowerCase();
-  const t = time.replace(":", "");
+
+  const t = time.replace(":","");
 
   if(t.includes("1430")) return 0;
   if(t.includes("0830")) return 1;
@@ -112,32 +145,6 @@ function slotIndex(s){
   if(location.includes("jurong")) return 3;
 
   return -1;
-}
-
-/* ================= ROLE GROUPING FIXED ================= */
-function getAppointment(serviceRoles, roleType){
-
-  if(roleType === "Service Pastor"){
-    return serviceRoles.find(r => r.role === "Service Pastor");
-  }
-
-  if(roleType === "Anchor"){
-    return serviceRoles.find(r => r.role === "Anchor");
-  }
-
-  if(roleType === "Welcome IC"){
-    return serviceRoles.find(r => r.role === "Welcome IC");
-  }
-
-  if(roleType === "Hospitality Cell"){
-    // FIX: return MULTIPLE instead of first match
-    return serviceRoles.filter(r =>
-      r.role.includes("Welcome Member") ||
-      r.role.includes("Plaza")
-    );
-  }
-
-  return null;
 }
 
 /* ================= LOAD ================= */
@@ -150,46 +157,116 @@ async function load(){
     availabilityRes,
     staffRes
   ] = await Promise.all([
-    db.from("services").select("*, service_slots(label,time,location)"),
-    db.from("service_roles").select("*"),
-    db.from("staff_service_templates").select("*"),
-    db.from("staff_availability").select("*"),
-    db.from("staff").select("*")
+
+    db
+      .from("services")
+      .select(`
+        *,
+        service_slots(
+          label,
+          time,
+          location
+        )
+      `),
+
+    db
+      .from("service_roles")
+      .select("*"),
+
+    db
+      .from("staff_service_templates")
+      .select("*"),
+
+    db
+      .from("staff_availability")
+      .select("*"),
+
+    db
+      .from("staff")
+      .select("*")
   ]);
 
-  let services = servicesRes.data||[];
-  const roles = rolesRes.data||[];
-  const templates = templateRes.data||[];
-  const availability = availabilityRes.data||[];
-  const staff = staffRes.data||[];
+  let services = servicesRes.data || [];
+  const roles = rolesRes.data || [];
+  const templates = templateRes.data || [];
+  const availability = availabilityRes.data || [];
+  const staff = staffRes.data || [];
 
   /* ================= STAFF MAP ================= */
   const staffMap = {};
+
   staff.forEach(s=>{
     staffMap[s.id] = s.name;
   });
 
+  /* ================= FILTER ================= */
   services = services.filter(s=>inWindow(s.service_date));
-  services.sort((a,b)=>parseDate(a.service_date)-parseDate(b.service_date));
 
+  /* ================= SORT ================= */
+  services.sort(
+    (a,b)=>
+      parseDate(a.service_date) -
+      parseDate(b.service_date)
+  );
+
+  /* ================= COLUMNS ================= */
   const cols=[[],[],[],[]];
 
   services.forEach(s=>{
-    const i=slotIndex(s);
-    if(i>=0) cols[i].push(s);
+
+    const i = slotIndex(s);
+
+    if(i>=0){
+      cols[i].push(s);
+    }
   });
 
+  /* ================= RENDER ================= */
   const grid=document.getElementById("grid");
+
   grid.innerHTML="";
 
   cols.forEach(col=>{
-    grid.innerHTML+=`
+
+    grid.innerHTML += `
       <div class="col">
 
         ${col.map(s=>{
 
-          const serviceRoles = roles.filter(r=>r.service_id===s.id);
+          /* ================= ROLES ================= */
+          const serviceRoles = roles.filter(
+            r=>r.service_id===s.id
+          );
 
+          /* ================= TEMPLATE STAFF ================= */
+          const assigned = templates.filter(
+            t=>t.template_id===s.service_template_id
+          );
+
+          const assignedIds = new Set(
+            assigned.map(a=>a.staff_id)
+          );
+
+          /* ================= UNAVAILABLE ================= */
+          const unavailableIds = new Set(
+
+            availability
+              .filter(a=>
+
+                a.service_date===s.service_date &&
+                a.service_slot_id===s.service_slot_id &&
+                a.status==="unavailable"
+
+              )
+              .map(a=>a.staff_id)
+
+          );
+
+          const availableCount = [...assignedIds]
+            .filter(id=>!unavailableIds.has(id))
+            .length;
+
+          /* ================= APPOINTMENTS ================= */
           const KEY = [
             "Service Pastor",
             "Anchor",
@@ -199,37 +276,72 @@ async function load(){
 
           const appointments = KEY.map(role=>{
 
-            const found = getAppointment(serviceRoles, role);
+            /* SINGLE ROLE */
+            if(
+              role === "Service Pastor" ||
+              role === "Anchor" ||
+              role === "Welcome IC"
+            ){
 
-            // FIX: handle multi-role (Hospitality Cell)
+              const found = serviceRoles.find(
+                r => r.role === role
+              );
+
+              return {
+                role,
+                name:
+                  found && found.staff_id
+                    ? (staffMap[found.staff_id] || "⚠ Missing Staff")
+                    : "-"
+              };
+            }
+
+            /* HOSPITALITY */
             if(role === "Hospitality Cell"){
 
-              if(!found || found.length === 0){
-                return { role, name: "-" };
-              }
+              const found = serviceRoles.filter(r =>
+
+                r.role.includes("Welcome Member") ||
+                r.role.includes("Plaza")
+
+              );
 
               const names = found
-                .map(f => staffMap[f.staff_id])
+                .map(r => staffMap[r.staff_id])
                 .filter(Boolean);
 
               return {
                 role,
-                name: names.length ? names.join(", ") : "⚠ Missing Staff"
+                name:
+                  names.length
+                    ? names.join(", ")
+                    : "-"
               };
             }
 
             return {
               role,
-              name: found?.staff_id
-                ? (staffMap[found.staff_id] || "⚠ Missing Staff")
-                : "-"
+              name:"-"
             };
           });
 
+          /* ================= DATE ================= */
           const d=parseDate(s.service_date);
-          const day=d.toLocaleDateString("en-SG",{weekday:"long"});
-          const date=d.toLocaleDateString("en-SG",{day:"2-digit",month:"short"});
 
+          const day=d.toLocaleDateString(
+            "en-SG",
+            { weekday:"long" }
+          );
+
+          const date=d.toLocaleDateString(
+            "en-SG",
+            {
+              day:"2-digit",
+              month:"short"
+            }
+          );
+
+          /* ================= HTML ================= */
           return `
             <div class="card">
 
@@ -237,16 +349,51 @@ async function load(){
                 ${s.service_slots?.label || "Service"}
               </div>
 
-              <div class="tag">${day} | ${date}</div>
-              <div class="tag">⏰ ${s.service_slots?.time||""}</div>
+              <div class="tag">
+                ${day} | ${date}
+              </div>
+
+              <div class="tag">
+                ⏰ ${s.service_slots?.time || ""}
+              </div>
+
+              <!-- ================= STATISTICS ================= -->
 
               <div class="section">
+
+                <b>Staff Summary</b>
+
+                <div class="row">
+                  <span>Assigned</span>
+                  <span>${assignedIds.size}</span>
+                </div>
+
+                <div class="row">
+                  <span>Unavailable</span>
+                  <span class="bad">
+                    ${unavailableIds.size}
+                  </span>
+                </div>
+
+                <div class="row">
+                  <span>Available</span>
+                  <span class="good">
+                    ${availableCount}
+                  </span>
+                </div>
+
+              </div>
+
+              <!-- ================= APPOINTMENTS ================= -->
+
+              <div class="section">
+
                 <b>Key Appointments</b>
 
                 ${appointments.map(a=>`
                   <div class="row">
                     <span>${a.role}</span>
-                    <b>${a.name}</b>
+                    <span>${a.name}</span>
                   </div>
                 `).join("")}
 
@@ -254,6 +401,7 @@ async function load(){
 
             </div>
           `;
+
         }).join("")}
 
       </div>
@@ -261,7 +409,8 @@ async function load(){
   });
 }
 
-window.load=load;
+window.load = load;
+
 load();
 
 </script>
