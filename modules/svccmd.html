@@ -515,78 +515,71 @@ async function load(){
 
   /* ================= 5TH COLUMN ================= */
 
-  grid.innerHTML += `
+/* ================= 5TH COLUMN ================= */
 
-    <div class="col">
+const uniqueDates =
+  [...new Set(
+    availabilityServices.map(s => s.service_date)
+  )];
 
-      <h3>Staff Availability</h3>
+grid.innerHTML += `
 
-      <div class="card">
+  <div class="col">
 
-        <div class="tag">Select Date</div>
+    <h3>Staff Availability</h3>
 
-        <select id="manageDate">
-          ${
-            [...new Set(
-              availabilityServices.map(s => s.service_date)
-            )]
-            .map(d => `
-              <option value="${d}">
-                ${formatDate(d)}
-              </option>
-            `)
-            .join("")
-          }
-        </select>
+    <div class="card">
 
-        <div class="tag" style="margin-top:10px;">
-          Select Service
-        </div>
+      <div class="tag">Select Date</div>
 
-        <select id="manageSlot">
-          ${
-            availabilityServices.map(s => `
-              <option value="${s.service_slot_id}">
-                ${formatDate(s.service_date)}
-                - ${s.service_slots?.label}
-                (${s.service_slots?.time})
-              </option>
-            `).join("")
-          }
-        </select>
+      <select id="manageDate" onchange="refreshServiceOptions()">
+        ${
+          uniqueDates.map(d => `
+            <option value="${d}">
+              ${formatDate(d)}
+            </option>
+          `).join("")
+        }
+      </select>
 
-        <div class="tag" style="margin-top:10px;">
-          Select Staff
-        </div>
-
-        <select id="manageStaff">
-          ${
-            staffList.map(s => `
-              <option value="${s.id}">
-                ${s.name}
-              </option>
-            `).join("")
-          }
-        </select>
-
-        <button class="danger"
-          onclick="markUnavailable()">
-
-          Mark Unavailable
-
-        </button>
-
-        <button class="save"
-          onclick="returnAvailable()">
-
-          Return Available
-
-        </button>
-
+      <div class="tag" style="margin-top:10px;">
+        Select Service
       </div>
 
+      <select id="manageService"></select>
+
+      <div class="tag" style="margin-top:10px;">
+        Select Staff
+      </div>
+
+      <select id="manageStaff">
+        ${
+          staffList.map(s => `
+            <option value="${s.id}">
+              ${s.name}
+            </option>
+          `).join("")
+        }
+      </select>
+
+      <button class="danger"
+        onclick="markUnavailable()">
+
+        Mark Unavailable
+
+      </button>
+
+      <button class="save"
+        onclick="returnAvailable()">
+
+        Return Available
+
+      </button>
+
     </div>
-  `;
+
+  </div>
+`;
 }
 
 /* ================= ASSIGN ================= */
