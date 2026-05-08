@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Command Post (Roster System FINAL FIX)</title>
+  <title>Command Post (Roster System FINAL UX FIX)</title>
 
   <style>
     body{
@@ -41,9 +41,15 @@
       margin-bottom:10px;
     }
 
-    .title{ color:#60a5fa; font-weight:bold; }
+    .title{
+      color:#60a5fa;
+      font-weight:bold;
+    }
 
-    .tag{ font-size:12px; color:#94a3b8; }
+    .tag{
+      font-size:12px;
+      color:#94a3b8;
+    }
 
     .section{
       margin-top:10px;
@@ -61,6 +67,11 @@
     .good{ color:#22c55e; }
     .bad{ color:#ef4444; }
 
+    .clickable{
+      cursor:pointer;
+      text-decoration:underline;
+    }
+
     button.small{
       font-size:10px;
       padding:2px 6px;
@@ -70,11 +81,6 @@
       background:#3b82f6;
       color:white;
       cursor:pointer;
-    }
-
-    .clickable{
-      cursor:pointer;
-      text-decoration:underline;
     }
 
     .modal{
@@ -91,6 +97,8 @@
       padding:20px;
       border-radius:10px;
       width:360px;
+      max-height:70vh;
+      overflow:auto;
     }
 
     select, button{
@@ -114,12 +122,27 @@
 
 <div class="grid" id="grid"></div>
 
-<!-- MODAL -->
+<!-- ASSIGN MODAL -->
 <div class="modal" id="modal">
   <div class="modal-content">
     <div id="modalTitle">Assign</div>
     <select id="staffSelect"></select>
     <button class="save" onclick="saveAssign()">Assign</button>
+  </div>
+</div>
+
+<!-- UNAVAILABLE MODAL -->
+<div class="modal" id="unavailableModal">
+  <div class="modal-content">
+    <div style="font-weight:bold;margin-bottom:10px;">
+      Unavailable Staff
+    </div>
+
+    <div id="unavailableList"></div>
+
+    <button class="save" onclick="closeUnavailable()">
+      Close
+    </button>
   </div>
 </div>
 
@@ -132,7 +155,6 @@ let availability = [];
 
 let currentService = null;
 let currentRole = null;
-let currentTemplateStaff = [];
 
 /* ================= DATE ================= */
 function parseDate(d){
@@ -251,10 +273,11 @@ async function load(){
                 </div>
 
                 <div class="row">
-                  <span class="clickable" onclick='showUnavailable(${JSON.stringify(unavailable)})'>
-                    Unavailable
+                  <span>Unavailable</span>
+                  <span class="bad clickable"
+                    onclick="openUnavailableModal('${s.service_date}','${s.service_slot_id}')">
+                    ${unavailableIds.size}
                   </span>
-                  <span class="bad">${unavailableIds.size}</span>
                 </div>
 
                 <div class="row">
@@ -271,6 +294,7 @@ async function load(){
                     <span>${a.role}</span>
                     <span>
                       ${a.name}
+
                       <button class="small"
                         onclick="openAssign('${s.service_template_id}','${a.role}','${s.service_date}','${s.service_slot_id}')">
                         Assign
@@ -290,9 +314,32 @@ async function load(){
   });
 }
 
-/* ================= UNAVAILABLE VIEW ================= */
-window.showUnavailable = function(list){
-  alert(list.map(l => l.staff_id).join("\n") || "None");
+/* ================= UNAVAILABLE MODAL ================= */
+window.openUnavailableModal = async function(date, slotId){
+
+  const { data } = await db
+    .from("staff_availability")
+    .select("staff_id")
+    .eq("service_date", date)
+    .eq("service_slot_id", slotId)
+    .eq("status", "unavailable");
+
+  const ids = (data || []).map(d=>d.staff_id);
+
+  const html = ids.length
+    ? ids.map(id=>`
+        <div style="padding:6px;border-bottom:1px solid #1f2937;">
+          ${staffList.find(s=>String(s.id)===String(id))?.name || "Unknown"}
+        </div>
+      `).join("")
+    : `<div style="color:#94a3b8;">No unavailable staff</div>`;
+
+  document.getElementById("unavailableList").innerHTML = html;
+  document.getElementById("unavailableModal").style.display = "flex";
+};
+
+window.closeUnavailable = function(){
+  document.getElementById("unavailableModal").style.display = "none";
 };
 
 /* ================= ASSIGN ================= */
@@ -300,30 +347,17 @@ window.openAssign = function(templateId, role, date, slotId){
 
   currentRole = role;
 
-  currentTemplateStaff =
-    templates.filter(t =>
-      String(t.template_id) === String(templateId)
-    );
-
-  const unavailableIds = new Set(
-    availability
-      .filter(a =>
-        a.service_date === date &&
-        a.service_slot_id === slotId &&
-        a.status === "unavailable"
-      )
-      .map(a=>String(a.staff_id))
-  );
-
   const eligible = staffList.filter(s =>
-    currentTemplateStaff.some(t => String(t.staff_id) === String(s.id))
-    && !unavailableIds.has(String(s.id))
+    templates.some(t =>
+      String(t.template_id) === String(templateId) &&
+      String(t.staff_id) === String(s.id)
+    )
   );
 
   document.getElementById("staffSelect").innerHTML =
     eligible.map(s=>`<option value="${s.id}">${s.name}</option>`).join("");
 
-  currentService = { templateId, role, date, slotId };
+  currentService = { templateId, role };
 
   document.getElementById("modal").style.display = "flex";
 };
@@ -335,7 +369,7 @@ window.saveAssign = async function(){
 
   await db.from("service_roles").upsert({
     service_id: currentService.templateId,
-    role: currentService.role,
+    role: currentRole,
     staff_id: staffId
   },{
     onConflict:"service_id,role"
