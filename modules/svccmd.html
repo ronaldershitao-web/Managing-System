@@ -77,7 +77,8 @@
 
 <header>
   ⛪ Command Post (FIXED)
-  <button onclick="load()" style="background:#3b82f6;color:white;border:none;padding:6px 10px;border-radius:6px;">
+  <button onclick="load()"
+    style="background:#3b82f6;color:white;border:none;padding:6px 10px;border-radius:6px;">
     Refresh
   </button>
 </header>
@@ -90,31 +91,8 @@ import { db } from "../assets/app.js";
 /* ================= DATE ================= */
 function parseDate(d){
   if(!d) return new Date(0);
-  const [y,m,day]=d.split("-");
-  return new Date(Number(y),Number(m)-1,Number(day));
-}
-
-/* ================= WINDOW ================= */
-function inWindow(d){
-  const now = new Date();
-  const min = new Date(now); min.setDate(now.getDate()-7);
-  const max = new Date(now); max.setDate(now.getDate()+7);
-  const dt = parseDate(d);
-  return dt>=min && dt<=max;
-}
-
-/* ================= SLOT ================= */
-function slotIndex(s){
-  const time = (s.service_slots?.time || "").toLowerCase();
-  const location = (s.service_slots?.location || "").toLowerCase();
-  const t = time.replace(":","");
-
-  if(t.includes("1430")) return 0;
-  if(t.includes("0830")) return 1;
-  if(t.includes("1045") && !location.includes("jurong")) return 2;
-  if(location.includes("jurong")) return 3;
-
-  return -1;
+  const [y,m,day] = d.split("-");
+  return new Date(Number(y), Number(m)-1, Number(day));
 }
 
 /* ================= LOAD ================= */
@@ -127,7 +105,6 @@ async function load(){
     availabilityRes,
     staffRes
   ] = await Promise.all([
-
     db.from("services").select(`
       *,
       service_slots(label,time,location)
@@ -142,62 +119,81 @@ async function load(){
     db.from("staff").select("*")
   ]);
 
-  let services = servicesRes.data || [];
+  const services = servicesRes.data || [];
   const roles = rolesRes.data || [];
   const templates = templateRes.data || [];
   const availability = availabilityRes.data || [];
   const staff = staffRes.data || [];
 
-  /* ================= DEBUG MAPS ================= */
   console.log("SERVICES:", services);
   console.log("ROLES:", roles);
   console.log("STAFF:", staff);
 
-  /* ================= LOOKUP MAPS ================= */
-  const staffMap = {};
-  staff.forEach(s => staffMap[s.id] = s.name);
+  /* ================= MAPS ================= */
 
-  const roleMap = {};
+  const staffMap = new Map(
+    staff.map(s => [s.id, s.name])
+  );
+
+  const roleMap = new Map();
+
   roles.forEach(r => {
-    if(!roleMap[r.service_id]) roleMap[r.service_id] = [];
-    roleMap[r.service_id].push(r);
+    const key = String(r.service_id).trim();
+    if (!roleMap.has(key)) roleMap.set(key, []);
+    roleMap.get(key).push(r);
   });
 
-  /* ================= FILTER ================= */
-  services = services.filter(s => inWindow(s.service_date));
+  const templateMap = new Map();
+
+  templates.forEach(t => {
+    const key = t.template_id;
+    if (!templateMap.has(key)) templateMap.set(key, []);
+    templateMap.get(key).push(t);
+  });
 
   /* ================= SORT ================= */
   services.sort((a,b) =>
     parseDate(a.service_date) - parseDate(b.service_date)
   );
 
-  const cols=[[],[],[],[]];
+  const cols = [[],[],[],[]];
 
-  services.forEach(s=>{
-    const i = slotIndex(s);
-    if(i>=0) cols[i].push(s);
+  /* ================= COLUMN LOGIC (KEEP SAME UI) ================= */
+  services.forEach(s => {
+    const time = (s.service_slots?.time || "").toLowerCase();
+    const location = (s.service_slots?.location || "").toLowerCase();
+    const t = time.replace(":","");
+
+    let i = -1;
+
+    if(t.includes("1430")) i = 0;
+    else if(t.includes("0830")) i = 1;
+    else if(t.includes("1045") && !location.includes("jurong")) i = 2;
+    else if(location.includes("jurong")) i = 3;
+
+    if(i >= 0) cols[i].push(s);
   });
 
-  const grid=document.getElementById("grid");
-  grid.innerHTML="";
+  /* ================= RENDER ================= */
+  const grid = document.getElementById("grid");
+  grid.innerHTML = "";
 
-  cols.forEach(col=>{
+  cols.forEach(col => {
+
     grid.innerHTML += `
       <div class="col">
 
-        ${col.map(s=>{
+        ${col.map(s => {
 
-          /* ================= FIX: USE MAP (NOT FILTER) ================= */
-          const serviceRoles = roleMap[s.id] || [];
+          const serviceRoles =
+            roleMap.get(String(s.id).trim()) || [];
 
-          console.log("SERVICE:", s.id);
-          console.log("SERVICE ROLES:", serviceRoles);
+          const assigned =
+            templateMap.get(s.service_template_id) || [];
 
-          const assigned = templates.filter(
-            t => t.template_id === s.service_template_id
+          const assignedIds = new Set(
+            assigned.map(a => a.staff_id)
           );
-
-          const assignedIds = new Set(assigned.map(a => a.staff_id));
 
           const unavailableIds = new Set(
             availability
@@ -221,44 +217,46 @@ async function load(){
 
           const appointments = KEY.map(role => {
 
-  if (
-    role === "Service Pastor" ||
-    role === "Anchor" ||
-    role === "Welcome IC"
-  ) {
+            if (
+              role === "Service Pastor" ||
+              role === "Anchor" ||
+              role === "Welcome IC"
+            ) {
 
-    const found = serviceRoles.find(r =>
-      (r.role || "").trim().toLowerCase() ===
-      role.trim().toLowerCase()
-    );
+              const found = serviceRoles.find(r =>
+                (r.role || "").trim().toLowerCase() ===
+                role.toLowerCase()
+              );
 
-    return {
-      role,
-      name: found?.staff_id ? (staffMap[found.staff_id] || "-") : "-"
-    };
-  }
+              return {
+                role,
+                name: found?.staff_id
+                  ? (staffMap.get(found.staff_id) || "-")
+                  : "-"
+              };
+            }
 
-  if (role === "Hospitality Cell") {
+            if (role === "Hospitality Cell") {
 
-    const found = serviceRoles.filter(r =>
-      (r.role || "").toLowerCase().includes("welcome member") ||
-      (r.role || "").toLowerCase().includes("plaza")
-    );
+              const found = serviceRoles.filter(r =>
+                (r.role || "").toLowerCase().includes("welcome member") ||
+                (r.role || "").toLowerCase().includes("plaza")
+              );
 
-    const names = found
-      .map(r => staffMap[r.staff_id])
-      .filter(Boolean);
+              const names = found
+                .map(r => staffMap.get(r.staff_id))
+                .filter(Boolean);
 
-    return {
-      role,
-      name: names.length ? names.join(", ") : "-"
-    };
-  }
+              return {
+                role,
+                name: names.length ? names.join(", ") : "-"
+              };
+            }
 
-  return { role, name: "-" };
-});
+            return { role, name: "-" };
+          });
 
-          const d=parseDate(s.service_date);
+          const d = parseDate(s.service_date);
 
           return `
             <div class="card">
@@ -310,7 +308,6 @@ async function load(){
 
             </div>
           `;
-
         }).join("")}
 
       </div>
