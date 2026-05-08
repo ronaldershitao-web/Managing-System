@@ -582,6 +582,36 @@ grid.innerHTML += `
 `;
 }
 
+/* ================= SERVICE FILTER ================= */
+
+window.refreshServiceOptions = function(){
+
+  const selectedDate =
+    document.getElementById("manageDate").value;
+
+  const serviceDropdown =
+    document.getElementById("manageService");
+
+  const filteredServices =
+    availabilityServices.filter(s =>
+      s.service_date === selectedDate
+    );
+
+  serviceDropdown.innerHTML =
+    filteredServices.map(s => `
+
+      <option
+        value="${s.service_slot_id}"
+        data-service-id="${s.id}">
+
+        ${s.service_slots?.label}
+        (${s.service_slots?.time})
+
+      </option>
+
+    `).join("");
+};
+  
 /* ================= ASSIGN ================= */
 
 window.openAssign = function(
@@ -709,7 +739,7 @@ window.markUnavailable = async function(){
     document.getElementById("manageDate").value;
 
   const slotId =
-    document.getElementById("manageSlot").value;
+    document.getElementById("manageService").value;
 
   await db.from("staff_availability").upsert({
 
@@ -734,7 +764,7 @@ window.returnAvailable = async function(){
     document.getElementById("manageDate").value;
 
   const slotId =
-    document.getElementById("manageSlot").value;
+    document.getElementById("manageService").value;
 
   await db.from("staff_availability")
     .delete()
@@ -744,10 +774,13 @@ window.returnAvailable = async function(){
 
   load();
 };
-
 window.load = load;
 
 load();
+
+  setTimeout(() => {
+  refreshServiceOptions();
+}, 300);
 
 </script>
 
