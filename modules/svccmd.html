@@ -171,15 +171,7 @@ async function load(){
 
     db
   .from("service_roles")
-  .select(`
-    id,
-    role,
-    service_id,
-    staff_id,
-    staff:staff_id (
-      name
-    )
-  `),
+  .select("*"),
 
     db
       .from("staff_service_templates")
