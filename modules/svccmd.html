@@ -67,9 +67,14 @@
       font-size:12px;
       margin:4px 0;
       gap:8px;
+      align-items:center;
     }
 
-    .good{ color:#22c55e; }
+    .good{
+      color:#22c55e;
+      font-weight:bold;
+    }
+
     .bad{
       color:#ef4444;
       cursor:pointer;
@@ -85,6 +90,7 @@
       background:#3b82f6;
       color:white;
       cursor:pointer;
+      width:auto;
     }
 
     .modal{
@@ -205,6 +211,19 @@ function parseDate(d){
   return new Date(y,m-1,day);
 }
 
+function formatDate(dateStr){
+
+  if(!dateStr) return "-";
+
+  const date = parseDate(dateStr);
+
+  return date.toLocaleDateString("en-GB",{
+    day:"2-digit",
+    month:"short",
+    year:"numeric"
+  });
+}
+
 function inWindow(d){
 
   const dt = parseDate(d);
@@ -218,6 +237,18 @@ function inWindow(d){
   max.setDate(now.getDate()+7);
 
   return dt >= min && dt <= max;
+}
+
+function in60Days(d){
+
+  const dt = parseDate(d);
+
+  const now = new Date();
+
+  const max = new Date();
+  max.setDate(now.getDate()+60);
+
+  return dt >= now && dt <= max;
 }
 
 /* ================= LOAD ================= */
@@ -248,9 +279,13 @@ async function load(){
       .select("*")
   ]);
 
-  let services =
-    (servicesRes.data || [])
-      .filter(s => inWindow(s.service_date));
+  const allServices = servicesRes.data || [];
+
+  let displayServices =
+    allServices.filter(s => inWindow(s.service_date));
+
+  let availabilityServices =
+    allServices.filter(s => in60Days(s.service_date));
 
   templates = templateRes.data || [];
   availability = availRes.data || [];
@@ -287,14 +322,19 @@ async function load(){
     roleMap.get(key).push(r);
   });
 
-  services.sort((a,b)=>
+  displayServices.sort((a,b)=>
+    parseDate(a.service_date) -
+    parseDate(b.service_date)
+  );
+
+  availabilityServices.sort((a,b)=>
     parseDate(a.service_date) -
     parseDate(b.service_date)
   );
 
   const cols = [[],[],[],[]];
 
-  services.forEach(s=>{
+  displayServices.forEach(s=>{
 
     const t =
       (s.service_slots?.time || "")
@@ -391,7 +431,7 @@ async function load(){
               </div>
 
               <div class="tag">
-                ${s.service_date}
+                ${formatDate(s.service_date)}
               </div>
 
               <div class="tag">
@@ -488,11 +528,11 @@ async function load(){
         <select id="manageDate">
           ${
             [...new Set(
-              services.map(s => s.service_date)
+              availabilityServices.map(s => s.service_date)
             )]
             .map(d => `
               <option value="${d}">
-                ${d}
+                ${formatDate(d)}
               </option>
             `)
             .join("")
@@ -505,9 +545,10 @@ async function load(){
 
         <select id="manageSlot">
           ${
-            services.map(s => `
+            availabilityServices.map(s => `
               <option value="${s.service_slot_id}">
-                ${s.service_slots?.label}
+                ${formatDate(s.service_date)}
+                - ${s.service_slots?.label}
                 (${s.service_slots?.time})
               </option>
             `).join("")
