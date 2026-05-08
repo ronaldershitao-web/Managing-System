@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Command Post (Roster System FINAL UX FIX)</title>
+  <title>Command Post (5 Column Ops System)</title>
 
   <style>
     body{
@@ -21,7 +21,7 @@
 
     .grid{
       display:grid;
-      grid-template-columns:repeat(4,1fr);
+      grid-template-columns:repeat(5,1fr); /* ⭐ UPDATED */
       gap:10px;
       padding:10px;
     }
@@ -41,15 +41,9 @@
       margin-bottom:10px;
     }
 
-    .title{
-      color:#60a5fa;
-      font-weight:bold;
-    }
+    .title{ color:#60a5fa; font-weight:bold; }
 
-    .tag{
-      font-size:12px;
-      color:#94a3b8;
-    }
+    .tag{ font-size:12px; color:#94a3b8; }
 
     .section{
       margin-top:10px;
@@ -67,15 +61,9 @@
     .good{ color:#22c55e; }
     .bad{ color:#ef4444; }
 
-    .clickable{
-      cursor:pointer;
-      text-decoration:underline;
-    }
-
     button.small{
       font-size:10px;
       padding:2px 6px;
-      margin-left:4px;
       border-radius:4px;
       border:none;
       background:#3b82f6;
@@ -83,68 +71,33 @@
       cursor:pointer;
     }
 
-    .modal{
-      display:none;
-      position:fixed;
-      inset:0;
-      background:rgba(0,0,0,0.6);
-      justify-content:center;
-      align-items:center;
-    }
-
-    .modal-content{
-      background:#111827;
-      padding:20px;
-      border-radius:10px;
-      width:360px;
-      max-height:70vh;
-      overflow:auto;
-    }
-
     select, button{
       width:100%;
       padding:8px;
-      margin-top:10px;
+      margin-top:8px;
       border-radius:6px;
       border:none;
     }
 
     .save{ background:#22c55e; color:white; }
+    .danger{ background:#ef4444; color:white; }
+
+    .panel-title{
+      font-weight:bold;
+      margin-bottom:8px;
+      color:#93c5fd;
+    }
   </style>
 </head>
 
 <body>
 
 <header>
-  ⛪ Command Post (FINAL FIXED)
+  ⛪ Command Post (OPS + AVAILABILITY CONTROL)
   <button onclick="load()">Refresh</button>
 </header>
 
 <div class="grid" id="grid"></div>
-
-<!-- ASSIGN MODAL -->
-<div class="modal" id="modal">
-  <div class="modal-content">
-    <div id="modalTitle">Assign</div>
-    <select id="staffSelect"></select>
-    <button class="save" onclick="saveAssign()">Assign</button>
-  </div>
-</div>
-
-<!-- UNAVAILABLE MODAL -->
-<div class="modal" id="unavailableModal">
-  <div class="modal-content">
-    <div style="font-weight:bold;margin-bottom:10px;">
-      Unavailable Staff
-    </div>
-
-    <div id="unavailableList"></div>
-
-    <button class="save" onclick="closeUnavailable()">
-      Close
-    </button>
-  </div>
-</div>
 
 <script type="module">
 import { db } from "../assets/app.js";
@@ -152,24 +105,6 @@ import { db } from "../assets/app.js";
 let staffList = [];
 let templates = [];
 let availability = [];
-
-let currentService = null;
-let currentRole = null;
-
-/* ================= DATE ================= */
-function parseDate(d){
-  const [y,m,day] = d.split("-");
-  return new Date(y,m-1,day);
-}
-
-/* ================= WINDOW ================= */
-function inWindow(d){
-  const dt = parseDate(d);
-  const now = new Date();
-  const min = new Date(); min.setDate(now.getDate()-7);
-  const max = new Date(); max.setDate(now.getDate()+7);
-  return dt >= min && dt <= max;
-}
 
 /* ================= LOAD ================= */
 async function load(){
@@ -181,8 +116,7 @@ async function load(){
     db.from("staff").select("*")
   ]);
 
-  let services = (servicesRes.data || []).filter(s => inWindow(s.service_date));
-
+  const services = servicesRes.data || [];
   templates = templateRes.data || [];
   availability = availRes.data || [];
   staffList = staffRes.data || [];
@@ -199,7 +133,7 @@ async function load(){
   const grid = document.getElementById("grid");
   grid.innerHTML = "";
 
-  const cols = [[],[],[],[]];
+  const cols = [[],[],[],[],[]]; // ⭐ 5 columns
 
   services.forEach(s=>{
     const t = (s.service_slots?.time||"").replace(":","");
@@ -214,10 +148,10 @@ async function load(){
     if(i>=0) cols[i].push(s);
   });
 
-  cols.forEach(col=>{
+  /* ================= ROSTER COLUMNS ================= */
+  cols.slice(0,4).forEach(col=>{
     grid.innerHTML += `
       <div class="col">
-
         ${col.map(s=>{
 
           const templateStaff =
@@ -236,28 +170,6 @@ async function load(){
           const availableIds =
             [...assignedIds].filter(id=>!unavailableIds.has(id));
 
-          const KEY = [
-            "Service Pastor",
-            "Anchor",
-            "Welcome IC",
-            "Hospitality Cell"
-          ];
-
-          const appointments = KEY.map(role=>{
-
-            const match = templateStaff.find(t =>
-              (t.role||"").toLowerCase() === role.toLowerCase()
-            );
-
-            const staffId = match?.staff_id;
-
-            return {
-              role,
-              staffId,
-              name: staffId ? staffMap.get(String(staffId)) : "-"
-            };
-          });
-
           return `
             <div class="card">
 
@@ -265,8 +177,6 @@ async function load(){
               <div class="tag">${s.service_date}</div>
 
               <div class="section">
-                <b>Staff Summary</b>
-
                 <div class="row">
                   <span>Total Assigned</span>
                   <span>${assignedIds.size}</span>
@@ -274,108 +184,87 @@ async function load(){
 
                 <div class="row">
                   <span>Unavailable</span>
-                  <span class="bad clickable"
-                    onclick="openUnavailableModal('${s.service_date}','${s.service_slot_id}')">
-                    ${unavailableIds.size}
-                  </span>
+                  <span class="bad">${unavailableIds.size}</span>
                 </div>
 
                 <div class="row">
-                  <span>Total Available</span>
+                  <span>Available</span>
                   <span class="good">${availableIds.length}</span>
                 </div>
-              </div>
-
-              <div class="section">
-                <b>Key Appointments</b>
-
-                ${appointments.map(a=>`
-                  <div class="row">
-                    <span>${a.role}</span>
-                    <span>
-                      ${a.name}
-
-                      <button class="small"
-                        onclick="openAssign('${s.service_template_id}','${a.role}','${s.service_date}','${s.service_slot_id}')">
-                        Assign
-                      </button>
-                    </span>
-                  </div>
-                `).join("")}
-
               </div>
 
             </div>
           `;
         }).join("")}
-
       </div>
     `;
   });
+
+  /* ================= 5TH COLUMN (AVAILABILITY CONTROL) ================= */
+  const staffOptions = staffList.map(s =>
+    `<option value="${s.id}">${s.name}</option>`
+  ).join("");
+
+  const serviceOptions = services.map(s =>
+    `<option value="${s.service_date}|${s.service_slot_id}">
+      ${s.service_date} - ${s.service_slots?.label}
+    </option>`
+  ).join("");
+
+  cols[4].push({}); // single panel
+
+  grid.innerHTML += `
+    <div class="col">
+
+      <div class="panel-title">Staff Availability Control</div>
+
+      <label>Date + Service</label>
+      <select id="serviceSelect">${serviceOptions}</select>
+
+      <label>Staff</label>
+      <select id="staffSelect">${staffOptions}</select>
+
+      <button class="danger" onclick="mark('unavailable')">
+        Mark Unavailable
+      </button>
+
+      <button class="save" onclick="mark('available')">
+        Return Available
+      </button>
+
+    </div>
+  `;
 }
 
-/* ================= UNAVAILABLE MODAL ================= */
-window.openUnavailableModal = async function(date, slotId){
+/* ================= AVAILABILITY CONTROL ================= */
+window.mark = async function(status){
 
-  const { data } = await db
-    .from("staff_availability")
-    .select("staff_id")
-    .eq("service_date", date)
-    .eq("service_slot_id", slotId)
-    .eq("status", "unavailable");
-
-  const ids = (data || []).map(d=>d.staff_id);
-
-  const html = ids.length
-    ? ids.map(id=>`
-        <div style="padding:6px;border-bottom:1px solid #1f2937;">
-          ${staffList.find(s=>String(s.id)===String(id))?.name || "Unknown"}
-        </div>
-      `).join("")
-    : `<div style="color:#94a3b8;">No unavailable staff</div>`;
-
-  document.getElementById("unavailableList").innerHTML = html;
-  document.getElementById("unavailableModal").style.display = "flex";
-};
-
-window.closeUnavailable = function(){
-  document.getElementById("unavailableModal").style.display = "none";
-};
-
-/* ================= ASSIGN ================= */
-window.openAssign = function(templateId, role, date, slotId){
-
-  currentRole = role;
-
-  const eligible = staffList.filter(s =>
-    templates.some(t =>
-      String(t.template_id) === String(templateId) &&
-      String(t.staff_id) === String(s.id)
-    )
-  );
-
-  document.getElementById("staffSelect").innerHTML =
-    eligible.map(s=>`<option value="${s.id}">${s.name}</option>`).join("");
-
-  currentService = { templateId, role };
-
-  document.getElementById("modal").style.display = "flex";
-};
-
-/* ================= SAVE ================= */
-window.saveAssign = async function(){
-
+  const service = document.getElementById("serviceSelect").value.split("|");
   const staffId = document.getElementById("staffSelect").value;
 
-  await db.from("service_roles").upsert({
-    service_id: currentService.templateId,
-    role: currentRole,
-    staff_id: staffId
-  },{
-    onConflict:"service_id,role"
-  });
+  const service_date = service[0];
+  const service_slot_id = service[1];
 
-  document.getElementById("modal").style.display = "none";
+  if(status === "unavailable"){
+
+    await db.from("staff_availability").upsert({
+      staff_id: staffId,
+      service_date,
+      service_slot_id,
+      status: "unavailable"
+    },{
+      onConflict:"staff_id,service_date,service_slot_id"
+    });
+
+  } else {
+
+    await db.from("staff_availability")
+      .delete()
+      .eq("staff_id", staffId)
+      .eq("service_date", service_date)
+      .eq("service_slot_id", service_slot_id);
+  }
+
   load();
 };
 
