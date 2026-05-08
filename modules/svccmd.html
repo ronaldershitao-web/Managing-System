@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Command Post (MODAL ASSIGN)</title>
+  <title>Command Post (FULL FIXED)</title>
 
   <style>
     body{
@@ -82,7 +82,7 @@
       cursor:pointer;
     }
 
-    /* ================= MODAL ================= */
+    /* MODAL */
     .modal{
       display:none;
       position:fixed;
@@ -97,7 +97,7 @@
       background:#111827;
       padding:20px;
       border-radius:10px;
-      width:300px;
+      width:320px;
       border:1px solid #334155;
     }
 
@@ -109,22 +109,15 @@
       border:none;
     }
 
-    .close-btn{
-      background:#ef4444;
-      color:white;
-    }
-
-    .save-btn{
-      background:#22c55e;
-      color:white;
-    }
+    .save-btn{ background:#22c55e; color:white; }
+    .close-btn{ background:#ef4444; color:white; }
   </style>
 </head>
 
 <body>
 
 <header>
-  ⛪ Command Post (MODAL)
+  ⛪ Command Post (FULL FIXED)
   <button onclick="load()"
     style="background:#3b82f6;color:white;border:none;padding:6px 10px;border-radius:6px;">
     Refresh
@@ -133,7 +126,7 @@
 
 <div class="grid" id="grid"></div>
 
-<!-- ================= MODAL ================= -->
+<!-- MODAL -->
 <div class="modal" id="modal">
   <div class="modal-content">
     <div id="modalTitle">Assign</div>
@@ -159,7 +152,7 @@ function parseDate(d){
   return new Date(Number(y), Number(m)-1, Number(day));
 }
 
-/* ================= WINDOW ================= */
+/* ================= ±1 WEEK ================= */
 function inWindow(d){
   const dt = parseDate(d);
   if(!dt) return false;
@@ -243,7 +236,29 @@ async function load(){
           const serviceKey = String(s.service_id || s.id);
           const serviceRoles = roleMap.get(serviceKey) || [];
 
-          const KEY = ["Service Pastor","Anchor","Welcome IC","Hospitality Cell"];
+          const assigned = templateMap.get(String(s.service_template_id)) || [];
+
+          const assignedIds = new Set(assigned.map(a => String(a.staff_id)));
+
+          const unavailableIds = new Set(
+            availability
+              .filter(a =>
+                a.service_date === s.service_date &&
+                a.service_slot_id === s.service_slot_id &&
+                a.status === "unavailable"
+              )
+              .map(a => String(a.staff_id))
+          );
+
+          const availableCount =
+            [...assignedIds].filter(id => !unavailableIds.has(id)).length;
+
+          const KEY = [
+            "Service Pastor",
+            "Anchor",
+            "Welcome IC",
+            "Hospitality Cell"
+          ];
 
           const appointments = KEY.map(role => {
 
@@ -263,15 +278,40 @@ async function load(){
           return `
             <div class="card">
 
-              <div class="title">${s.service_slots?.label || "Service"}</div>
+              <div class="title">
+                ${s.service_slots?.label || "Service"}
+              </div>
 
               <div class="tag">
                 ${d.toLocaleDateString("en-SG",{weekday:"long"})} |
                 ${d.toLocaleDateString("en-SG",{day:"2-digit",month:"short"})}
               </div>
 
-              <div class="tag">⏰ ${s.service_slots?.time || ""}</div>
+              <div class="tag">
+                ⏰ ${s.service_slots?.time || ""}
+              </div>
 
+              <!-- ================= STATS RESTORED ================= -->
+              <div class="section">
+                <b>Staff Summary</b>
+
+                <div class="row">
+                  <span>Assigned</span>
+                  <span>${assignedIds.size}</span>
+                </div>
+
+                <div class="row">
+                  <span>Unavailable</span>
+                  <span class="bad">${unavailableIds.size}</span>
+                </div>
+
+                <div class="row">
+                  <span>Available</span>
+                  <span class="good">${availableCount}</span>
+                </div>
+              </div>
+
+              <!-- ================= APPOINTMENTS ================= -->
               <div class="section">
                 <b>Key Appointments</b>
 
@@ -334,8 +374,8 @@ window.saveAssign = async function(){
   });
 
   if(error){
-    alert("Failed");
     console.log(error);
+    alert("Failed");
     return;
   }
 
