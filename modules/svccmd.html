@@ -90,9 +90,25 @@ import { db } from "../assets/app.js";
 
 /* ================= DATE ================= */
 function parseDate(d){
-  if(!d) return new Date(0);
+  if(!d) return null;
   const [y,m,day] = d.split("-");
   return new Date(Number(y), Number(m)-1, Number(day));
+}
+
+/* ================= WINDOW ±1 WEEK ================= */
+function inWindow(d){
+  const dt = parseDate(d);
+  if(!dt) return false;
+
+  const now = new Date();
+
+  const min = new Date(now);
+  min.setDate(now.getDate() - 7);
+
+  const max = new Date(now);
+  max.setDate(now.getDate() + 7);
+
+  return dt >= min && dt <= max;
 }
 
 /* ================= LOAD ================= */
@@ -119,26 +135,22 @@ async function load(){
     db.from("staff").select("*")
   ]);
 
-  const services = servicesRes.data || [];
+  let services = (servicesRes.data || []).filter(s => inWindow(s.service_date));
   const roles = rolesRes.data || [];
   const templates = templateRes.data || [];
   const availability = availabilityRes.data || [];
   const staff = staffRes.data || [];
 
-  console.log("SERVICES:", services);
-  console.log("ROLES:", roles);
-  console.log("STAFF:", staff);
-
   /* ================= MAPS ================= */
 
   const staffMap = new Map(
-    staff.map(s => [s.id, s.name])
+    staff.map(s => [String(s.id), s.name])
   );
 
   const roleMap = new Map();
 
   roles.forEach(r => {
-    const key = String(r.service_id).trim();
+    const key = String(r.service_id);
     if (!roleMap.has(key)) roleMap.set(key, []);
     roleMap.get(key).push(r);
   });
@@ -158,7 +170,7 @@ async function load(){
 
   const cols = [[],[],[],[]];
 
-  /* ================= COLUMN LOGIC (KEEP SAME UI) ================= */
+  /* ================= COLUMN LOGIC ================= */
   services.forEach(s => {
     const time = (s.service_slots?.time || "").toLowerCase();
     const location = (s.service_slots?.location || "").toLowerCase();
@@ -186,13 +198,13 @@ async function load(){
         ${col.map(s => {
 
           const serviceRoles =
-            roleMap.get(String(s.id).trim()) || [];
+            roleMap.get(String(s.service_id ?? s.id)) || [];
 
           const assigned =
             templateMap.get(s.service_template_id) || [];
 
           const assignedIds = new Set(
-            assigned.map(a => a.staff_id)
+            assigned.map(a => String(a.staff_id))
           );
 
           const unavailableIds = new Set(
@@ -202,7 +214,7 @@ async function load(){
                 a.service_slot_id === s.service_slot_id &&
                 a.status === "unavailable"
               )
-              .map(a => a.staff_id)
+              .map(a => String(a.staff_id))
           );
 
           const availableCount =
@@ -224,14 +236,13 @@ async function load(){
             ) {
 
               const found = serviceRoles.find(r =>
-                (r.role || "").trim().toLowerCase() ===
-                role.toLowerCase()
+                (r.role || "").trim().toLowerCase() === role.toLowerCase()
               );
 
               return {
                 role,
                 name: found?.staff_id
-                  ? (staffMap.get(found.staff_id) || "-")
+                  ? (staffMap.get(String(found.staff_id)) || "-")
                   : "-"
               };
             }
@@ -244,7 +255,7 @@ async function load(){
               );
 
               const names = found
-                .map(r => staffMap.get(r.staff_id))
+                .map(r => staffMap.get(String(r.staff_id)))
                 .filter(Boolean);
 
               return {
