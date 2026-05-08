@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Command Post (FIXED FINAL)</title>
+  <title>Command Post (MODAL ASSIGN)</title>
 
   <style>
     body{
@@ -81,13 +81,50 @@
       border:none;
       cursor:pointer;
     }
+
+    /* ================= MODAL ================= */
+    .modal{
+      display:none;
+      position:fixed;
+      top:0; left:0;
+      width:100%; height:100%;
+      background:rgba(0,0,0,0.6);
+      justify-content:center;
+      align-items:center;
+    }
+
+    .modal-content{
+      background:#111827;
+      padding:20px;
+      border-radius:10px;
+      width:300px;
+      border:1px solid #334155;
+    }
+
+    select, button{
+      width:100%;
+      padding:8px;
+      margin-top:10px;
+      border-radius:6px;
+      border:none;
+    }
+
+    .close-btn{
+      background:#ef4444;
+      color:white;
+    }
+
+    .save-btn{
+      background:#22c55e;
+      color:white;
+    }
   </style>
 </head>
 
 <body>
 
 <header>
-  ⛪ Command Post (FIXED)
+  ⛪ Command Post (MODAL)
   <button onclick="load()"
     style="background:#3b82f6;color:white;border:none;padding:6px 10px;border-radius:6px;">
     Refresh
@@ -96,8 +133,24 @@
 
 <div class="grid" id="grid"></div>
 
+<!-- ================= MODAL ================= -->
+<div class="modal" id="modal">
+  <div class="modal-content">
+    <div id="modalTitle">Assign</div>
+
+    <select id="staffSelect"></select>
+
+    <button class="save-btn" onclick="saveAssign()">Assign</button>
+    <button class="close-btn" onclick="closeModal()">Close</button>
+  </div>
+</div>
+
 <script type="module">
 import { db } from "../assets/app.js";
+
+let currentServiceId = null;
+let currentRole = null;
+let staffList = [];
 
 /* ================= DATE ================= */
 function parseDate(d){
@@ -106,7 +159,7 @@ function parseDate(d){
   return new Date(Number(y), Number(m)-1, Number(day));
 }
 
-/* ================= ±1 WEEK WINDOW ================= */
+/* ================= WINDOW ================= */
 function inWindow(d){
   const dt = parseDate(d);
   if(!dt) return false;
@@ -139,36 +192,30 @@ async function load(){
   const roles = rolesRes.data || [];
   const templates = templateRes.data || [];
   const availability = availabilityRes.data || [];
-  const staff = staffRes.data || [];
+  staffList = staffRes.data || [];
 
-  /* ================= MAPS ================= */
-
-  const staffMap = new Map(
-    staff.map(s => [String(s.id).trim(), s.name])
-  );
+  const staffMap = new Map(staffList.map(s => [String(s.id), s.name]));
 
   const roleMap = new Map();
   roles.forEach(r => {
-    const key = String(r.service_id || r.service_id).trim();
+    const key = String(r.service_id);
     if (!roleMap.has(key)) roleMap.set(key, []);
     roleMap.get(key).push(r);
   });
 
   const templateMap = new Map();
   templates.forEach(t => {
-    const key = String(t.template_id).trim();
+    const key = String(t.template_id);
     if (!templateMap.has(key)) templateMap.set(key, []);
     templateMap.get(key).push(t);
   });
 
-  /* ================= SORT ================= */
   services.sort((a,b) =>
     parseDate(a.service_date) - parseDate(b.service_date)
   );
 
   const cols = [[],[],[],[]];
 
-  /* ================= SLOT DISTRIBUTION ================= */
   services.forEach(s => {
     const time = (s.service_slots?.time || "").toLowerCase();
     const location = (s.service_slots?.location || "").toLowerCase();
@@ -183,7 +230,6 @@ async function load(){
     if(i >= 0) cols[i].push(s);
   });
 
-  /* ================= RENDER ================= */
   const grid = document.getElementById("grid");
   grid.innerHTML = "";
 
@@ -194,73 +240,22 @@ async function load(){
 
         ${col.map(s => {
 
-          const serviceKey = String(s.service_id || s.id).trim();
+          const serviceKey = String(s.service_id || s.id);
           const serviceRoles = roleMap.get(serviceKey) || [];
 
-          const assigned = templateMap.get(String(s.service_template_id)) || [];
-
-          const assignedIds = new Set(assigned.map(a => String(a.staff_id)));
-
-          const unavailableIds = new Set(
-            availability
-              .filter(a =>
-                a.service_date === s.service_date &&
-                a.service_slot_id === s.service_slot_id &&
-                a.status === "unavailable"
-              )
-              .map(a => String(a.staff_id))
-          );
-
-          const availableCount =
-            [...assignedIds].filter(id => !unavailableIds.has(id)).length;
-
-          const KEY = [
-            "Service Pastor",
-            "Anchor",
-            "Welcome IC",
-            "Hospitality Cell"
-          ];
+          const KEY = ["Service Pastor","Anchor","Welcome IC","Hospitality Cell"];
 
           const appointments = KEY.map(role => {
 
-            if (
-              role === "Service Pastor" ||
-              role === "Anchor" ||
-              role === "Welcome IC"
-            ) {
+            const found = serviceRoles.find(r =>
+              (r.role || "").trim().toLowerCase() === role.toLowerCase()
+            );
 
-              const found = serviceRoles.find(r =>
-                (r.role || "").trim().toLowerCase() === role.toLowerCase()
-              );
+            const name = found?.staff_id
+              ? staffMap.get(String(found.staff_id))
+              : "-";
 
-              const name = found?.staff_id
-                ? staffMap.get(String(found.staff_id).trim())
-                : null;
-
-              return {
-                role,
-                name: name || "-"
-              };
-            }
-
-            if (role === "Hospitality Cell") {
-
-              const found = serviceRoles.filter(r =>
-                (r.role || "").toLowerCase().includes("welcome member") ||
-                (r.role || "").toLowerCase().includes("plaza")
-              );
-
-              const names = found
-                .map(r => staffMap.get(String(r.staff_id).trim()))
-                .filter(Boolean);
-
-              return {
-                role,
-                name: names.length ? names.join(", ") : "-"
-              };
-            }
-
-            return { role, name: "-" };
+            return { role, name };
           });
 
           const d = parseDate(s.service_date);
@@ -268,38 +263,14 @@ async function load(){
           return `
             <div class="card">
 
-              <div class="title">
-                ${s.service_slots?.label || "Service"}
-              </div>
+              <div class="title">${s.service_slots?.label || "Service"}</div>
 
               <div class="tag">
-                ${d.toLocaleDateString("en-SG",{weekday:"long"})}
-                |
+                ${d.toLocaleDateString("en-SG",{weekday:"long"})} |
                 ${d.toLocaleDateString("en-SG",{day:"2-digit",month:"short"})}
               </div>
 
-              <div class="tag">
-                ⏰ ${s.service_slots?.time || ""}
-              </div>
-
-              <div class="section">
-                <b>Staff Summary</b>
-
-                <div class="row">
-                  <span>Assigned</span>
-                  <span>${assignedIds.size}</span>
-                </div>
-
-                <div class="row">
-                  <span>Unavailable</span>
-                  <span class="bad">${unavailableIds.size}</span>
-                </div>
-
-                <div class="row">
-                  <span>Available</span>
-                  <span class="good">${availableCount}</span>
-                </div>
-              </div>
+              <div class="tag">⏰ ${s.service_slots?.time || ""}</div>
 
               <div class="section">
                 <b>Key Appointments</b>
@@ -312,7 +283,7 @@ async function load(){
 
                       ${a.name === "-" ? `
                         <button class="small"
-                          onclick="assignStaff('${s.id}','${a.role}')">
+                          onclick="openAssign('${s.id}','${a.role}')">
                           Assign
                         </button>
                       ` : ""}
@@ -331,37 +302,44 @@ async function load(){
   });
 }
 
-/* ================= ASSIGN FUNCTION ================= */
-window.assignStaff = async function(serviceId, role){
+/* ================= MODAL ================= */
+window.openAssign = function(serviceId, role){
 
-  const staff = await db.from("staff").select("*");
-  const list = staff.data || [];
+  currentServiceId = serviceId;
+  currentRole = role;
 
-  const name = prompt(
-    `Assign ${role}\n\nAvailable staff:\n` +
-    list.map(s => s.name).join("\n")
-  );
+  document.getElementById("modalTitle").innerText =
+    `Assign ${role}`;
 
-  const selected = list.find(s => s.name === name);
+  const select = document.getElementById("staffSelect");
+  select.innerHTML = staffList.map(s =>
+    `<option value="${s.id}">${s.name}</option>`
+  ).join("");
 
-  if(!selected){
-    alert("Invalid staff name");
-    return;
-  }
+  document.getElementById("modal").style.display = "flex";
+};
+
+window.closeModal = function(){
+  document.getElementById("modal").style.display = "none";
+};
+
+window.saveAssign = async function(){
+
+  const staffId = document.getElementById("staffSelect").value;
 
   const { error } = await db.from("service_roles").insert({
-    service_id: serviceId,
-    role: role,
-    staff_id: selected.id
+    service_id: currentServiceId,
+    role: currentRole,
+    staff_id: staffId
   });
 
   if(error){
-    console.error(error);
-    alert("Failed to assign");
+    alert("Failed");
+    console.log(error);
     return;
   }
 
-  alert("Assigned!");
+  closeModal();
   load();
 };
 
