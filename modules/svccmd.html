@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Command Post (FULL OPS RESTORED)</title>
+  <title>Command Post (FINAL ROSTER LOGIC)</title>
 
   <style>
     body{
@@ -16,6 +16,7 @@
       background:#111827;
       display:flex;
       justify-content:space-between;
+      align-items:center;
       font-weight:bold;
     }
 
@@ -68,6 +69,7 @@
       border:none;
       background:#3b82f6;
       color:white;
+      cursor:pointer;
     }
 
     .modal{
@@ -83,7 +85,17 @@
       background:#111827;
       padding:20px;
       border-radius:10px;
-      width:320px;
+      width:360px;
+      max-height:80vh;
+      overflow:auto;
+    }
+
+    .staff-row{
+      display:flex;
+      justify-content:space-between;
+      padding:6px;
+      border-bottom:1px solid #1f2937;
+      font-size:12px;
     }
 
     select, button{
@@ -95,22 +107,32 @@
     }
 
     .save{ background:#22c55e; color:white; }
+    .danger{ background:#ef4444; color:white; }
   </style>
 </head>
 
 <body>
 
 <header>
-  ⛪ Command Post (FULL OPS RESTORED)
+  ⛪ Command Post (FINAL ROSTER LOGIC)
   <button onclick="load()">Refresh</button>
 </header>
 
 <div class="grid" id="grid"></div>
 
-<!-- MODAL -->
-<div class="modal" id="modal">
+<!-- AVAILABILITY MODAL -->
+<div class="modal" id="availModal">
   <div class="modal-content">
-    <div id="modalTitle">Assign</div>
+    <h3>Manage Availability</h3>
+    <div id="availList"></div>
+    <button class="save" onclick="closeAvail()">Done</button>
+  </div>
+</div>
+
+<!-- ASSIGN MODAL -->
+<div class="modal" id="assignModal">
+  <div class="modal-content">
+    <h3 id="assignTitle">Assign</h3>
     <select id="staffSelect"></select>
     <button class="save" onclick="saveAssign()">Assign</button>
   </div>
@@ -122,50 +144,59 @@ import { db } from "../assets/app.js";
 let staffList = [];
 let currentService = null;
 let currentRole = null;
+let assignedStaff = [];
+let unavailableSet = new Set();
 
 /* ================= LOAD ================= */
 async function load(){
 
-  const [servicesRes, rolesRes, availRes, attendanceRes, staffRes] = await Promise.all([
+  const [servicesRes, templateRes, availabilityRes, staffRes, rolesRes] = await Promise.all([
     db.from("services").select(`*, service_slots(label,time,location)`),
-    db.from("service_roles").select("*"),
+    db.from("staff_service_templates").select("*"),
     db.from("staff_availability").select("*"),
-    db.from("staff_service_attendance").select("*"),
-    db.from("staff").select("*")
+    db.from("staff").select("*"),
+    db.from("service_roles").select("*")
   ]);
 
   const services = servicesRes.data || [];
-  const roles = rolesRes.data || [];
-  const availability = availRes.data || [];
-  const attendance = attendanceRes.data || [];
+  const templates = templateRes.data || [];
+  const availability = availabilityRes.data || [];
   staffList = staffRes.data || [];
+  const roles = rolesRes.data || [];
 
-  const staffMap = new Map(staffList.map(s => [String(s.id), s.name]));
+  const staffMap = new Map(staffList.map(s=>[String(s.id),s.name]));
+
+  const templateMap = new Map();
+  templates.forEach(t=>{
+    const key = String(t.service_id);
+    if(!templateMap.has(key)) templateMap.set(key,[]);
+    templateMap.get(key).push(t.staff_id);
+  });
+
+  const availMap = new Map();
+  availability.forEach(a=>{
+    const key = `${a.service_id}-${a.staff_id}`;
+    availMap.set(key,true);
+  });
 
   const roleMap = new Map();
   roles.forEach(r=>{
     const key = String(r.service_id);
-    if(!roleMap.has(key)) roleMap.set(key, []);
+    if(!roleMap.has(key)) roleMap.set(key,[]);
     roleMap.get(key).push(r);
   });
 
-  const availSet = new Set(
-    availability.map(a => `${a.service_id}-${a.staff_id}`)
-  );
-
   const grid = document.getElementById("grid");
-  grid.innerHTML = "";
+  grid.innerHTML="";
 
-  const cols = [[],[],[],[]];
+  const cols=[[],[],[],[]];
 
   services.forEach(s=>{
-    const t = (s.service_slots?.time||"").replace(":","");
-    const loc = (s.service_slots?.location||"").toLowerCase();
-
-    let i = -1;
+    const t=(s.service_slots?.time||"").replace(":","");
+    let i=-1;
     if(t.includes("1430")) i=0;
     else if(t.includes("0830")) i=1;
-    else if(t.includes("1045") && !loc.includes("jurong")) i=2;
+    else if(t.includes("1045")) i=2;
     else i=3;
 
     if(i>=0) cols[i].push(s);
@@ -177,24 +208,19 @@ async function load(){
 
         ${col.map(s=>{
 
-          const serviceRoles = roleMap.get(String(s.id)) || [];
+          const assigned = templateMap.get(String(s.id)) || [];
 
-          const assignedIds = new Set(
-            serviceRoles.map(r => r.staff_id).filter(Boolean)
+          const unavailable = assigned.filter(id =>
+            availMap.has(`${s.id}-${id}`)
           );
 
-          const unavailableCount = [...assignedIds]
-            .filter(id => availSet.has(`${s.id}-${id}`)).length;
+          const available = assigned.filter(id =>
+            !availMap.has(`${s.id}-${id}`)
+          );
 
-          const availableCount =
-            staffList.length - unavailableCount;
+          const serviceRoles = roleMap.get(String(s.id)) || [];
 
-          const KEY = [
-            "Service Pastor",
-            "Anchor",
-            "Welcome IC",
-            "Hospitality Cell"
-          ];
+          const KEY = ["Service Pastor","Anchor","Welcome IC","Hospitality Cell"];
 
           const appointments = KEY.map(role=>{
 
@@ -202,12 +228,10 @@ async function load(){
               (r.role||"").toLowerCase() === role.toLowerCase()
             );
 
-            const staffId = found?.staff_id;
-
             return {
               role,
-              staffId,
-              name: staffId ? staffMap.get(String(staffId)) : "-"
+              staffId: found?.staff_id,
+              name: found?.staff_id ? staffMap.get(String(found.staff_id)) : "-"
             };
           });
 
@@ -217,33 +241,37 @@ async function load(){
               <div class="title">${s.service_slots?.label}</div>
               <div class="tag">${s.service_date}</div>
 
-              <!-- ================= STATS RESTORED ================= -->
+              <!-- ================= STATS ================= -->
               <div class="section">
                 <b>Staff Summary</b>
 
                 <div class="row">
-                  <span>Assigned</span>
-                  <span>${assignedIds.size}</span>
+                  <span>Total Assigned</span>
+                  <span>${assigned.length}</span>
                 </div>
 
                 <div class="row">
                   <span>Unavailable</span>
-                  <span class="bad">${unavailableCount}</span>
+                  <span class="bad">${unavailable.length}</span>
                 </div>
 
                 <div class="row">
                   <span>Available</span>
-                  <span class="good">${availableCount}</span>
+                  <span class="good">${available.length}</span>
                 </div>
+
+                <button class="small" onclick="openAvailability('${s.id}','${JSON.stringify(assigned)}')">
+                  Manage Availability
+                </button>
               </div>
 
+              <!-- ================= KEY ROLES ================= -->
               <div class="section">
                 <b>Key Appointments</b>
 
                 ${appointments.map(a=>`
                   <div class="row">
                     <span>${a.role}</span>
-
                     <span>
                       ${a.name}
 
@@ -251,7 +279,6 @@ async function load(){
                         onclick="openAssign('${s.id}','${a.role}')">
                         Assign
                       </button>
-
                     </span>
                   </div>
                 `).join("")}
@@ -267,15 +294,72 @@ async function load(){
   });
 }
 
+/* ================= AVAILABILITY ================= */
+window.openAvailability = function(serviceId, assignedJson){
+
+  currentService = serviceId;
+  assignedStaff = JSON.parse(assignedJson);
+
+  const box = document.getElementById("availList");
+
+  box.innerHTML = assignedStaff.map(id=>{
+    const name = staffList.find(s=>s.id===id)?.name;
+
+    const isUnavailable = false; // simplify view here
+
+    return `
+      <div class="staff-row">
+        <span>${name}</span>
+
+        <button onclick="toggleAvail('${serviceId}','${id}')">
+          Toggle
+        </button>
+      </div>
+    `;
+  }).join("");
+
+  document.getElementById("availModal").style.display="flex";
+};
+
+window.toggleAvail = async function(serviceId, staffId){
+
+  const { data } = await db
+    .from("staff_availability")
+    .select("*")
+    .eq("service_id", serviceId)
+    .eq("staff_id", staffId);
+
+  if(data.length){
+    await db.from("staff_availability")
+      .delete()
+      .eq("service_id", serviceId)
+      .eq("staff_id", staffId);
+  } else {
+    await db.from("staff_availability").insert({
+      service_id: serviceId,
+      staff_id: staffId,
+      status:"unavailable"
+    });
+  }
+
+  load();
+};
+
+window.closeAvail = function(){
+  document.getElementById("availModal").style.display="none";
+};
+
 /* ================= ASSIGN ================= */
 window.openAssign = function(serviceId, role){
   currentService = serviceId;
   currentRole = role;
 
-  document.getElementById("staffSelect").innerHTML =
-    staffList.map(s=>`<option value="${s.id}">${s.name}</option>`).join("");
+  const availableStaff = staffList; // later filter by availability
 
-  document.getElementById("modal").style.display="flex";
+  document.getElementById("staffSelect").innerHTML =
+    availableStaff.map(s=>`<option value="${s.id}">${s.name}</option>`).join("");
+
+  document.getElementById("assignModal").style.display="flex";
 };
 
 window.saveAssign = async function(){
@@ -290,7 +374,7 @@ window.saveAssign = async function(){
     onConflict:"service_id,role"
   });
 
-  document.getElementById("modal").style.display="none";
+  document.getElementById("assignModal").style.display="none";
   load();
 };
 
