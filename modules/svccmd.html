@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Command Post + Roster System (Unified)</title>
+  <title>Command Post (Roster + Reporting + Assignment)</title>
 
   <style>
     body{
@@ -72,10 +72,11 @@
     button.small{
       font-size:10px;
       padding:2px 6px;
+      margin-left:4px;
+      border-radius:4px;
+      border:none;
       background:#3b82f6;
       color:white;
-      border:none;
-      border-radius:4px;
       cursor:pointer;
     }
 
@@ -104,13 +105,14 @@
     }
 
     .save{ background:#22c55e; color:white; }
+    .danger{ background:#ef4444; color:white; }
   </style>
 </head>
 
 <body>
 
 <header>
-  ⛪ Unified Command Post (Roster Enabled)
+  ⛪ Command Post (FULL OPS SYSTEM)
   <button onclick="load()">Refresh</button>
 </header>
 
@@ -121,7 +123,7 @@
   <div class="modal-content">
     <div id="modalTitle">Assign</div>
     <select id="staffSelect"></select>
-    <button class="save" onclick="saveAssign()">Save</button>
+    <button class="save" onclick="saveAssign()">Assign / Reassign</button>
   </div>
 </div>
 
@@ -132,12 +134,13 @@ let staffList = [];
 let currentService = null;
 let currentRole = null;
 
-/* ================= DATE WINDOW ================= */
+/* ================= DATE ================= */
 function parseDate(d){
   const [y,m,day] = d.split("-");
   return new Date(y, m-1, day);
 }
 
+/* ================= WINDOW ================= */
 function inWindow(d){
   const dt = parseDate(d);
   const now = new Date();
@@ -149,24 +152,27 @@ function inWindow(d){
 /* ================= LOAD ================= */
 async function load(){
 
-  const [servicesRes, rolesRes, availRes, staffRes] = await Promise.all([
+  const [servicesRes, rolesRes, availRes, staffRes, attendanceRes] = await Promise.all([
     db.from("services").select(`*, service_slots(label,time,location)`),
     db.from("service_roles").select("*"),
     db.from("staff_availability").select("*"),
-    db.from("staff").select("*")
+    db.from("staff").select("*"),
+    db.from("staff_service_attendance").select("*")
   ]);
 
   let services = (servicesRes.data || []).filter(s => inWindow(s.service_date));
+
   const roles = rolesRes.data || [];
   const availability = availRes.data || [];
+  const attendance = attendanceRes.data || [];
   staffList = staffRes.data || [];
 
   const staffMap = new Map(staffList.map(s => [String(s.id), s.name]));
 
   const roleMap = new Map();
-  roles.forEach(r => {
+  roles.forEach(r=>{
     const key = String(r.service_id);
-    if (!roleMap.has(key)) roleMap.set(key, []);
+    if(!roleMap.has(key)) roleMap.set(key, []);
     roleMap.get(key).push(r);
   });
 
@@ -175,8 +181,8 @@ async function load(){
   const cols = [[],[],[],[]];
 
   services.forEach(s=>{
-    const t = (s.service_slots?.time || "").replace(":","");
-    const loc = (s.service_slots?.location || "").toLowerCase();
+    const t = (s.service_slots?.time||"").replace(":","");
+    const loc = (s.service_slots?.location||"").toLowerCase();
 
     let i = -1;
     if(t.includes("1430")) i=0;
@@ -188,75 +194,86 @@ async function load(){
   });
 
   const grid = document.getElementById("grid");
-  grid.innerHTML = "";
+  grid.innerHTML="";
 
   cols.forEach(col=>{
     grid.innerHTML += `
       <div class="col">
-      ${col.map(s=>{
+        ${col.map(s=>{
 
-        const serviceRoles = roleMap.get(String(s.id)) || [];
+          const serviceRoles = roleMap.get(String(s.id)) || [];
 
-        const KEY = ["Service Pastor","Anchor","Welcome IC","Hospitality Cell"];
+          const KEY = [
+            "Service Pastor",
+            "Anchor",
+            "Welcome IC",
+            "Hospitality Cell"
+          ];
 
-        const appointments = KEY.map(role=>{
+          const appointments = KEY.map(role=>{
 
-          const found = serviceRoles.find(r =>
-            (r.role||"").toLowerCase() === role.toLowerCase()
-          );
+            const found = serviceRoles.find(r =>
+              (r.role||"").toLowerCase() === role.toLowerCase()
+            );
 
-          return {
-            role,
-            staffId: found?.staff_id || null,
-            name: found?.staff_id ? staffMap.get(String(found.staff_id)) : "-"
-          };
-        });
+            const staffId = found?.staff_id;
 
-        const availableStaff = staffList.filter(staff=>{
+            const attendanceRecord = attendance.find(a =>
+              a.staff_id === staffId &&
+              a.service_id === s.id
+            );
 
-          const isUnavailable = availability.some(a =>
-            a.staff_id === staff.id &&
-            a.service_date === s.service_date &&
-            a.service_slot_id === s.service_slot_id
-          );
+            return {
+              role,
+              staffId,
+              name: staffId ? staffMap.get(String(staffId)) : "-",
+              status: attendanceRecord?.status || null
+            };
+          });
 
-          return !isUnavailable;
-        });
+          return `
+            <div class="card">
 
-        return `
-          <div class="card">
-            <div class="title">${s.service_slots?.label}</div>
-            <div class="tag">${s.service_date}</div>
+              <div class="title">${s.service_slots?.label}</div>
+              <div class="tag">${s.service_date}</div>
 
-            <div class="section">
-              ${appointments.map(a=>`
-                <div class="row">
-                  <span>${a.role}</span>
-                  <span>
-                    ${a.name}
-                    <button class="small"
-                      onclick="openAssign('${s.id}','${a.role}')">
-                      Assign
-                    </button>
-                  </span>
-                </div>
-              `).join("")}
+              <div class="section">
+                <b>Key Appointments</b>
+
+                ${appointments.map(a=>`
+                  <div class="row">
+                    <span>${a.role}</span>
+                    <span>
+                      ${a.name}
+
+                      <button class="small"
+                        onclick="openAssign('${s.id}','${a.role}')">
+                        Assign
+                      </button>
+
+                      ${a.staffId ? `
+                        <button class="small" onclick="report('${s.id}','${a.staffId}','present')">P</button>
+                        <button class="small" onclick="report('${s.id}','${a.staffId}','late')">L</button>
+                        <button class="small" onclick="report('${s.id}','${a.staffId}','absent')">A</button>
+                      ` : ""}
+
+                    </span>
+                  </div>
+                `).join("")}
+
+              </div>
             </div>
-          </div>
-        `;
-      }).join("")}
+          `;
+        }).join("")}
       </div>
     `;
   });
 }
 
-/* ================= ASSIGN MODAL ================= */
+/* ================= ASSIGN ================= */
 window.openAssign = function(serviceId, role){
   currentService = serviceId;
   currentRole = role;
-
-  document.getElementById("modalTitle").innerText =
-    "Assign " + role;
 
   document.getElementById("staffSelect").innerHTML =
     staffList.map(s=>`<option value="${s.id}">${s.name}</option>`).join("");
@@ -272,11 +289,26 @@ window.saveAssign = async function(){
     service_id: currentService,
     role: currentRole,
     staff_id: staffId
-  },{
+  }, {
     onConflict:"service_id,role"
   });
 
   document.getElementById("modal").style.display="none";
+  load();
+};
+
+/* ================= REPORTING ================= */
+window.report = async (serviceId, staffId, status)=>{
+
+  await db.from("staff_service_attendance").upsert({
+    service_id: serviceId,
+    staff_id: staffId,
+    status,
+    timestamp: new Date().toISOString()
+  },{
+    onConflict:"service_id,staff_id"
+  });
+
   load();
 };
 
