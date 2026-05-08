@@ -174,12 +174,12 @@ async function load(){
   .select(`
     id,
     role,
+    service_id,
     staff_id,
     staff:staff_id (
       name
-    ),
-    service_id
-  `)
+    )
+  `),
 
     db
       .from("staff_service_templates")
@@ -298,9 +298,7 @@ async function load(){
               return {
                 role,
                 name:
-                  found && found.staff_id
-                    ? (staffMap[found.staff?.name] || "⚠ Missing Staff")
-                    : "-"
+  found?.staff?.name || "-"
               };
             }
 
