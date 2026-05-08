@@ -559,13 +559,6 @@ async function load(){
 
         </button>
 
-        <button class="save"
-          onclick="returnAvailable()">
-
-          Return Available
-
-        </button>
-
       </div>
 
     </div>
@@ -749,12 +742,48 @@ window.showUnavailable = function(date, slotId){
 
     : list.map(a => `
         <div class="staff-item">
-          ${staffMap.get(String(a.staff_id)) || a.staff_id}
+
+          <div class="row">
+
+            <span>
+              ${staffMap.get(String(a.staff_id)) || a.staff_id}
+            </span>
+
+            <button class="small"
+              onclick="returnAvailableFromModal(
+                '${a.staff_id}',
+                '${a.service_date}',
+                '${a.service_slot_id}'
+              )">
+
+              Return
+
+            </button>
+
+          </div>
+
         </div>
       `).join("");
 
   document.getElementById("unavailableModal").style.display =
     "flex";
+};
+
+window.returnAvailableFromModal = async function(
+  staffId,
+  serviceDate,
+  slotId
+){
+
+  await db.from("staff_availability")
+    .delete()
+    .eq("staff_id", staffId)
+    .eq("service_date", serviceDate)
+    .eq("service_slot_id", slotId);
+
+  load();
+
+  showUnavailable(serviceDate, slotId);
 };
 
 window.closeUnavailableModal = function(){
@@ -792,33 +821,6 @@ window.markUnavailable = async function(){
   },{
     onConflict:"staff_id,service_date,service_slot_id"
   });
-
-  load();
-};
-
-window.returnAvailable = async function(){
-
-  const staffId =
-    document.getElementById("manageStaff").value;
-
-  const serviceDate =
-    document.getElementById("manageDate").value;
-
-  const serviceId =
-    document.getElementById("manageService").value;
-
-  const service =
-    availabilityServices.find(s =>
-      String(s.id) === String(serviceId)
-    );
-
-  const slotId = service.service_slot_id;
-
-  await db.from("staff_availability")
-    .delete()
-    .eq("staff_id", staffId)
-    .eq("service_date", serviceDate)
-    .eq("service_slot_id", slotId);
 
   load();
 };
