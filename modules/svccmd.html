@@ -221,42 +221,42 @@ async function load(){
 
           const appointments = KEY.map(role => {
 
-            if(
-              role === "Service Pastor" ||
-              role === "Anchor" ||
-              role === "Welcome IC"
-            ){
+  if (
+    role === "Service Pastor" ||
+    role === "Anchor" ||
+    role === "Welcome IC"
+  ) {
 
-              const found = serviceRoles.find(r =>
-                (r.role || "").trim().toLowerCase() ===
-                role.trim().toLowerCase()
-              );
+    const found = serviceRoles.find(r =>
+      (r.role || "").trim().toLowerCase() ===
+      role.trim().toLowerCase()
+    );
 
-              return {
-                role,
-                name: found ? (staffMap[found.staff_id] || "-") : "-"
-              };
-            }
+    return {
+      role,
+      name: found?.staff_id ? (staffMap[found.staff_id] || "-") : "-"
+    };
+  }
 
-            if(role === "Hospitality Cell"){
+  if (role === "Hospitality Cell") {
 
-              const found = serviceRoles.filter(r =>
-                r.role.includes("Welcome Member") ||
-                r.role.includes("Plaza")
-              );
+    const found = serviceRoles.filter(r =>
+      (r.role || "").toLowerCase().includes("welcome member") ||
+      (r.role || "").toLowerCase().includes("plaza")
+    );
 
-              const names = found
-                .map(r => staffMap[r.staff_id])
-                .filter(Boolean);
+    const names = found
+      .map(r => staffMap[r.staff_id])
+      .filter(Boolean);
 
-              return {
-                role,
-                name: names.length ? names.join(", ") : "-"
-              };
-            }
+    return {
+      role,
+      name: names.length ? names.join(", ") : "-"
+    };
+  }
 
-            return { role, name: "-" };
-          });
+  return { role, name: "-" };
+});
 
           const d=parseDate(s.service_date);
 
