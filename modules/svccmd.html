@@ -498,52 +498,65 @@ async function load(){
 
                 <b>Appointments</b>
 
-                ${appointments.map(a=>`
+${appointments
+  .filter(a => {
 
-                  <div class="row">
+    // If NOT communion service → hide communion-specific roles
+    if (!s.is_communion_service) {
+      const roleLower = (a.role || "").toLowerCase();
 
-                    <span>
-                      ${a.role}
-                    </span>
+      const isCommunionRole =
+        roleLower.includes("communion") ||
+        roleLower.includes("mindef");
 
-                    <span style="
-                      display:flex;
-                      align-items:center;
-                      gap:6px;
-                    ">
+      return !isCommunionRole;
+    }
 
-                      <span class="${
-                        a.unavailable ? 'bad' : ''
-                      }">
+    // If communion service → show everything
+    return true;
+  })
+  .map(a => `
 
-                        ${a.name}
+    <div class="row">
 
-                        ${
-                          a.unavailable
-                          ? ' (Unavailable)'
-                          : ''
-                        }
+      <span>
+        ${a.role}
+      </span>
 
-                      </span>
+      <span style="
+        display:flex;
+        align-items:center;
+        gap:6px;
+      ">
 
-                      <button class="small"
-                        onclick="openAssign(
-                          '${s.id}',
-                          '${s.service_template_id}',
-                          '${s.service_date}',
-                          '${s.service_slot_id}',
-                          '${a.role}'
-                        )">
+        <span class="${a.unavailable ? 'bad' : ''}">
 
-                        Assign
+          ${a.name}
 
-                      </button>
+          ${a.unavailable ? ' (Unavailable)' : ''}
 
-                    </span>
+        </span>
 
-                  </div>
+        <button class="small"
+          onclick="openAssign(
+            '${s.id}',
+            '${s.service_template_id}',
+            '${s.service_date}',
+            '${s.service_slot_id}',
+            '${a.role}'
+          )">
 
-                `).join("")}
+          Assign
+
+        </button>
+
+      </span>
+
+    </div>
+
+  `)
+  .join("")
+}
 
               </div>
 
