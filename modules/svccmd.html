@@ -723,6 +723,8 @@ window.saveAssign = async function(){
 
 /* ================= UNAVAILABLE LIST ================= */
 
+/* ================= UNAVAILABLE LIST ================= */
+
 window.showUnavailable = function(date, slotId){
 
   const staffMap =
@@ -738,9 +740,16 @@ window.showUnavailable = function(date, slotId){
 
     list.length === 0
 
-    ? `<div class="tag">No unavailable staff</div>`
+    ? `
+
+      <div class="tag">
+        No unavailable staff
+      </div>
+
+    `
 
     : list.map(a => `
+
         <div class="staff-item">
 
           <div class="row">
@@ -749,8 +758,9 @@ window.showUnavailable = function(date, slotId){
               ${staffMap.get(String(a.staff_id)) || a.staff_id}
             </span>
 
-            <button class="small"
-              onclick="returnAvailableFromModal(
+            <button
+              class="small save"
+              onclick="returnAvailableDirect(
                 '${a.staff_id}',
                 '${a.service_date}',
                 '${a.service_slot_id}'
@@ -763,13 +773,22 @@ window.showUnavailable = function(date, slotId){
           </div>
 
         </div>
+
       `).join("");
 
   document.getElementById("unavailableModal").style.display =
     "flex";
 };
 
-window.returnAvailableFromModal = async function(
+window.closeUnavailableModal = function(){
+
+  document.getElementById("unavailableModal").style.display =
+    "none";
+};
+
+/* ================= REALTIME RETURN AVAILABLE ================= */
+
+window.returnAvailableDirect = async function(
   staffId,
   serviceDate,
   slotId
@@ -781,9 +800,20 @@ window.returnAvailableFromModal = async function(
     .eq("service_date", serviceDate)
     .eq("service_slot_id", slotId);
 
-  load();
+  /* REFRESH LOCAL DATA */
+
+  const availRes =
+    await db.from("staff_availability").select("*");
+
+  availability = availRes.data || [];
+
+  /* REFRESH MODAL */
 
   showUnavailable(serviceDate, slotId);
+
+  /* REFRESH GRID */
+
+  load();
 };
 
 window.closeUnavailableModal = function(){
