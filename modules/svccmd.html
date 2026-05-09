@@ -277,7 +277,10 @@ async function load(){
       .select("*"),
 
     db.from("service_roles")
-      .select("*")
+      .select("*"),
+
+    db.from("service_template_roles")
+    .select("*")
   ]);
 
   const allServices = servicesRes.data || [];
@@ -293,6 +296,7 @@ async function load(){
   staffList = staffRes.data || [];
 
   const roles = rolesRes.data || [];
+  const templateRoles = templateRolesRes.data || [];
 
   const staffMap =
     new Map(staffList.map(s => [String(s.id), s.name]));
@@ -322,6 +326,19 @@ async function load(){
 
     roleMap.get(key).push(r);
   });
+
+  const templateRoleMap = new Map();
+
+templateRoles.forEach(r => {
+
+  const key = String(r.template_id);
+
+  if(!templateRoleMap.has(key)){
+    templateRoleMap.set(key, []);
+  }
+
+  templateRoleMap.get(key).push(r);
+});
 
   displayServices.sort((a,b)=>
     parseDate(a.service_date) -
@@ -389,38 +406,47 @@ async function load(){
             [...assignedIds]
               .filter(id => !unavailableIds.has(id));
 
-          const KEY = [
-            "Service Pastor",
-            "Anchor",
-            "Welcome IC",
-            "Hospitality Cell"
-          ];
+          /* ================= DYNAMIC APPOINTMENTS ================= */
 
-          const appointments = KEY.map(role=>{
+const templateDefinedRoles =
+  templateRoleMap.get(
+    String(s.service_template_id)
+  ) || [];
 
-            const assignedRole =
-              (roleMap.get(String(s.id)) || [])
-              .find(r =>
-                (r.role || "").toLowerCase() === role.toLowerCase()
-              );
+const appointments =
+  templateDefinedRoles.map(roleRow=>{
 
-            const templateMatch =
-              templateStaff.find(t =>
-                (t.role || "").toLowerCase() === role.toLowerCase()
-              );
+    const role = roleRow.role;
 
-            const staffId =
-              assignedRole?.staff_id ||
-              templateMatch?.staff_id;
+    const assignedRole =
+      (roleMap.get(String(s.id)) || [])
+      .find(r =>
+        (r.role || "").toLowerCase() ===
+        role.toLowerCase()
+      );
 
-            return {
-              role,
-              staffId,
-              name: staffId
-                ? staffMap.get(String(staffId))
-                : "-"
-            };
-          });
+    const templateMatch =
+      templateStaff.find(t =>
+        (t.role || "").toLowerCase() ===
+        role.toLowerCase()
+      );
+
+    const staffId =
+      assignedRole?.staff_id ||
+      templateMatch?.staff_id;
+
+    const unavailable =
+      unavailableIds.has(String(staffId));
+
+    return {
+      role,
+      staffId,
+      unavailable,
+      name: staffId
+        ? staffMap.get(String(staffId))
+        : "-"
+    };
+  });
 
           return `
             <div class="card">
@@ -473,17 +499,35 @@ async function load(){
 
                 <b>Key Appointments</b>
 
-                ${appointments.map(a=>`
+               ${appointments.map(a=>`
 
-                  <div class="row">
+  <div class="row">
 
-                    <span>${a.role}</span>
+    <span>
+      ${a.role}
+    </span>
 
-                    <span>
+    <span style="
+      display:flex;
+      align-items:center;
+      gap:6px;
+    ">
 
-                      ${a.name}
+      <span class="${
+        a.unavailable ? 'bad' : ''
+      }">
 
-                      <button class="small"
+        ${a.name}
+
+        ${
+          a.unavailable
+          ? ' (Unavailable)'
+          : ''
+        }
+
+      </span>
+
+      <button class="small"
                         onclick="openAssign(
                           '${s.id}',
                           '${s.service_template_id}',
