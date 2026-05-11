@@ -503,7 +503,25 @@ async function load(){
               </div>
 
               <div class="section">
+ <b>🏠 Home Cell Serving Hospitality</b>
 
+  <div class="row">
+    <span>Hospitality Cell Leader</span>
+
+    <button class="small save"
+      onclick="notifyLeader('${s.id}')">
+      Notify
+    </button>
+  </div>
+
+  <div class="row">
+    <span>Cell Pastor</span>
+
+    <button class="small save"
+      onclick="notifyPastor('${s.id}')">
+      Notify
+    </button>
+  </div>
                 <b>Staff Summary</b>
 
                 <div class="row">
@@ -971,6 +989,21 @@ window.markUnavailable = async function(){
 window.load = load;
 
 load();
+
+  window.notifyLeader = async function(serviceId){
+
+  // later connect to whatsapp / email / supabase logs
+  console.log("Notify Leader for service:", serviceId);
+
+  alert("Leader notified (stub)");
+};
+
+window.notifyPastor = async function(serviceId){
+
+  console.log("Notify Pastor for service:", serviceId);
+
+  alert("Pastor notified (stub)");
+};
 
 </script>
 
