@@ -16,17 +16,12 @@
       background:#111827;
       border-radius:10px;
       padding:20px;
-      max-width:1000px;
+      max-width:900px;
       margin:auto;
       border:1px solid #1f2937;
     }
 
     h2{ margin-top:0; }
-
-    label{
-      font-size:12px;
-      color:#94a3b8;
-    }
 
     input, button{
       width:100%;
@@ -35,12 +30,6 @@
       border:none;
       border-radius:6px;
       box-sizing:border-box;
-    }
-
-    .keyBox{
-      background:#0f172a;
-      border:1px solid #334155;
-      color:white;
     }
 
     button{
@@ -84,6 +73,12 @@
       color:#94a3b8;
     }
 
+    .keyBox{
+      background:#0f172a;
+      border:1px solid #334155;
+      color:white;
+    }
+
   </style>
 </head>
 
@@ -93,12 +88,10 @@
 
   <h2>🏠 Hospitality Duty Import</h2>
 
-  <!-- 🔑 ANON KEY -->
-  <label>Supabase ANON Key</label>
-  <input id="anonKey" class="keyBox" placeholder="Paste ANON KEY here" />
+  <!-- ANON KEY -->
+  <input id="anonKey" class="keyBox" placeholder="Paste Supabase ANON KEY" />
 
-  <!-- 📄 SHEET -->
-  <label>Google Sheet URL</label>
+  <!-- SHEET -->
   <input id="sheetUrl" placeholder="Paste Google Sheet URL" />
 
   <button class="previewBtn" onclick="previewSheet()">
@@ -106,150 +99,160 @@
   </button>
 
   <button class="importBtn" onclick="importHospitality()">
-    Import
+    Import / Sync Hospitality
   </button>
 
   <div class="summary" id="summary"></div>
+
   <div class="preview" id="preview"></div>
 
 </div>
 
 <script>
 
-let rows = [];
-let services = [];
-
-/* =========================
-   GET KEY
-========================= */
+const EDGE_URL =
+  "https://qnxiuojefowyzeanfhdz.supabase.co/functions/v1/import-hospitality";
 
 function getKey(){
   return document.getElementById("anonKey").value.trim();
 }
 
 /* =========================
-   TIME CONVERTER
+   GOOGLE SHEET → CSV
 ========================= */
 
-function toMinutes(timeStr){
+function toCsvUrl(sheetUrl){
 
-  if(!timeStr) return null;
+  const match = sheetUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
+  if(!match) throw new Error("Invalid Sheet URL");
 
-  // already 24h format
-  if(!timeStr.toLowerCase().includes("am") &&
-     !timeStr.toLowerCase().includes("pm")){
+  const sheetId = match[1];
+  const gid = (sheetUrl.match(/gid=([0-9]+)/) || [])[1] || "0";
 
-    const [h,m] = timeStr.split(":").map(Number);
-    return h*60 + m;
-  }
-
-  let isPM = timeStr.toLowerCase().includes("pm");
-
-  let clean = timeStr
-    .toLowerCase()
-    .replace("am","")
-    .replace("pm","")
-    .trim();
-
-  let [h,m] = clean.split(":").map(Number);
-
-  if(isPM && h < 12) h += 12;
-  if(!isPM && h === 12) h = 0;
-
-  return h*60 + m;
+  return `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
 }
 
 /* =========================
-   LOAD SERVICES
-========================= */
-
-async function loadServices(){
-
-  const key = getKey();
-
-  const res = await fetch(
-    "https://qnxiuojefowyzeanfhdz.supabase.co/rest/v1/services?select=id,start_time,end_time",
-    {
-      headers:{
-        apikey: key,
-        Authorization: `Bearer ${key}`
-      }
-    }
-  );
-
-  services = await res.json();
-}
-
-/* =========================
-   MATCH SERVICE (CORE LOGIC)
-========================= */
-
-function matchService(reportTime){
-
-  const t = toMinutes(reportTime);
-
-  for(const s of services){
-
-    const start = toMinutes(s.start_time);
-    const end = toMinutes(s.end_time);
-
-    if(t >= start && t <= end){
-      return s.id;
-    }
-  }
-
-  return null;
-}
-
-/* =========================
-   PREVIEW SHEET
+   PREVIEW
 ========================= */
 
 window.previewSheet = async function(){
 
   const sheetUrl = document.getElementById("sheetUrl").value;
-  const key = getKey();
+  const anonKey = getKey();
 
   if(!sheetUrl) return alert("Paste sheet URL");
-  if(!key) return alert("Paste ANON key");
+  if(!anonKey) return alert("Paste anon key");
 
-  await loadServices();
-
-  const csvUrl = sheetUrl.replace(
-    "/edit#gid=",
-    "/export?format=csv&gid="
-  );
+  const csvUrl = toCsvUrl(sheetUrl);
 
   const res = await fetch(csvUrl);
   const text = await res.text();
 
-  const lines = text.split("\n").map(r => r.split(","));
-
-  rows = [];
-
-  let matched = 0;
-  let unmatched = 0;
-
-  for(const r of lines.slice(1)){
-
-    const reportTime = r[1];
-
-    const serviceId = matchService(reportTime);
-
-    if(serviceId) matched++;
-    else unmatched++;
-
-    rows.push({
-      date: r[0],
-      reportTime,
-      pastor: r[3],
-      leader: r[4],
-      service_id: serviceId
-    });
+  // 🔥 DEBUG: detect Google login / HTML issue
+  if(text.includes("<html") || text.includes("DOCS_timingPromises")){
+    alert("❌ Google blocked access. Make sheet: 'Anyone with link → Viewer'");
+    console.log(text.slice(0,500));
+    return;
   }
 
-  document.getElementById("summary").innerHTML =
-    `✅ Matched: ${matched} | ❌ Unmatched: ${unmatched} | 📄 Total: ${rows.length}`;
+  const rows = parseCSV(text);
+
+  const payload = await fetch(EDGE_URL, {
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json",
+      "Authorization":`Bearer ${anonKey}`
+    },
+    body: JSON.stringify({
+      mode:"preview",
+      rows
+    })
+  });
+
+  const data = await payload.json();
+
+  if(!payload.ok){
+    alert(data.error || "Preview failed");
+    return;
+  }
+
+  render(data);
+};
+
+/* =========================
+   IMPORT
+========================= */
+
+window.importHospitality = async function(){
+
+  const sheetUrl = document.getElementById("sheetUrl").value;
+  const anonKey = getKey();
+
+  const csvUrl = toCsvUrl(sheetUrl);
+
+  const res = await fetch(csvUrl);
+  const text = await res.text();
+
+  const rows = parseCSV(text);
+
+  const payload = await fetch(EDGE_URL, {
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json",
+      "Authorization":`Bearer ${anonKey}`
+    },
+    body: JSON.stringify({
+      mode:"import",
+      rows
+    })
+  });
+
+  const data = await payload.json();
+
+  if(!payload.ok){
+    alert(data.error || "Import failed");
+    return;
+  }
+
+  alert("✅ Imported " + data.rows.length + " rows");
+};
+
+/* =========================
+   SIMPLE CSV PARSER
+========================= */
+
+function parseCSV(text){
+
+  const lines = text.split("\n").filter(l => l.trim());
+
+  const headers = lines[0].split(",");
+
+  return lines.slice(1).map(line => {
+
+    const cols = line.split(",");
+
+    return {
+      date: cols[0],
+      report_time: cols[1],
+      pastor: cols[2],
+      leader: cols[3]
+    };
+
+  });
+}
+
+/* =========================
+   RENDER
+========================= */
+
+function render(data){
+
+  document.getElementById("summary").innerHTML = `
+    ✅ Matched: ${data.matched} |
+    ❌ Unmatched: ${data.unmatched} |
+    📄 Total: ${data.rows.length}
+  `;
 
   document.getElementById("preview").innerHTML = `
     <table>
@@ -261,28 +264,21 @@ window.previewSheet = async function(){
         <th>Status</th>
       </tr>
 
-      ${rows.map(r => `
+      ${data.rows.map(r => `
         <tr>
-          <td>${r.date}</td>
-          <td>${r.reportTime}</td>
+          <td>${r.date || ""}</td>
+          <td>${r.report_time || ""}</td>
           <td>${r.pastor || ""}</td>
           <td>${r.leader || ""}</td>
-          <td class="${r.service_id ? 'good' : 'bad'}">
-            ${r.service_id ? "Matched" : "No Match"}
+          <td class="${r.service_id ? 'good':'bad'}">
+            ${r.service_id ? 'Matched' : 'No Match'}
           </td>
         </tr>
       `).join("")}
+
     </table>
   `;
-};
-
-/* =========================
-   IMPORT (placeholder)
-========================= */
-
-window.importHospitality = async function(){
-  alert("Connect Edge Function here");
-};
+}
 
 </script>
 
