@@ -313,12 +313,7 @@ async function load(){
   const staffMap =
     new Map(staffList.map(s => [String(s.id), s.name]));
 
-const hospitalityMap = new Map(
-  (hospitalityRes.data || []).map(d => [
-    `${d.service_date}_${d.service_slot_id}`,
-    d
-  ])
-);
+
   
   const templateMap = new Map();
 
@@ -511,12 +506,13 @@ const hospitalityMap = new Map(
                 ⏰ ${s.service_slots?.time || ""}
               </div>
 
-              <div class="section">
+              
 
              
-  <b>🏠 Home Cell Serving Hospitality</b>
+ <b>🏠 Home Cell Serving Hospitality</b>
 
   ${(() => {
+
     const key = `${s.service_date}_${s.service_slot_id}`;
     const hosp = hospitalityMap.get(key);
 
@@ -546,7 +542,8 @@ const hospitalityMap = new Map(
       Notify
     </button>
   </div>
-</div>
+
+
                 <b>Staff Summary</b>
 
                 <div class="row">
