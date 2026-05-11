@@ -750,11 +750,6 @@ window.openAssign = function(
 
   currentRole = role;
 
-  const templateStaff =
-    templates.filter(t =>
-      String(t.template_id) === String(templateId)
-    );
-
   const unavailableIds = new Set(
 
     availability
@@ -768,21 +763,44 @@ window.openAssign = function(
 
   const eligibleStaff = staffList.filter(s => {
 
-    const inTemplate =
-      templateStaff.some(t =>
-        String(t.staff_id) === String(s.id)
-      );
+    // Remove unavailable staff
+    if(unavailableIds.has(String(s.id))){
+      return false;
+    }
 
-    return inTemplate &&
-      !unavailableIds.has(String(s.id));
+    const roleLower =
+      (role || "").toLowerCase();
+
+    const isCommunionRole =
+      roleLower.includes("communion");
+
+    // Communion appointments
+    if(isCommunionRole){
+
+      return s.communion_eligible === true;
+    }
+
+    // All other appointments
+    return true;
   });
+
+  // Sort alphabetically
+  eligibleStaff.sort((a,b)=>
+    (a.name || "").localeCompare(b.name || "")
+  );
 
   document.getElementById("staffSelect").innerHTML =
 
     eligibleStaff.map(s => `
+
       <option value="${s.id}">
+
         ${s.name}
+
+        ${s.communion_eligible ? '🕊️' : ''}
+
       </option>
+
     `).join("");
 
   document.getElementById("modalTitle").innerText =
