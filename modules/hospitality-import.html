@@ -4,7 +4,6 @@
   <title>Hospitality Duty Import</title>
 
   <style>
-
     body{
       margin:0;
       background:#0f172a;
@@ -22,9 +21,7 @@
       border:1px solid #1f2937;
     }
 
-    h2{
-      margin-top:0;
-    }
+    h2{ margin-top:0; }
 
     input, button{
       width:100%;
@@ -56,7 +53,7 @@
       border:1px solid #334155;
       border-radius:8px;
       padding:10px;
-      max-height:400px;
+      max-height:500px;
       overflow:auto;
       font-size:12px;
     }
@@ -76,14 +73,13 @@
       background:#1e293b;
     }
 
-    .good{
-      color:#22c55e;
-      font-weight:bold;
-    }
+    .good{ color:#22c55e; font-weight:bold; }
+    .bad{ color:#ef4444; font-weight:bold; }
 
-    .bad{
-      color:#ef4444;
-      font-weight:bold;
+    .summary{
+      margin-top:10px;
+      font-size:12px;
+      color:#94a3b8;
     }
 
   </style>
@@ -95,197 +91,114 @@
 
   <h2>🏠 Hospitality Duty Import</h2>
 
-  <input
-    id="sheetUrl"
-    placeholder="Paste Google Sheet URL"
-  />
+  <input id="sheetUrl" placeholder="Paste Google Sheet URL" />
 
-  <button
-    class="previewBtn"
-    onclick="previewSheet()">
-
+  <button class="previewBtn" onclick="previewSheet()">
     Preview Sheet
-
   </button>
 
-  <button
-    class="importBtn"
-    onclick="importHospitality()">
-
+  <button class="importBtn" onclick="importHospitality()">
     Import / Sync Hospitality
-
   </button>
+
+  <div class="summary" id="summary"></div>
 
   <div class="preview" id="preview"></div>
 
 </div>
 
-<script type="module">
+<script>
 
-import { db } from "../assets/app.js";
-
-let parsedRows = [];
+let previewData = [];
 
 /* =========================
-   PARSE DATE
+   EDGE FUNCTION URL
 ========================= */
 
-function parseDate(v){
-
-  if(!v) return null;
-
-  const d = new Date(v);
-
-  return d.toISOString().split("T")[0];
-}
+const EDGE_URL =
+  "https://qnxiuojefowyzeanfhdz.supabase.co/functions/v1/import-hospitality";
 
 /* =========================
-   CLEAN TIME
+   PREVIEW
 ========================= */
 
-function cleanTime(v){
+window.previewSheet = async function () {
 
-  if(!v) return null;
+  const sheetUrl = document.getElementById("sheetUrl").value;
 
-  return v.trim().toUpperCase();
-}
+  if (!sheetUrl) {
+    alert("Please paste sheet URL");
+    return;
+  }
+
+  const res = await fetch(EDGE_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      sheetUrl,
+      mode: "preview"
+    })
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    alert(data.error || "Preview failed");
+    return;
+  }
+
+  previewData = data.rows || [];
+
+  renderPreview(data);
+};
 
 /* =========================
-   FIND SERVICE
+   IMPORT
 ========================= */
 
-async function findServiceId(date, reportTime){
+window.importHospitality = async function () {
 
-  const { data: services } = await db
-    .from("services")
-    .select(`
-      id,
-      service_date,
-      service_slot_id,
-      service_slots(
-        id,
-        label,
-        time
-      )
-    `)
-    .eq("service_date", date);
+  const sheetUrl = document.getElementById("sheetUrl").value;
 
-  if(!services || services.length === 0){
-    return null;
+  if (!sheetUrl) {
+    alert("Please paste sheet URL");
+    return;
   }
 
-  const t = reportTime;
+  const res = await fetch(EDGE_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      sheetUrl,
+      mode: "import"
+    })
+  });
 
-  // SATURDAY
-  if(
-    t >= "02:30PM" &&
-    t <= "04:30PM"
-  ){
+  const data = await res.json();
 
-    return services.find(s =>
-      (s.service_slots?.label || "")
-        .toLowerCase()
-        .includes("saturday")
-    )?.id || null;
+  if (!res.ok) {
+    alert(data.error || "Import failed");
+    return;
   }
 
-  // SUN 8.30
-  if(
-    t >= "08:00AM" &&
-    t <= "09:30AM"
-  ){
-
-    return services.find(s =>
-      (s.service_slots?.time || "")
-        .startsWith("08:30")
-    )?.id || null;
-  }
-
-  // SUN 10.45
-  if(
-    t >= "10:00AM" &&
-    t <= "12:00PM"
-  ){
-
-    return services.find(s => {
-
-      const label =
-        (s.service_slots?.label || "")
-          .toLowerCase();
-
-      const time =
-        s.service_slots?.time || "";
-
-      return (
-        time.startsWith("10:45") &&
-        !label.includes("jurong")
-      );
-
-    })?.id || null;
-  }
-
-  return null;
-}
+  alert(`✅ Imported ${data.rows.length} rows`);
+};
 
 /* =========================
-   PREVIEW SHEET
+   RENDER PREVIEW
 ========================= */
 
-window.previewSheet = async function(){
+function renderPreview(data){
 
-  const url =
-    document.getElementById("sheetUrl").value;
-
-  const csvUrl =
-    url.replace(
-      "/edit#gid=",
-      "/export?format=csv&gid="
-    );
-
-  const res = await fetch(csvUrl);
-
-  const text = await res.text();
-
-  const rows =
-    text.split("\n")
-      .map(r => r.split(","));
-
-  parsedRows = [];
-
-  for(const r of rows.slice(1)){
-
-    const dutyDate =
-      parseDate(r[0]);
-
-    const reportTime =
-      cleanTime(r[1]);
-
-    const serviceId =
-      await findServiceId(
-        dutyDate,
-        reportTime
-      );
-
-    parsedRows.push({
-
-      duty_date: dutyDate,
-
-      report_time: reportTime,
-
-      end_time: cleanTime(r[2]),
-
-      notes: r[3],
-
-      pastor: r[4],
-
-      leader: r[5],
-
-      source_sheet: url,
-
-      service_id: serviceId
-
-    });
-  }
+  document.getElementById("summary").innerHTML = `
+    ✅ Matched: ${data.matched} |
+    ❌ Unmatched: ${data.unmatched} |
+    📄 Total: ${data.rows.length}
+  `;
 
   document.getElementById("preview").innerHTML = `
 
@@ -299,30 +212,17 @@ window.previewSheet = async function(){
         <th>Status</th>
       </tr>
 
-      ${parsedRows.map(r => `
+      ${data.rows.map(r => `
 
         <tr>
 
-          <td>${r.duty_date}</td>
-
-          <td>${r.report_time}</td>
-
+          <td>${r.duty_date || ""}</td>
+          <td>${r.report_time || ""}</td>
           <td>${r.pastor || ""}</td>
-
           <td>${r.leader || ""}</td>
 
-          <td class="${
-            r.service_id
-              ? 'good'
-              : 'bad'
-          }">
-
-            ${
-              r.service_id
-                ? 'Matched'
-                : 'No Service Match'
-            }
-
+          <td class="${r.service_id ? 'good' : 'bad'}">
+            ${r.service_id ? 'Matched' : 'No Match'}
           </td>
 
         </tr>
@@ -330,41 +230,9 @@ window.previewSheet = async function(){
       `).join("")}
 
     </table>
+
   `;
-};
-
-/* =========================
-   IMPORT
-========================= */
-
-window.importHospitality = async function(){
-
-  if(parsedRows.length === 0){
-
-    alert("No data loaded");
-
-    return;
-  }
-
-  const { error } = await db
-    .from("hospitality_duty")
-    .upsert(parsedRows, {
-
-      onConflict:
-        "duty_date,report_time,end_time"
-
-    });
-
-  if(error){
-
-    alert(error.message);
-
-  }else{
-
-    alert("Hospitality Imported");
-
-  }
-};
+}
 
 </script>
 
