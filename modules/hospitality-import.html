@@ -37,15 +37,8 @@
       font-weight:bold;
     }
 
-    .previewBtn{
-      background:#3b82f6;
-      color:white;
-    }
-
-    .importBtn{
-      background:#22c55e;
-      color:white;
-    }
+    .previewBtn{ background:#3b82f6; color:white; }
+    .importBtn{ background:#22c55e; color:white; }
 
     .preview{
       margin-top:20px;
@@ -69,9 +62,7 @@
       text-align:left;
     }
 
-    th{
-      background:#1e293b;
-    }
+    th{ background:#1e293b; }
 
     .good{ color:#22c55e; font-weight:bold; }
     .bad{ color:#ef4444; font-weight:bold; }
@@ -87,7 +78,6 @@
       border:1px solid #334155;
       color:white;
     }
-
   </style>
 </head>
 
@@ -97,13 +87,14 @@
 
   <h2>🏠 Hospitality Duty Import</h2>
 
-  <!-- 🔑 SUPABASE KEY INPUT -->
+  <!-- 🔑 SUPABASE KEY -->
   <input
     id="anonKey"
     class="keyBox"
-    placeholder="Paste Supabase ANON KEY here"
+    placeholder="Paste Supabase ANON KEY"
   />
 
+  <!-- 📄 SHEET URL -->
   <input
     id="sheetUrl"
     placeholder="Paste Google Sheet URL"
@@ -118,18 +109,11 @@
   </button>
 
   <div class="summary" id="summary"></div>
-
   <div class="preview" id="preview"></div>
 
 </div>
 
 <script>
-
-let previewData = [];
-
-/* =========================
-   EDGE FUNCTION URL
-========================= */
 
 const EDGE_URL =
   "https://qnxiuojefowyzeanfhdz.supabase.co/functions/v1/import-hospitality";
@@ -138,7 +122,9 @@ const EDGE_URL =
    GET KEY
 ========================= */
 
-
+function getKey(){
+  return document.getElementById("anonKey").value.trim();
+}
 
 /* =========================
    PREVIEW
@@ -147,7 +133,7 @@ const EDGE_URL =
 window.previewSheet = async function () {
 
   const sheetUrl = document.getElementById("sheetUrl").value;
-  const anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFueGl1b2plZm93eXplYW5maGR6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMjY0NjEsImV4cCI6MjA5MTkwMjQ2MX0.JoSrVaT4KewYWoESPkjG5_W65nKdLYdcX7BZeaYK_FM";
+  const anonKey = getKey();
 
   if (!sheetUrl) return alert("Paste sheet URL");
   if (!anonKey) return alert("Paste Supabase anon key");
@@ -171,7 +157,6 @@ window.previewSheet = async function () {
     return;
   }
 
-  previewData = data.rows || [];
   renderPreview(data);
 };
 
@@ -210,7 +195,7 @@ window.importHospitality = async function () {
 };
 
 /* =========================
-   PREVIEW RENDER
+   RENDER
 ========================= */
 
 function renderPreview(data){
@@ -222,9 +207,7 @@ function renderPreview(data){
   `;
 
   document.getElementById("preview").innerHTML = `
-
     <table>
-
       <tr>
         <th>Date</th>
         <th>Report Time</th>
@@ -234,7 +217,6 @@ function renderPreview(data){
       </tr>
 
       ${data.rows.map(r => `
-
         <tr>
           <td>${r.duty_date || ""}</td>
           <td>${r.report_time || ""}</td>
@@ -244,11 +226,8 @@ function renderPreview(data){
             ${r.service_id ? 'Matched' : 'No Match'}
           </td>
         </tr>
-
       `).join("")}
-
     </table>
-
   `;
 }
 
