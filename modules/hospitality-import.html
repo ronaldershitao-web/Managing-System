@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Hospitality Duty Import</title>
+
+  <style>
+
+    body{
+      margin:0;
+      background:#0f172a;
+      color:white;
+      font-family:Arial;
+      padding:20px;
+    }
+
+    .card{
+      background:#111827;
+      border-radius:10px;
+      padding:20px;
+      max-width:900px;
+      margin:auto;
+      border:1px solid #1f2937;
+    }
+
+    h2{
+      margin-top:0;
+    }
+
+    input, button{
+      width:100%;
+      padding:10px;
+      margin-top:10px;
+      border:none;
+      border-radius:6px;
+      box-sizing:border-box;
+    }
+
+    button{
+      cursor:pointer;
+      font-weight:bold;
+    }
+
+    .previewBtn{
+      background:#3b82f6;
+      color:white;
+    }
+
+    .importBtn{
+      background:#22c55e;
+      color:white;
+    }
+
+    .preview{
+      margin-top:20px;
+      background:#0f172a;
+      border:1px solid #334155;
+      border-radius:8px;
+      padding:10px;
+      max-height:400px;
+      overflow:auto;
+      font-size:12px;
+    }
+
+    table{
+      width:100%;
+      border-collapse:collapse;
+    }
+
+    th, td{
+      border:1px solid #334155;
+      padding:6px;
+      text-align:left;
+    }
+
+    th{
+      background:#1e293b;
+    }
+
+    .good{
+      color:#22c55e;
+      font-weight:bold;
+    }
+
+    .bad{
+      color:#ef4444;
+      font-weight:bold;
+    }
+
+  </style>
+</head>
+
+<body>
+
+<div class="card">
+
+  <h2>🏠 Hospitality Duty Import</h2>
+
+  <input
+    id="sheetUrl"
+    placeholder="Paste Google Sheet URL"
+  />
+
+  <button
+    class="previewBtn"
+    onclick="previewSheet()">
+
+    Preview Sheet
+
+  </button>
+
+  <button
+    class="importBtn"
+    onclick="importHospitality()">
+
+    Import / Sync Hospitality
+
+  </button>
+
+  <div class="preview" id="preview"></div>
+
+</div>
+
+<script type="module">
+
+import { db } from "../assets/app.js";
+
+let parsedRows = [];
+
+/* =========================
+   PARSE DATE
+========================= */
+
+function parseDate(v){
+
+  if(!v) return null;
+
+  const d = new Date(v);
+
+  return d.toISOString().split("T")[0];
+}
+
+/* =========================
+   CLEAN TIME
+========================= */
+
+function cleanTime(v){
+
+  if(!v) return null;
+
+  return v.trim().toUpperCase();
+}
+
+/* =========================
+   FIND SERVICE
+========================= */
+
+async function findServiceId(date, reportTime){
+
+  const { data: services } = await db
+    .from("services")
+    .select(`
+      id,
+      service_date,
+      service_slot_id,
+      service_slots(
+        id,
+        label,
+        time
+      )
+    `)
+    .eq("service_date", date);
+
+  if(!services || services.length === 0){
+    return null;
+  }
+
+  const t = reportTime;
+
+  // SATURDAY
+  if(
+    t >= "02:30PM" &&
+    t <= "04:30PM"
+  ){
+
+    return services.find(s =>
+      (s.service_slots?.label || "")
+        .toLowerCase()
+        .includes("saturday")
+    )?.id || null;
+  }
+
+  // SUN 8.30
+  if(
+    t >= "08:00AM" &&
+    t <= "09:30AM"
+  ){
+
+    return services.find(s =>
+      (s.service_slots?.time || "")
+        .startsWith("08:30")
+    )?.id || null;
+  }
+
+  // SUN 10.45
+  if(
+    t >= "10:00AM" &&
+    t <= "12:00PM"
+  ){
+
+    return services.find(s => {
+
+      const label =
+        (s.service_slots?.label || "")
+          .toLowerCase();
+
+      const time =
+        s.service_slots?.time || "";
+
+      return (
+        time.startsWith("10:45") &&
+        !label.includes("jurong")
+      );
+
+    })?.id || null;
+  }
+
+  return null;
+}
+
+/* =========================
+   PREVIEW SHEET
+========================= */
+
+window.previewSheet = async function(){
+
+  const url =
+    document.getElementById("sheetUrl").value;
+
+  const csvUrl =
+    url.replace(
+      "/edit#gid=",
+      "/export?format=csv&gid="
+    );
+
+  const res = await fetch(csvUrl);
+
+  const text = await res.text();
+
+  const rows =
+    text.split("\n")
+      .map(r => r.split(","));
+
+  parsedRows = [];
+
+  for(const r of rows.slice(1)){
+
+    const dutyDate =
+      parseDate(r[0]);
+
+    const reportTime =
+      cleanTime(r[1]);
+
+    const serviceId =
+      await findServiceId(
+        dutyDate,
+        reportTime
+      );
+
+    parsedRows.push({
+
+      duty_date: dutyDate,
+
+      report_time: reportTime,
+
+      end_time: cleanTime(r[2]),
+
+      notes: r[3],
+
+      pastor: r[4],
+
+      leader: r[5],
+
+      source_sheet: url,
+
+      service_id: serviceId
+
+    });
+  }
+
+  document.getElementById("preview").innerHTML = `
+
+    <table>
+
+      <tr>
+        <th>Date</th>
+        <th>Report Time</th>
+        <th>Pastor</th>
+        <th>Leader</th>
+        <th>Status</th>
+      </tr>
+
+      ${parsedRows.map(r => `
+
+        <tr>
+
+          <td>${r.duty_date}</td>
+
+          <td>${r.report_time}</td>
+
+          <td>${r.pastor || ""}</td>
+
+          <td>${r.leader || ""}</td>
+
+          <td class="${
+            r.service_id
+              ? 'good'
+              : 'bad'
+          }">
+
+            ${
+              r.service_id
+                ? 'Matched'
+                : 'No Service Match'
+            }
+
+          </td>
+
+        </tr>
+
+      `).join("")}
+
+    </table>
+  `;
+};
+
+/* =========================
+   IMPORT
+========================= */
+
+window.importHospitality = async function(){
+
+  if(parsedRows.length === 0){
+
+    alert("No data loaded");
+
+    return;
+  }
+
+  const { error } = await db
+    .from("hospitality_duty")
+    .upsert(parsedRows, {
+
+      onConflict:
+        "duty_date,report_time,end_time"
+
+    });
+
+  if(error){
+
+    alert(error.message);
+
+  }else{
+
+    alert("Hospitality Imported");
+
+  }
+};
+
+</script>
+
+</body>
+</html>
