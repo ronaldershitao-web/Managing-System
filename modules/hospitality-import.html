@@ -97,8 +97,10 @@
 const EDGE_URL =
   "https://qnxiuojefowyzeanfhdz.supabase.co/functions/v1/import-hospitality";
 
+let previewData = [];
+
 /* =========================
-   DATE NORMALISER (CRITICAL FIX)
+   DATE NORMALISER
 ========================= */
 
 function normalizeDate(input){
@@ -113,7 +115,6 @@ function normalizeDate(input){
 
   const s = input.toLowerCase().trim();
 
-  // 4-apr-26 or 04/apr/2026
   const m = s.match(/(\d{1,2})[-\/]([a-z]{3})[-\/](\d{2,4})/);
 
   if(m){
@@ -124,7 +125,6 @@ function normalizeDate(input){
     return `${year}-${months[m[2]]}-${m[1].padStart(2,"0")}`;
   }
 
-  // fallback ISO
   const d = new Date(input);
   if(!isNaN(d.getTime())){
     return d.toISOString().split("T")[0];
@@ -134,31 +134,40 @@ function normalizeDate(input){
 }
 
 /* =========================
-   TIME NORMALISER
+   TIME → MINUTES (CRITICAL)
 ========================= */
 
 function toMinutes(t){
 
   if(!t) return null;
 
-  const s = t.toLowerCase().trim();
+  const s = t.toString().toLowerCase().trim();
 
-  const m = s.match(/(\d{1,2}):(\d{2})\s*(am|pm)?/);
+  // HH:MM or HH:MM:SS (DB format)
+  const m24 = s.match(/^(\d{1,2}):(\d{2})/);
+  if(m24){
+    return parseInt(m24[1]) * 60 + parseInt(m24[2]);
+  }
 
-  if(!m) return null;
+  // AM/PM format (sheet format)
+  const m12 = s.match(/(\d{1,2}):(\d{2})\s*(am|pm)/i);
+  if(m12){
 
-  let h = parseInt(m[1]);
-  const min = parseInt(m[2]);
-  const ap = m[3];
+    let h = parseInt(m12[1]);
+    const min = parseInt(m12[2]);
+    const ap = m12[3].toLowerCase();
 
-  if(ap === "pm" && h !== 12) h += 12;
-  if(ap === "am" && h === 12) h = 0;
+    if(ap === "pm" && h !== 12) h += 12;
+    if(ap === "am" && h === 12) h = 0;
 
-  return h * 60 + min;
+    return h * 60 + min;
+  }
+
+  return null;
 }
 
 /* =========================
-   FIND MATCH (CORE ENGINE)
+   MATCH ENGINE (FINAL LOGIC)
 ========================= */
 
 async function findServiceId(date, reportTime){
@@ -192,6 +201,9 @@ async function findServiceId(date, reportTime){
     const start = toMinutes(slot.start_time);
     const end = toMinutes(slot.end_time);
 
+    if(start === null || end === null) continue;
+
+    // ✅ CORE RULE: time inside range
     if(rt >= start && rt <= end){
       return s.id;
     }
@@ -201,7 +213,7 @@ async function findServiceId(date, reportTime){
 }
 
 /* =========================
-   PREVIEW SHEET
+   PREVIEW
 ========================= */
 
 window.previewSheet = async function(){
@@ -228,6 +240,8 @@ window.previewSheet = async function(){
     return;
   }
 
+  previewData = data.rows;
+
   document.getElementById("summary").innerHTML = `
     ✅ Matched: ${data.matched} |
     ❌ Unmatched: ${data.unmatched} |
@@ -246,8 +260,8 @@ window.previewSheet = async function(){
 
       ${data.rows.map(r => `
         <tr>
-          <td>${r.duty_date}</td>
-          <td>${r.report_time}</td>
+          <td>${r.duty_date || ""}</td>
+          <td>${r.report_time || ""}</td>
           <td>${r.pastor || ""}</td>
           <td>${r.leader || ""}</td>
           <td class="${r.service_id ? 'good' : 'bad'}">
