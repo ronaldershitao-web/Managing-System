@@ -82,6 +82,12 @@
       color:#94a3b8;
     }
 
+    .keyBox{
+      background:#0f172a;
+      border:1px solid #334155;
+      color:white;
+    }
+
   </style>
 </head>
 
@@ -91,7 +97,17 @@
 
   <h2>🏠 Hospitality Duty Import</h2>
 
-  <input id="sheetUrl" placeholder="Paste Google Sheet URL" />
+  <!-- 🔑 SUPABASE KEY INPUT -->
+  <input
+    id="anonKey"
+    class="keyBox"
+    placeholder="Paste Supabase ANON KEY here"
+  />
+
+  <input
+    id="sheetUrl"
+    placeholder="Paste Google Sheet URL"
+  />
 
   <button class="previewBtn" onclick="previewSheet()">
     Preview Sheet
@@ -119,22 +135,28 @@ const EDGE_URL =
   "https://qnxiuojefowyzeanfhdz.supabase.co/functions/v1/import-hospitality";
 
 /* =========================
+   GET KEY
+========================= */
+
+
+
+/* =========================
    PREVIEW
 ========================= */
 
 window.previewSheet = async function () {
 
   const sheetUrl = document.getElementById("sheetUrl").value;
+  const anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFueGl1b2plZm93eXplYW5maGR6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMjY0NjEsImV4cCI6MjA5MTkwMjQ2MX0.JoSrVaT4KewYWoESPkjG5_W65nKdLYdcX7BZeaYK_FM";
 
-  if (!sheetUrl) {
-    alert("Please paste sheet URL");
-    return;
-  }
+  if (!sheetUrl) return alert("Paste sheet URL");
+  if (!anonKey) return alert("Paste Supabase anon key");
 
   const res = await fetch(EDGE_URL, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${anonKey}`
     },
     body: JSON.stringify({
       sheetUrl,
@@ -150,7 +172,6 @@ window.previewSheet = async function () {
   }
 
   previewData = data.rows || [];
-
   renderPreview(data);
 };
 
@@ -161,16 +182,16 @@ window.previewSheet = async function () {
 window.importHospitality = async function () {
 
   const sheetUrl = document.getElementById("sheetUrl").value;
+  const anonKey = getKey();
 
-  if (!sheetUrl) {
-    alert("Please paste sheet URL");
-    return;
-  }
+  if (!sheetUrl) return alert("Paste sheet URL");
+  if (!anonKey) return alert("Paste Supabase anon key");
 
   const res = await fetch(EDGE_URL, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${anonKey}`
     },
     body: JSON.stringify({
       sheetUrl,
@@ -189,7 +210,7 @@ window.importHospitality = async function () {
 };
 
 /* =========================
-   RENDER PREVIEW
+   PREVIEW RENDER
 ========================= */
 
 function renderPreview(data){
@@ -215,16 +236,13 @@ function renderPreview(data){
       ${data.rows.map(r => `
 
         <tr>
-
           <td>${r.duty_date || ""}</td>
           <td>${r.report_time || ""}</td>
           <td>${r.pastor || ""}</td>
           <td>${r.leader || ""}</td>
-
           <td class="${r.service_id ? 'good' : 'bad'}">
             ${r.service_id ? 'Matched' : 'No Match'}
           </td>
-
         </tr>
 
       `).join("")}
