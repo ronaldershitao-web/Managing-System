@@ -87,26 +87,11 @@
 
   <h2>🏠 Hospitality Duty Import</h2>
 
-  <!-- 🔑 SUPABASE KEY -->
-  <input
-    id="anonKey"
-    class="keyBox"
-    placeholder="Paste Supabase ANON KEY"
-  />
+  <input id="anonKey" class="keyBox" placeholder="Paste Supabase ANON KEY" />
+  <input id="sheetUrl" placeholder="Paste Google Sheet URL" />
 
-  <!-- 📄 SHEET URL -->
-  <input
-    id="sheetUrl"
-    placeholder="Paste Google Sheet URL"
-  />
-
-  <button class="previewBtn" onclick="previewSheet()">
-    Preview Sheet
-  </button>
-
-  <button class="importBtn" onclick="importHospitality()">
-    Import / Sync Hospitality
-  </button>
+  <button class="previewBtn" onclick="previewSheet()">Preview Sheet</button>
+  <button class="importBtn" onclick="importHospitality()">Import / Sync Hospitality</button>
 
   <div class="summary" id="summary"></div>
   <div class="preview" id="preview"></div>
@@ -118,25 +103,82 @@
 const EDGE_URL =
   "https://qnxiuojefowyzeanfhdz.supabase.co/functions/v1/import-hospitality";
 
-/* =========================
-   GET KEY
-========================= */
-
 function getKey(){
   return document.getElementById("anonKey").value.trim();
+}
+
+function toMinutes(t) {
+  if (!t) return null;
+
+  t = t.toString().trim();
+
+  // 24h format (07:50 or 07:50:00)
+  const m24 = t.match(/^(\d{1,2}):(\d{2})/);
+  if (m24) {
+    return parseInt(m24[1]) * 60 + parseInt(m24[2]);
+  }
+
+  // AM/PM format
+  const m = t.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+  if (!m) return null;
+
+  let h = parseInt(m[1]);
+  const min = parseInt(m[2]);
+  const p = m[3].toUpperCase();
+
+  if (p === "PM" && h !== 12) h += 12;
+  if (p === "AM" && h === 12) h = 0;
+
+  return h * 60 + min;
+}
+
+async function findServiceId(date, reportTime){
+
+  const { data: services } = await db
+    .from("services")
+    .select(`
+      id,
+      service_date,
+      service_slots(
+        id,
+        start_time,
+        end_time,
+        label
+      )
+    `)
+    .eq("service_date", date);
+
+  if(!services) return null;
+
+  const rt = toMinutes(reportTime);
+
+  for(const s of services){
+
+    const slot = s.service_slots;
+    if(!slot) continue;
+
+    const start = toMinutes(slot.start_time);
+    const end = toMinutes(slot.end_time);
+
+    if(rt >= start && rt <= end){
+      return s.id;
+    }
+  }
+
+  return null;
 }
 
 /* =========================
    PREVIEW
 ========================= */
 
-window.previewSheet = async function () {
+window.previewSheet = async function(){
 
   const sheetUrl = document.getElementById("sheetUrl").value;
   const anonKey = getKey();
 
-  if (!sheetUrl) return alert("Paste sheet URL");
-  if (!anonKey) return alert("Paste Supabase anon key");
+  if(!sheetUrl) return alert("Paste sheet URL");
+  if(!anonKey) return alert("Paste Supabase key");
 
   const res = await fetch(EDGE_URL, {
     method: "POST",
@@ -152,53 +194,10 @@ window.previewSheet = async function () {
 
   const data = await res.json();
 
-  if (!res.ok) {
+  if(!res.ok){
     alert(data.error || "Preview failed");
     return;
   }
-
-  renderPreview(data);
-};
-
-/* =========================
-   IMPORT
-========================= */
-
-window.importHospitality = async function () {
-
-  const sheetUrl = document.getElementById("sheetUrl").value;
-  const anonKey = getKey();
-
-  if (!sheetUrl) return alert("Paste sheet URL");
-  if (!anonKey) return alert("Paste Supabase anon key");
-
-  const res = await fetch(EDGE_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${anonKey}`
-    },
-    body: JSON.stringify({
-      sheetUrl,
-      mode: "import"
-    })
-  });
-
-  const data = await res.json();
-
-  if (!res.ok) {
-    alert(data.error || "Import failed");
-    return;
-  }
-
-  alert(`✅ Imported ${data.rows.length} rows`);
-};
-
-/* =========================
-   RENDER
-========================= */
-
-function renderPreview(data){
 
   document.getElementById("summary").innerHTML = `
     ✅ Matched: ${data.matched} |
@@ -229,7 +228,41 @@ function renderPreview(data){
       `).join("")}
     </table>
   `;
-}
+};
+
+/* =========================
+   IMPORT
+========================= */
+
+window.importHospitality = async function(){
+
+  const sheetUrl = document.getElementById("sheetUrl").value;
+  const anonKey = getKey();
+
+  if(!sheetUrl) return alert("Paste sheet URL");
+  if(!anonKey) return alert("Paste Supabase key");
+
+  const res = await fetch(EDGE_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${anonKey}`
+    },
+    body: JSON.stringify({
+      sheetUrl,
+      mode: "import"
+    })
+  });
+
+  const data = await res.json();
+
+  if(!res.ok){
+    alert(data.error || "Import failed");
+    return;
+  }
+
+  alert(`✅ Imported ${data.rows.length} rows`);
+};
 
 </script>
 
