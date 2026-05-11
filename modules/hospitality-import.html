@@ -104,41 +104,15 @@ const EDGE_URL =
   "https://qnxiuojefowyzeanfhdz.supabase.co/functions/v1/import-hospitality";
 
 /* =========================
-   SAFE INPUT
+   GET VALUES
 ========================= */
 
 function getSheetUrl(){
-  const el = document.getElementById("sheetUrl");
-  return el ? el.value.trim() : "";
+  return document.getElementById("sheetUrl").value.trim();
 }
 
 function getKey(){
-  const el = document.getElementById("anonKey");
-  return el ? el.value.trim() : "";
-}
-
-/* =========================
-   GOOGLE SHEET → CSV
-========================= */
-
-function toCsvUrl(sheetUrl){
-
-  if(!sheetUrl || typeof sheetUrl !== "string"){
-    throw new Error("Sheet URL is missing");
-  }
-
-  const match = sheetUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
-
-  if(!match){
-    throw new Error("Invalid Google Sheet URL format");
-  }
-
-  const sheetId = match[1];
-
-  const gidMatch = sheetUrl.match(/gid=([0-9]+)/);
-  const gid = gidMatch ? gidMatch[1] : "0";
-
-  return `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+  return document.getElementById("anonKey").value.trim();
 }
 
 /* =========================
@@ -147,8 +121,8 @@ function toCsvUrl(sheetUrl){
 
 window.previewSheet = async function () {
 
-  const sheetUrl = document.getElementById("sheetUrl").value;
-  const anonKey = document.getElementById("anonKey").value;
+  const sheetUrl = getSheetUrl();
+  const anonKey = getKey();
 
   if (!sheetUrl) return alert("Paste sheet URL");
   if (!anonKey) return alert("Paste Supabase anon key");
@@ -160,7 +134,7 @@ window.previewSheet = async function () {
       "Authorization": `Bearer ${anonKey}`
     },
     body: JSON.stringify({
-      sheetUrl,   // ✅ MUST exist
+      sheetUrl,
       mode: "preview"
     })
   });
@@ -172,7 +146,7 @@ window.previewSheet = async function () {
     return;
   }
 
-  renderPreview(data);
+  render(data);
 };
 
 /* =========================
@@ -181,8 +155,8 @@ window.previewSheet = async function () {
 
 window.importHospitality = async function () {
 
-  const sheetUrl = document.getElementById("sheetUrl").value;
-  const anonKey = document.getElementById("anonKey").value;
+  const sheetUrl = getSheetUrl();
+  const anonKey = getKey();
 
   if (!sheetUrl) return alert("Paste sheet URL");
   if (!anonKey) return alert("Paste Supabase anon key");
@@ -194,7 +168,7 @@ window.importHospitality = async function () {
       "Authorization": `Bearer ${anonKey}`
     },
     body: JSON.stringify({
-      sheetUrl,   // ✅ THIS WAS MISSING BEFORE
+      sheetUrl,
       mode: "import"
     })
   });
@@ -207,29 +181,8 @@ window.importHospitality = async function () {
   }
 
   alert(`Imported ${data.rows.length} rows`);
+  render(data);
 };
-
-/* =========================
-   CSV PARSER
-========================= */
-
-function parseCSV(text){
-
-  const lines = text.split("\n").filter(l => l.trim());
-
-  return lines.slice(1).map(line => {
-
-    const cols = line.split(",");
-
-    return {
-      date: cols[0]?.trim() || "",
-      report_time: cols[1]?.trim() || "",
-      pastor: cols[2]?.trim() || "",
-      leader: cols[3]?.trim() || ""
-    };
-
-  });
-}
 
 /* =========================
    RENDER
@@ -237,10 +190,12 @@ function parseCSV(text){
 
 function render(data){
 
+  const rows = data.rows || [];
+
   document.getElementById("summary").innerHTML = `
-    ✅ Matched: ${data.matched} |
-    ❌ Unmatched: ${data.unmatched} |
-    📄 Total: ${data.rows.length}
+    ✅ Matched: ${data.matched ?? 0} |
+    ❌ Unmatched: ${data.unmatched ?? 0} |
+    📄 Total: ${rows.length}
   `;
 
   document.getElementById("preview").innerHTML = `
@@ -253,12 +208,12 @@ function render(data){
         <th>Status</th>
       </tr>
 
-      ${data.rows.map(r => `
+      ${rows.map(r => `
         <tr>
-          <td>${r.date}</td>
-          <td>${r.report_time}</td>
-          <td>${r.pastor}</td>
-          <td>${r.leader}</td>
+          <td>${r.duty_date || ""}</td>
+          <td>${r.report_time || ""}</td>
+          <td>${r.pastor || ""}</td>
+          <td>${r.leader || ""}</td>
           <td class="${r.service_id ? 'good':'bad'}">
             ${r.service_id ? 'Matched' : 'No Match'}
           </td>
