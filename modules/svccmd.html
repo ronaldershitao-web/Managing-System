@@ -750,6 +750,9 @@ window.openAssign = function(
 
   currentRole = role;
 
+  // =========================
+  // GET UNAVAILABLE STAFF
+  // =========================
   const unavailableIds = new Set(
 
     availability
@@ -761,34 +764,44 @@ window.openAssign = function(
       .map(a => String(a.staff_id))
   );
 
+  const roleLower =
+    (role || "").toLowerCase();
+
+  const isCommunionRole =
+    roleLower.includes("communion");
+
+  // =========================
+  // BUILD ELIGIBLE STAFF LIST
+  // =========================
   const eligibleStaff = staffList.filter(s => {
 
-    // Remove unavailable staff
-    if(unavailableIds.has(String(s.id))){
+    const staffId = String(s.id);
+
+    // 1. Remove unavailable staff
+    if(unavailableIds.has(staffId)){
       return false;
     }
 
-    const roleLower =
-      (role || "").toLowerCase();
-
-    const isCommunionRole =
-      roleLower.includes("communion");
-
-    // Communion appointments
+    // 2. Communion restriction
     if(isCommunionRole){
 
       return s.communion_eligible === true;
     }
 
-    // All other appointments
+    // 3. All other roles → full available pool
     return true;
   });
 
-  // Sort alphabetically
+  // =========================
+  // SORT A–Z
+  // =========================
   eligibleStaff.sort((a,b)=>
     (a.name || "").localeCompare(b.name || "")
   );
 
+  // =========================
+  // RENDER DROPDOWN
+  // =========================
   document.getElementById("staffSelect").innerHTML =
 
     eligibleStaff.map(s => `
@@ -796,13 +809,15 @@ window.openAssign = function(
       <option value="${s.id}">
 
         ${s.name}
-
         ${s.communion_eligible ? '🕊️' : ''}
 
       </option>
 
     `).join("");
 
+  // =========================
+  // MODAL TITLE
+  // =========================
   document.getElementById("modalTitle").innerText =
     "Assign " + role;
 
