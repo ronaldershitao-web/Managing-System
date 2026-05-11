@@ -145,108 +145,68 @@ function toCsvUrl(sheetUrl){
    PREVIEW
 ========================= */
 
-window.previewSheet = async function(){
+window.previewSheet = async function () {
 
-  try{
+  const sheetUrl = document.getElementById("sheetUrl").value;
+  const anonKey = document.getElementById("anonKey").value;
 
-    const sheetUrl = getSheetUrl();
-    const anonKey = getKey();
+  if (!sheetUrl) return alert("Paste sheet URL");
+  if (!anonKey) return alert("Paste Supabase anon key");
 
-    if(!sheetUrl) return alert("Paste Google Sheet URL");
-    if(!anonKey) return alert("Paste Supabase ANON key");
+  const res = await fetch(EDGE_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${anonKey}`
+    },
+    body: JSON.stringify({
+      sheetUrl,   // ✅ MUST exist
+      mode: "preview"
+    })
+  });
 
-    const csvUrl = toCsvUrl(sheetUrl);
+  const data = await res.json();
 
-    const res = await fetch(csvUrl);
-    const text = await res.text();
-
-    // detect Google login / HTML fallback
-    if(text.includes("<html") || text.includes("DOCS_timingPromises")){
-      alert("❌ Sheet is private. Set: Anyone with link → Viewer");
-      console.log(text.slice(0,300));
-      return;
-    }
-
-    const rows = parseCSV(text);
-
-    const payload = await fetch(EDGE_URL, {
-      method:"POST",
-      headers:{
-        "Content-Type":"application/json",
-        "Authorization":`Bearer ${anonKey}`
-      },
-      body: JSON.stringify({
-        mode:"preview",
-        rows
-      })
-    });
-
-    const data = await payload.json();
-
-    if(!payload.ok){
-      alert(data.error || "Preview failed");
-      return;
-    }
-
-    render(data);
-
-  } catch(err){
-    alert("Error: " + err.message);
-    console.error(err);
+  if (!res.ok) {
+    alert(data.error || "Preview failed");
+    return;
   }
+
+  renderPreview(data);
 };
 
 /* =========================
    IMPORT
 ========================= */
 
-window.importHospitality = async function(){
+window.importHospitality = async function () {
 
-  try{
+  const sheetUrl = document.getElementById("sheetUrl").value;
+  const anonKey = document.getElementById("anonKey").value;
 
-    const sheetUrl = getSheetUrl();
-    const anonKey = getKey();
+  if (!sheetUrl) return alert("Paste sheet URL");
+  if (!anonKey) return alert("Paste Supabase anon key");
 
-    if(!sheetUrl) return alert("Paste Google Sheet URL");
-    if(!anonKey) return alert("Paste Supabase ANON key");
+  const res = await fetch(EDGE_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${anonKey}`
+    },
+    body: JSON.stringify({
+      sheetUrl,   // ✅ THIS WAS MISSING BEFORE
+      mode: "import"
+    })
+  });
 
-    const csvUrl = toCsvUrl(sheetUrl);
+  const data = await res.json();
 
-    const res = await fetch(csvUrl);
-    const text = await res.text();
-
-    if(text.includes("<html") || text.includes("DOCS_timingPromises")){
-      alert("❌ Sheet is private or blocked");
-      return;
-    }
-
-    const rows = parseCSV(text);
-
-    const payload = await fetch(EDGE_URL, {
-      method:"POST",
-      headers:{
-        "Content-Type":"application/json",
-        "Authorization":`Bearer ${anonKey}`
-      },
-      body: JSON.stringify({
-        mode:"import",
-        rows
-      })
-    });
-
-    const data = await payload.json();
-
-    if(!payload.ok){
-      alert(data.error || "Import failed");
-      return;
-    }
-
-    alert("✅ Imported " + data.rows.length + " rows");
-
-  } catch(err){
-    alert("Error: " + err.message);
-    console.error(err);
+  if (!res.ok) {
+    alert(data.error || "Import failed");
+    return;
   }
+
+  alert(`Imported ${data.rows.length} rows`);
 };
 
 /* =========================
