@@ -314,7 +314,7 @@ async function load(){
     new Map(staffList.map(s => [String(s.id), s.name]));
 const hospitalityMap = new Map(
   (hospitalityRes.data || []).map(d => [
-    `${d.service_date}_${d.service_slot_id}`,
+    String(d.service_id),
     d
   ])
 );
