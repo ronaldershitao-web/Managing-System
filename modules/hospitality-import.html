@@ -32,6 +32,12 @@
       box-sizing:border-box;
     }
 
+    .keyBox{
+      background:#0f172a;
+      border:1px solid #334155;
+      color:white;
+    }
+
     button{
       cursor:pointer;
       font-weight:bold;
@@ -81,6 +87,13 @@
 
   <h2>🏠 Hospitality Duty Import</h2>
 
+  <!-- 🔑 ANON KEY INPUT (RESTORED) -->
+  <input
+    id="anonKey"
+    class="keyBox"
+    placeholder="Paste Supabase ANON KEY here"
+  />
+
   <input id="sheetUrl" placeholder="Paste Google Sheet URL" />
 
   <button class="previewBtn" onclick="previewSheet()">
@@ -105,13 +118,20 @@ let parsedRows = [];
 let servicesCache = [];
 
 /* =========================
-   TIME CONVERSION (CORE FIX)
+   KEY GETTER
+========================= */
+
+function getKey() {
+  return document.getElementById("anonKey").value.trim();
+}
+
+/* =========================
+   TIME CONVERT
 ========================= */
 
 function toMinutes(timeStr) {
   if (!timeStr) return null;
 
-  // already 24h like 15:15:00
   if (!timeStr.toLowerCase().includes("am") &&
       !timeStr.toLowerCase().includes("pm")) {
 
@@ -131,7 +151,7 @@ function toMinutes(timeStr) {
 }
 
 /* =========================
-   FIND SERVICE (FIXED LOGIC)
+   MATCH SERVICE
 ========================= */
 
 function findServiceId(reportTime) {
@@ -146,9 +166,7 @@ function findServiceId(reportTime) {
 
     if (start == null || end == null) continue;
 
-    if (t >= start && t <= end) {
-      return s.id;
-    }
+    if (t >= start && t <= end) return s.id;
   }
 
   return null;
@@ -158,14 +176,14 @@ function findServiceId(reportTime) {
    LOAD SERVICES
 ========================= */
 
-async function loadServices() {
+async function loadServices(anonKey) {
 
   const res = await fetch(
     "https://qnxiuojefowyzeanfhdz.supabase.co/rest/v1/services?select=id,start_time,end_time",
     {
       headers: {
-        apikey: "YOUR_ANON_KEY_HERE",
-        Authorization: "Bearer YOUR_ANON_KEY_HERE"
+        apikey: anonKey,
+        Authorization: `Bearer ${anonKey}`
       }
     }
   );
@@ -174,25 +192,18 @@ async function loadServices() {
 }
 
 /* =========================
-   PARSE SHEET
-========================= */
-
-function parseDate(v){
-  if(!v) return null;
-  return new Date(v).toISOString().split("T")[0];
-}
-
-/* =========================
-   PREVIEW SHEET
+   PREVIEW
 ========================= */
 
 window.previewSheet = async function () {
 
   const sheetUrl = document.getElementById("sheetUrl").value;
+  const anonKey = getKey();
 
   if (!sheetUrl) return alert("Paste sheet URL");
+  if (!anonKey) return alert("Paste anon key");
 
-  await loadServices();
+  await loadServices(anonKey);
 
   const csvUrl = sheetUrl
     .replace("/edit#gid=", "/export?format=csv&gid=");
@@ -209,7 +220,7 @@ window.previewSheet = async function () {
 
   for (const r of rows.slice(1)) {
 
-    const dutyDate = parseDate(r[0]);
+    const dutyDate = r[0];
     const reportTime = r[1];
 
     const serviceId = findServiceId(reportTime);
@@ -263,11 +274,13 @@ window.previewSheet = async function () {
 window.importHospitality = async function () {
 
   const sheetUrl = document.getElementById("sheetUrl").value;
+  const anonKey = getKey();
 
   const res = await fetch(EDGE_URL, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${anonKey}`
     },
     body: JSON.stringify({
       sheetUrl,
