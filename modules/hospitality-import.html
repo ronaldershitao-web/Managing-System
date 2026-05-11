@@ -16,9 +16,16 @@
       background:#111827;
       border-radius:10px;
       padding:20px;
-      max-width:900px;
+      max-width:1000px;
       margin:auto;
       border:1px solid #1f2937;
+    }
+
+    h2{ margin-top:0; }
+
+    label{
+      font-size:12px;
+      color:#94a3b8;
     }
 
     input, button{
@@ -27,12 +34,31 @@
       margin-top:10px;
       border:none;
       border-radius:6px;
+      box-sizing:border-box;
     }
 
-    button{ font-weight:bold; cursor:pointer; }
+    .keyBox{
+      background:#0f172a;
+      border:1px solid #334155;
+      color:white;
+    }
+
+    button{
+      cursor:pointer;
+      font-weight:bold;
+    }
+
+    .previewBtn{ background:#3b82f6; color:white; }
+    .importBtn{ background:#22c55e; color:white; }
 
     .preview{
       margin-top:20px;
+      background:#0f172a;
+      border:1px solid #334155;
+      border-radius:8px;
+      padding:10px;
+      max-height:500px;
+      overflow:auto;
       font-size:12px;
     }
 
@@ -41,15 +67,23 @@
       border-collapse:collapse;
     }
 
-    td, th{
+    th, td{
       border:1px solid #334155;
       padding:6px;
+      text-align:left;
     }
 
     th{ background:#1e293b; }
 
-    .good{ color:#22c55e; }
-    .bad{ color:#ef4444; }
+    .good{ color:#22c55e; font-weight:bold; }
+    .bad{ color:#ef4444; font-weight:bold; }
+
+    .summary{
+      margin-top:10px;
+      font-size:12px;
+      color:#94a3b8;
+    }
+
   </style>
 </head>
 
@@ -57,15 +91,26 @@
 
 <div class="card">
 
-  <h2>Hospitality Duty Import</h2>
+  <h2>🏠 Hospitality Duty Import</h2>
 
-  <input id="sheetUrl" placeholder="Google Sheet URL" />
+  <!-- 🔑 ANON KEY -->
+  <label>Supabase ANON Key</label>
+  <input id="anonKey" class="keyBox" placeholder="Paste ANON KEY here" />
 
-  <button onclick="previewSheet()">Preview</button>
-  <button onclick="importData()">Import</button>
+  <!-- 📄 SHEET -->
+  <label>Google Sheet URL</label>
+  <input id="sheetUrl" placeholder="Paste Google Sheet URL" />
 
-  <div id="summary"></div>
-  <div id="preview"></div>
+  <button class="previewBtn" onclick="previewSheet()">
+    Preview Sheet
+  </button>
+
+  <button class="importBtn" onclick="importHospitality()">
+    Import
+  </button>
+
+  <div class="summary" id="summary"></div>
+  <div class="preview" id="preview"></div>
 
 </div>
 
@@ -75,49 +120,59 @@ let rows = [];
 let services = [];
 
 /* =========================
+   GET KEY
+========================= */
+
+function getKey(){
+  return document.getElementById("anonKey").value.trim();
+}
+
+/* =========================
    TIME CONVERTER
 ========================= */
 
-function to24Hour(timeStr){
+function toMinutes(timeStr){
 
   if(!timeStr) return null;
 
-  const [time, modifier] = timeStr.trim().split(" ");
+  // already 24h format
+  if(!timeStr.toLowerCase().includes("am") &&
+     !timeStr.toLowerCase().includes("pm")){
 
-  let [hours, minutes] = time.split(":").map(Number);
-
-  if(modifier?.toLowerCase() === "pm" && hours !== 12){
-    hours += 12;
+    const [h,m] = timeStr.split(":").map(Number);
+    return h*60 + m;
   }
 
-  if(modifier?.toLowerCase() === "am" && hours === 12){
-    hours = 0;
-  }
+  let isPM = timeStr.toLowerCase().includes("pm");
 
-  return `${String(hours).padStart(2,'0')}:${String(minutes).padStart(2,'0')}:00`;
+  let clean = timeStr
+    .toLowerCase()
+    .replace("am","")
+    .replace("pm","")
+    .trim();
+
+  let [h,m] = clean.split(":").map(Number);
+
+  if(isPM && h < 12) h += 12;
+  if(!isPM && h === 12) h = 0;
+
+  return h*60 + m;
 }
 
 /* =========================
-   COMPARE TIME RANGE
-========================= */
-
-function isWithin(time, start, end){
-
-  return time >= start && time <= end;
-}
-
-/* =========================
-   FETCH SERVICES
+   LOAD SERVICES
 ========================= */
 
 async function loadServices(){
 
+  const key = getKey();
+
   const res = await fetch(
-    "https://qnxiuojefowyzeanfhdz.supabase.co/rest/v1/services?select=*",
+    "https://qnxiuojefowyzeanfhdz.supabase.co/rest/v1/services?select=id,start_time,end_time",
     {
       headers:{
-        apikey:"YOUR_ANON_KEY",
-        Authorization:"Bearer YOUR_ANON_KEY"
+        apikey: key,
+        Authorization: `Bearer ${key}`
       }
     }
   );
@@ -126,19 +181,20 @@ async function loadServices(){
 }
 
 /* =========================
-   MATCH SERVICE
+   MATCH SERVICE (CORE LOGIC)
 ========================= */
 
 function matchService(reportTime){
 
-  const t = to24Hour(reportTime);
+  const t = toMinutes(reportTime);
 
   for(const s of services){
 
-    if(!s.start_time || !s.end_time) continue;
+    const start = toMinutes(s.start_time);
+    const end = toMinutes(s.end_time);
 
-    if(isWithin(t, s.start_time, s.end_time)){
-      return s;
+    if(t >= start && t <= end){
+      return s.id;
     }
   }
 
@@ -146,16 +202,23 @@ function matchService(reportTime){
 }
 
 /* =========================
-   PREVIEW
+   PREVIEW SHEET
 ========================= */
 
 window.previewSheet = async function(){
 
+  const sheetUrl = document.getElementById("sheetUrl").value;
+  const key = getKey();
+
+  if(!sheetUrl) return alert("Paste sheet URL");
+  if(!key) return alert("Paste ANON key");
+
   await loadServices();
 
-  const url = document.getElementById("sheetUrl").value;
-
-  const csvUrl = url.replace("/edit#gid=", "/export?format=csv&gid=");
+  const csvUrl = sheetUrl.replace(
+    "/edit#gid=",
+    "/export?format=csv&gid="
+  );
 
   const res = await fetch(csvUrl);
   const text = await res.text();
@@ -164,40 +227,35 @@ window.previewSheet = async function(){
 
   rows = [];
 
+  let matched = 0;
+  let unmatched = 0;
+
   for(const r of lines.slice(1)){
 
     const reportTime = r[1];
 
-    const service = matchService(reportTime);
+    const serviceId = matchService(reportTime);
+
+    if(serviceId) matched++;
+    else unmatched++;
 
     rows.push({
       date: r[0],
       reportTime,
       pastor: r[3],
       leader: r[4],
-      service_id: service?.id || null
+      service_id: serviceId
     });
   }
 
-  render();
-};
-
-/* =========================
-   RENDER
-========================= */
-
-function render(){
-
-  const matched = rows.filter(r => r.service_id).length;
-
   document.getElementById("summary").innerHTML =
-    `Matched: ${matched} | Unmatched: ${rows.length - matched}`;
+    `✅ Matched: ${matched} | ❌ Unmatched: ${unmatched} | 📄 Total: ${rows.length}`;
 
   document.getElementById("preview").innerHTML = `
     <table>
       <tr>
         <th>Date</th>
-        <th>Time</th>
+        <th>Report Time</th>
         <th>Pastor</th>
         <th>Leader</th>
         <th>Status</th>
@@ -209,22 +267,21 @@ function render(){
           <td>${r.reportTime}</td>
           <td>${r.pastor || ""}</td>
           <td>${r.leader || ""}</td>
-          <td class="${r.service_id ? 'good':'bad'}">
+          <td class="${r.service_id ? 'good' : 'bad'}">
             ${r.service_id ? "Matched" : "No Match"}
           </td>
         </tr>
       `).join("")}
     </table>
   `;
-}
+};
 
 /* =========================
-   IMPORT (optional)
+   IMPORT (placeholder)
 ========================= */
 
-window.importData = async function(){
-
-  alert("Connect to Edge Function here");
+window.importHospitality = async function(){
+  alert("Connect Edge Function here");
 };
 
 </script>
