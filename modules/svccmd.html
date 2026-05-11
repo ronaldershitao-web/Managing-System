@@ -210,56 +210,10 @@ let staffList = [];
 let templates = [];
 let availability = [];
 let availabilityServices = [];
+let hospitality = [];   // 🔥 NEW
 
 let currentService = null;
 let currentRole = null;
-
-/* ================= DATE ================= */
-
-function parseDate(d){
-  const [y,m,day] = d.split("-");
-  return new Date(y,m-1,day);
-}
-
-function formatDate(dateStr){
-
-  if(!dateStr) return "-";
-
-  const date = parseDate(dateStr);
-
-  return date.toLocaleDateString("en-GB",{
-    day:"2-digit",
-    month:"short",
-    year:"numeric"
-  });
-}
-
-function inWindow(d){
-
-  const dt = parseDate(d);
-
-  const now = new Date();
-
-  const min = new Date();
-  min.setDate(now.getDate()-7);
-
-  const max = new Date();
-  max.setDate(now.getDate()+7);
-
-  return dt >= min && dt <= max;
-}
-
-function in60Days(d){
-
-  const dt = parseDate(d);
-
-  const now = new Date();
-
-  const max = new Date();
-  max.setDate(now.getDate()+60);
-
-  return dt >= now && dt <= max;
-}
 
 /* ================= LOAD ================= */
 
@@ -271,7 +225,8 @@ async function load(){
     availRes,
     staffRes,
     rolesRes,
-    templateRolesRes
+    templateRolesRes,
+    hospitalityRes   // 🔥 NEW
   ] = await Promise.all([
 
     db.from("services")
@@ -290,6 +245,9 @@ async function load(){
       .select("*"),
 
     db.from("service_template_roles")
+      .select("*"),
+
+    db.from("hospitality_duty")   // 🔥 NEW
       .select("*")
   ]);
 
@@ -304,6 +262,7 @@ async function load(){
   templates = templateRes.data || [];
   availability = availRes.data || [];
   staffList = staffRes.data || [];
+  hospitality = hospitalityRes.data || [];   // 🔥 NEW
 
   const roles = rolesRes.data || [];
   const templateRoles = templateRolesRes.data || [];
@@ -311,53 +270,22 @@ async function load(){
   const staffMap =
     new Map(staffList.map(s => [String(s.id), s.name]));
 
-  const templateMap = new Map();
-
-  templates.forEach(t => {
-
-    const key = String(t.template_id);
-
-    if(!templateMap.has(key)){
-      templateMap.set(key, []);
-    }
-
-    templateMap.get(key).push(t);
-  });
-
   const roleMap = new Map();
-
   roles.forEach(r => {
-
     const key = String(r.service_id);
-
-    if(!roleMap.has(key)){
-      roleMap.set(key, []);
-    }
-
+    if(!roleMap.has(key)) roleMap.set(key, []);
     roleMap.get(key).push(r);
   });
 
   const templateRoleMap = new Map();
-
   templateRoles.forEach(r => {
-
     const key = String(r.template_id);
-
-    if(!templateRoleMap.has(key)){
-      templateRoleMap.set(key, []);
-    }
-
+    if(!templateRoleMap.has(key)) templateRoleMap.set(key, []);
     templateRoleMap.get(key).push(r);
   });
 
   displayServices.sort((a,b)=>
-    parseDate(a.service_date) -
-    parseDate(b.service_date)
-  );
-
-  availabilityServices.sort((a,b)=>
-    parseDate(a.service_date) -
-    parseDate(b.service_date)
+    parseDate(a.service_date) - parseDate(b.service_date)
   );
 
   const cols = [[],[],[],[]];
@@ -392,13 +320,25 @@ async function load(){
 
         ${col.map(s=>{
 
+          /* =========================
+             🔥 HOSPITALITY MATCH
+          ========================= */
+          const hosp =
+            hospitality.find(h =>
+              String(h.service_id) === String(s.id)
+            );
+
+          const pastorNames =
+            hosp?.pastor || "-";
+
+          const leaderNames =
+            hosp?.leader || "-";
+
           const templateStaff =
             templateMap.get(String(s.service_template_id)) || [];
 
           const assignedIds =
-            new Set(
-              templateStaff.map(t => String(t.staff_id))
-            );
+            new Set(templateStaff.map(t => String(t.staff_id)));
 
           const unavailableRecords =
             availability.filter(a =>
@@ -408,18 +348,13 @@ async function load(){
             );
 
           const unavailableIds =
-            new Set(
-              unavailableRecords.map(a => String(a.staff_id))
-            );
+            new Set(unavailableRecords.map(a => String(a.staff_id)));
 
           const availableIds =
-            [...assignedIds]
-              .filter(id => !unavailableIds.has(id));
+            [...assignedIds].filter(id => !unavailableIds.has(id));
 
           const templateDefinedRoles =
-            templateRoleMap.get(
-              String(s.service_template_id)
-            ) || [];
+            templateRoleMap.get(String(s.service_template_id)) || [];
 
           const appointments =
             templateDefinedRoles.map(roleRow=>{
@@ -429,14 +364,12 @@ async function load(){
               const assignedRole =
                 (roleMap.get(String(s.id)) || [])
                 .find(r =>
-                  (r.role || "").toLowerCase() ===
-                  role.toLowerCase()
+                  (r.role || "").toLowerCase() === role.toLowerCase()
                 );
 
               const templateMatch =
                 templateStaff.find(t =>
-                  (t.role || "").toLowerCase() ===
-                  role.toLowerCase()
+                  (t.role || "").toLowerCase() === role.toLowerCase()
                 );
 
               const staffId =
@@ -451,41 +384,22 @@ async function load(){
                 group_name: roleRow.group_name,
                 staffId,
                 unavailable,
-                name: staffId
-                  ? staffMap.get(String(staffId))
-                  : "-"
+                name: staffId ? staffMap.get(String(staffId)) : "-"
               };
             });
 
           const groupedAppointments = {};
 
-          appointments
-            .filter(a => {
+          appointments.forEach(a => {
 
-              if (!s.is_communion_service) {
+            const group = a.group_name || "General";
 
-                const roleLower = (a.role || "").toLowerCase();
+            if(!groupedAppointments[group]){
+              groupedAppointments[group] = [];
+            }
 
-                const isCommunionRole =
-                  roleLower.includes("communion") ||
-                  roleLower.includes("mindef");
-
-                return !isCommunionRole;
-              }
-
-              return true;
-            })
-            .forEach(a => {
-
-              const group =
-                a.group_name || "General";
-
-              if(!groupedAppointments[group]){
-                groupedAppointments[group] = [];
-              }
-
-              groupedAppointments[group].push(a);
-            });
+            groupedAppointments[group].push(a);
+          });
 
           return `
             <div class="card">
@@ -502,75 +416,64 @@ async function load(){
                 ⏰ ${s.service_slots?.time || ""}
               </div>
 
+              <!-- =========================
+                   🔥 HOSPITALITY SECTION
+              ========================== -->
               <div class="section">
 
-                <b>Staff Summary</b>
+                <b>🏠 Home Cell Serving Hospitality</b>
 
                 <div class="row">
-                  <span>Total Assigned</span>
-                  <span>${assignedIds.size}</span>
-                </div>
+                  <span>Hospitality Cell</span>
 
-                <div class="row">
-                  <span>Unavailable</span>
+                  <span style="display:flex; gap:6px; align-items:center;">
+                    <span class="good">
+                      ${leaderNames}
+                    </span>
 
-                  <span class="bad"
-                    onclick="showUnavailable(
-                      '${s.service_date}',
-                      '${s.service_slot_id}'
-                    )">
-
-                    ${unavailableIds.size}
-
+                    <button class="small"
+                      onclick="notifyLeader('${s.id}')">
+                      Notify
+                    </button>
                   </span>
                 </div>
 
                 <div class="row">
-                  <span>Available</span>
-                  <span class="good">
-                    ${availableIds.length}
+                  <span>Cell Pastor</span>
+
+                  <span style="display:flex; gap:6px; align-items:center;">
+                    <span class="good">
+                      ${pastorNames}
+                    </span>
+
+                    <button class="small"
+                      onclick="notifyPastor('${s.id}')">
+                      Notify
+                    </button>
                   </span>
                 </div>
 
               </div>
 
+              <!-- ========================= -->
               <div class="section">
 
                 <b>Appointments</b>
 
                 ${Object.entries(groupedAppointments)
                   .map(([group, items]) => `
-
-                    ${
-                      group !== "General"
-                      ? `
-                        <div class="group-title">
-                          ${group}
-                        </div>
-                      `
-                      : ""
-                    }
+                    ${group !== "General" ? `
+                      <div class="group-title">${group}</div>
+                    ` : ""}
 
                     ${items.map(a => `
-
                       <div class="row">
+                        <span>${a.role}</span>
 
-                        <span>
-                          ${a.role}
-                        </span>
-
-                        <span style="
-                          display:flex;
-                          align-items:center;
-                          gap:6px;
-                        ">
-
+                        <span style="display:flex; gap:6px;">
                           <span class="${a.unavailable ? 'bad' : ''}">
-
                             ${a.name}
-
                             ${a.unavailable ? ' (Unavailable)' : ''}
-
                           </span>
 
                           <button class="small"
@@ -581,19 +484,12 @@ async function load(){
                               '${s.service_slot_id}',
                               '${a.role}'
                             )">
-
                             Assign
-
                           </button>
-
                         </span>
-
                       </div>
-
                     `).join("")}
-
-                  `).join("")
-                }
+                  `).join("")}
 
               </div>
 
@@ -605,371 +501,23 @@ async function load(){
     `;
   });
 
-  const uniqueDates =
-    [...new Set(
-      availabilityServices.map(s => s.service_date)
-    )];
-
-  grid.innerHTML += `
-
-    <div class="col">
-
-      <h3>Staff Availability</h3>
-
-      <div class="card">
-
-        <div class="tag">Select Date</div>
-
-        <select id="manageDate" onchange="refreshServiceOptions()">
-          ${
-            uniqueDates.map(d => `
-              <option value="${d}">
-                ${formatDate(d)}
-              </option>
-            `).join("")
-          }
-        </select>
-
-        <div class="tag" style="margin-top:10px;">
-          Select Service
-        </div>
-
-        <select
-          id="manageService"
-          onchange="refreshStaffOptions()">
-        </select>
-
-        <div class="tag" style="margin-top:10px;">
-          Select Staff
-        </div>
-
-        <select id="manageStaff"></select>
-
-        <button class="danger"
-          onclick="markUnavailable()">
-
-          Mark Unavailable
-
-        </button>
-
-      </div>
-
-    </div>
-  `;
-
-  refreshServiceOptions();
 }
 
-/* ================= SERVICE FILTER ================= */
+/* =========================
+   🔥 NOTIFY FUNCTIONS
+========================= */
 
-window.refreshServiceOptions = function(){
-
-  const selectedDate =
-    document.getElementById("manageDate").value;
-
-  const serviceDropdown =
-    document.getElementById("manageService");
-
-  const filteredServices =
-    availabilityServices.filter(s =>
-      s.service_date === selectedDate
-    );
-
-  serviceDropdown.innerHTML =
-    filteredServices.map(s => `
-
-      <option
-        value="${s.id}">
-
-        ${s.service_slots?.label}
-        (${s.service_slots?.time})
-
-      </option>
-
-    `).join("");
-
-  refreshStaffOptions();
+window.notifyLeader = function(serviceId){
+  const h = hospitality.find(x => String(x.service_id) === String(serviceId));
+  alert("Notify Leader: " + (h?.leader || "No leader"));
 };
 
-/* ================= STAFF FILTER ================= */
-
-window.refreshStaffOptions = function(){
-
-  const selectedServiceId =
-    document.getElementById("manageService").value;
-
-  const service =
-    availabilityServices.find(s =>
-      String(s.id) === String(selectedServiceId)
-    );
-
-  if(!service) return;
-
-  const templateStaff =
-    templates.filter(t =>
-      String(t.template_id) ===
-      String(service.service_template_id)
-    );
-
-  const eligibleIds =
-    new Set(
-      templateStaff.map(t => String(t.staff_id))
-    );
-
-  const staffDropdown =
-    document.getElementById("manageStaff");
-
-  const eligibleStaff =
-    staffList.filter(s =>
-      eligibleIds.has(String(s.id))
-    );
-
-  staffDropdown.innerHTML =
-    eligibleStaff.map(s => `
-      <option value="${s.id}">
-        ${s.name}
-      </option>
-    `).join("");
-};
-
-/* ================= ASSIGN ================= */
-
-window.openAssign = function(
-  serviceId,
-  templateId,
-  serviceDate,
-  serviceSlotId,
-  role
-){
-
-  currentService = {
-    id: serviceId,
-    date: serviceDate,
-    slotId: serviceSlotId
-  };
-
-  currentRole = role;
-
-  // =========================
-  // GET UNAVAILABLE STAFF
-  // =========================
-  const unavailableIds = new Set(
-
-    availability
-      .filter(a =>
-        a.service_date === serviceDate &&
-        a.service_slot_id === serviceSlotId &&
-        a.status === "unavailable"
-      )
-      .map(a => String(a.staff_id))
-  );
-
-  const roleLower =
-    (role || "").toLowerCase();
-
-  const isCommunionRole =
-    roleLower.includes("communion");
-
-  // =========================
-  // BUILD ELIGIBLE STAFF LIST
-  // =========================
-  const eligibleStaff = staffList.filter(s => {
-
-    const staffId = String(s.id);
-
-    // 1. Remove unavailable staff
-    if(unavailableIds.has(staffId)){
-      return false;
-    }
-
-    // 2. Communion restriction
-    if(isCommunionRole){
-
-      return s.communion_eligible === true;
-    }
-
-    // 3. All other roles → full available pool
-    return true;
-  });
-
-  // =========================
-  // SORT A–Z
-  // =========================
-  eligibleStaff.sort((a,b)=>
-    (a.name || "").localeCompare(b.name || "")
-  );
-
-  // =========================
-  // RENDER DROPDOWN
-  // =========================
-  document.getElementById("staffSelect").innerHTML =
-
-    eligibleStaff.map(s => `
-
-      <option value="${s.id}">
-
-        ${s.name}
-        ${s.communion_eligible ? '🕊️' : ''}
-
-      </option>
-
-    `).join("");
-
-  // =========================
-  // MODAL TITLE
-  // =========================
-  document.getElementById("modalTitle").innerText =
-    "Assign " + role;
-
-  document.getElementById("assignModal").style.display = "flex";
-};
-
-window.closeAssignModal = function(){
-  document.getElementById("assignModal").style.display = "none";
-};
-
-window.saveAssign = async function(){
-
-  const staffId =
-    document.getElementById("staffSelect").value;
-
-  await db.from("service_roles").upsert({
-
-    service_id: currentService.id,
-    role: currentRole,
-    staff_id: staffId
-
-  },{
-    onConflict:"service_id,role"
-  });
-
-  closeAssignModal();
-  load();
-};
-
-/* ================= UNAVAILABLE LIST ================= */
-
-window.showUnavailable = function(date, slotId){
-
-  const staffMap =
-    new Map(staffList.map(s => [String(s.id), s.name]));
-
-  const list = availability.filter(a =>
-    a.service_date === date &&
-    a.service_slot_id === slotId &&
-    a.status === "unavailable"
-  );
-
-  document.getElementById("unavailableList").innerHTML =
-
-    list.length === 0
-
-    ? `
-
-      <div class="tag">
-        No unavailable staff
-      </div>
-
-    `
-
-    : list.map(a => `
-
-        <div class="staff-item">
-
-          <div class="row">
-
-            <span>
-              ${staffMap.get(String(a.staff_id)) || a.staff_id}
-            </span>
-
-            <button
-              class="small save"
-              onclick="returnAvailableDirect(
-                '${a.staff_id}',
-                '${a.service_date}',
-                '${a.service_slot_id}'
-              )">
-
-              Return
-
-            </button>
-
-          </div>
-
-        </div>
-
-      `).join("");
-
-  document.getElementById("unavailableModal").style.display =
-    "flex";
-};
-
-window.closeUnavailableModal = function(){
-
-  document.getElementById("unavailableModal").style.display =
-    "none";
-};
-
-/* ================= REALTIME RETURN AVAILABLE ================= */
-
-window.returnAvailableDirect = async function(
-  staffId,
-  serviceDate,
-  slotId
-){
-
-  await db.from("staff_availability")
-    .delete()
-    .eq("staff_id", staffId)
-    .eq("service_date", serviceDate)
-    .eq("service_slot_id", slotId);
-
-  const availRes =
-    await db.from("staff_availability").select("*");
-
-  availability = availRes.data || [];
-
-  showUnavailable(serviceDate, slotId);
-
-  load();
-};
-
-/* ================= MANAGE AVAILABILITY ================= */
-
-window.markUnavailable = async function(){
-
-  const staffId =
-    document.getElementById("manageStaff").value;
-
-  const serviceDate =
-    document.getElementById("manageDate").value;
-
-  const serviceId =
-    document.getElementById("manageService").value;
-
-  const service =
-    availabilityServices.find(s =>
-      String(s.id) === String(serviceId)
-    );
-
-  const slotId = service.service_slot_id;
-
-  await db.from("staff_availability").upsert({
-
-    staff_id: staffId,
-    service_date: serviceDate,
-    service_slot_id: slotId,
-    status: "unavailable"
-
-  },{
-    onConflict:"staff_id,service_date,service_slot_id"
-  });
-
-  load();
+window.notifyPastor = function(serviceId){
+  const h = hospitality.find(x => String(x.service_id) === String(serviceId));
+  alert("Notify Pastor: " + (h?.pastor || "No pastor"));
 };
 
 window.load = load;
-
 load();
 
 </script>
