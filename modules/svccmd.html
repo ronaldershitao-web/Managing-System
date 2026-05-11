@@ -145,6 +145,15 @@
       font-size:12px;
     }
 
+    .group-title{
+      color:#fbbf24;
+      font-weight:bold;
+      margin-top:12px;
+      margin-bottom:6px;
+      padding-top:8px;
+      border-top:1px solid #334155;
+    }
+
     h3{
       margin-top:0;
     }
@@ -439,12 +448,43 @@ async function load(){
 
               return {
                 role,
+                group_name: roleRow.group_name,
                 staffId,
                 unavailable,
                 name: staffId
                   ? staffMap.get(String(staffId))
                   : "-"
               };
+            });
+
+          const groupedAppointments = {};
+
+          appointments
+            .filter(a => {
+
+              if (!s.is_communion_service) {
+
+                const roleLower = (a.role || "").toLowerCase();
+
+                const isCommunionRole =
+                  roleLower.includes("communion") ||
+                  roleLower.includes("mindef");
+
+                return !isCommunionRole;
+              }
+
+              return true;
+            })
+            .forEach(a => {
+
+              const group =
+                a.group_name || "General";
+
+              if(!groupedAppointments[group]){
+                groupedAppointments[group] = [];
+              }
+
+              groupedAppointments[group].push(a);
             });
 
           return `
@@ -498,65 +538,62 @@ async function load(){
 
                 <b>Appointments</b>
 
-${appointments
-  .filter(a => {
+                ${Object.entries(groupedAppointments)
+                  .map(([group, items]) => `
 
-    // If NOT communion service → hide communion-specific roles
-    if (!s.is_communion_service) {
-      const roleLower = (a.role || "").toLowerCase();
+                    ${
+                      group !== "General"
+                      ? `
+                        <div class="group-title">
+                          ${group}
+                        </div>
+                      `
+                      : ""
+                    }
 
-      const isCommunionRole =
-        roleLower.includes("communion") ||
-        roleLower.includes("mindef");
+                    ${items.map(a => `
 
-      return !isCommunionRole;
-    }
+                      <div class="row">
 
-    // If communion service → show everything
-    return true;
-  })
-  .map(a => `
+                        <span>
+                          ${a.role}
+                        </span>
 
-    <div class="row">
+                        <span style="
+                          display:flex;
+                          align-items:center;
+                          gap:6px;
+                        ">
 
-      <span>
-        ${a.role}
-      </span>
+                          <span class="${a.unavailable ? 'bad' : ''}">
 
-      <span style="
-        display:flex;
-        align-items:center;
-        gap:6px;
-      ">
+                            ${a.name}
 
-        <span class="${a.unavailable ? 'bad' : ''}">
+                            ${a.unavailable ? ' (Unavailable)' : ''}
 
-          ${a.name}
+                          </span>
 
-          ${a.unavailable ? ' (Unavailable)' : ''}
+                          <button class="small"
+                            onclick="openAssign(
+                              '${s.id}',
+                              '${s.service_template_id}',
+                              '${s.service_date}',
+                              '${s.service_slot_id}',
+                              '${a.role}'
+                            )">
 
-        </span>
+                            Assign
 
-        <button class="small"
-          onclick="openAssign(
-            '${s.id}',
-            '${s.service_template_id}',
-            '${s.service_date}',
-            '${s.service_slot_id}',
-            '${a.role}'
-          )">
+                          </button>
 
-          Assign
+                        </span>
 
-        </button>
+                      </div>
 
-      </span>
+                    `).join("")}
 
-    </div>
-
-  `)
-  .join("")
-}
+                  `).join("")
+                }
 
               </div>
 
