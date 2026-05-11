@@ -32,7 +32,10 @@
       box-sizing:border-box;
     }
 
-    button{ cursor:pointer; font-weight:bold; }
+    button{
+      cursor:pointer;
+      font-weight:bold;
+    }
 
     .previewBtn{ background:#3b82f6; color:white; }
     .importBtn{ background:#22c55e; color:white; }
@@ -94,42 +97,13 @@
 const EDGE_URL =
   "https://qnxiuojefowyzeanfhdz.supabase.co/functions/v1/import-hospitality";
 
-function getKey(){
-  return document.getElementById("anonKey").value.trim();
-}
-
-function toMinutes(t){
-  if(!t) return null;
-
-  t = t.toString().trim();
-
-  // 24h format
-  const m1 = t.match(/^(\d{1,2}):(\d{2})/);
-  if(m1){
-    return parseInt(m1[1])*60 + parseInt(m1[2]);
-  }
-
-  // AM/PM format
-  const m2 = t.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
-  if(!m2) return null;
-
-  let h = parseInt(m2[1]);
-  const min = parseInt(m2[2]);
-  const p = m2[3].toUpperCase();
-
-  if(p === "PM" && h !== 12) h += 12;
-  if(p === "AM" && h === 12) h = 0;
-
-  return h*60 + min;
-}
+/* =========================
+   DATE NORMALISER (CRITICAL FIX)
+========================= */
 
 function normalizeDate(input){
-  if(!input) return null;
 
-  const d = new Date(input);
-  if(!isNaN(d.getTime())){
-    return d.toISOString().split("T")[0];
-  }
+  if(!input) return null;
 
   const months = {
     jan:"01", feb:"02", mar:"03", apr:"04",
@@ -137,22 +111,62 @@ function normalizeDate(input){
     sep:"09", oct:"10", nov:"11", dec:"12"
   };
 
-  const m = input.toLowerCase()
-    .match(/(\d{1,2})[-\/]([a-z]{3})[-\/](\d{4})/);
+  const s = input.toLowerCase().trim();
 
-  if(!m) return null;
+  // 4-apr-26 or 04/apr/2026
+  const m = s.match(/(\d{1,2})[-\/]([a-z]{3})[-\/](\d{2,4})/);
 
-  return `${m[3]}-${months[m[2]]}-${m[1].padStart(2,"0")}`;
+  if(m){
+
+    let year = m[3];
+    if(year.length === 2) year = "20" + year;
+
+    return `${year}-${months[m[2]]}-${m[1].padStart(2,"0")}`;
+  }
+
+  // fallback ISO
+  const d = new Date(input);
+  if(!isNaN(d.getTime())){
+    return d.toISOString().split("T")[0];
+  }
+
+  return null;
 }
 
 /* =========================
-   FIND SERVICE (CORE FIX)
+   TIME NORMALISER
+========================= */
+
+function toMinutes(t){
+
+  if(!t) return null;
+
+  const s = t.toLowerCase().trim();
+
+  const m = s.match(/(\d{1,2}):(\d{2})\s*(am|pm)?/);
+
+  if(!m) return null;
+
+  let h = parseInt(m[1]);
+  const min = parseInt(m[2]);
+  const ap = m[3];
+
+  if(ap === "pm" && h !== 12) h += 12;
+  if(ap === "am" && h === 12) h = 0;
+
+  return h * 60 + min;
+}
+
+/* =========================
+   FIND MATCH (CORE ENGINE)
 ========================= */
 
 async function findServiceId(date, reportTime){
 
   const cleanDate = normalizeDate(date);
   const rt = toMinutes(reportTime);
+
+  if(!cleanDate || rt === null) return null;
 
   const { data: services } = await db
     .from("services")
@@ -187,18 +201,15 @@ async function findServiceId(date, reportTime){
 }
 
 /* =========================
-   PREVIEW
+   PREVIEW SHEET
 ========================= */
 
 window.previewSheet = async function(){
 
   const sheetUrl = document.getElementById("sheetUrl").value;
-  const anonKey = getKey();
+  const anonKey = document.getElementById("anonKey").value;
 
-  if(!sheetUrl) return alert("Paste sheet URL");
-  if(!anonKey) return alert("Paste key");
-
-  const res = await fetch(EDGE_URL, {
+  const res = await fetch(EDGE_URL,{
     method:"POST",
     headers:{
       "Content-Type":"application/json",
@@ -255,10 +266,7 @@ window.previewSheet = async function(){
 window.importHospitality = async function(){
 
   const sheetUrl = document.getElementById("sheetUrl").value;
-  const anonKey = getKey();
-
-  if(!sheetUrl) return alert("Paste sheet URL");
-  if(!anonKey) return alert("Paste key");
+  const anonKey = document.getElementById("anonKey").value;
 
   const res = await fetch(EDGE_URL,{
     method:"POST",
