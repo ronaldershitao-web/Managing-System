@@ -16,7 +16,7 @@
       background:#111827;
       border-radius:10px;
       padding:20px;
-      max-width:900px;
+      max-width:1000px;
       margin:auto;
       border:1px solid #1f2937;
     }
@@ -81,11 +81,15 @@
 
   <h2>🏠 Hospitality Duty Import</h2>
 
-  <input id="anonKey" placeholder="Paste Supabase ANON KEY" />
   <input id="sheetUrl" placeholder="Paste Google Sheet URL" />
 
-  <button class="previewBtn" onclick="previewSheet()">Preview Sheet</button>
-  <button class="importBtn" onclick="importHospitality()">Import</button>
+  <button class="previewBtn" onclick="previewSheet()">
+    Preview Sheet
+  </button>
+
+  <button class="importBtn" onclick="importHospitality()">
+    Import / Sync Hospitality
+  </button>
 
   <div class="summary" id="summary"></div>
   <div class="preview" id="preview"></div>
@@ -97,114 +101,52 @@
 const EDGE_URL =
   "https://qnxiuojefowyzeanfhdz.supabase.co/functions/v1/import-hospitality";
 
-let previewData = [];
+let parsedRows = [];
+let servicesCache = [];
 
 /* =========================
-   DATE NORMALISER
+   TIME CONVERSION (CORE FIX)
 ========================= */
 
-function normalizeDate(input){
+function toMinutes(timeStr) {
+  if (!timeStr) return null;
 
-  if(!input) return null;
+  // already 24h like 15:15:00
+  if (!timeStr.toLowerCase().includes("am") &&
+      !timeStr.toLowerCase().includes("pm")) {
 
-  const months = {
-    jan:"01", feb:"02", mar:"03", apr:"04",
-    may:"05", jun:"06", jul:"07", aug:"08",
-    sep:"09", oct:"10", nov:"11", dec:"12"
-  };
-
-  const s = input.toLowerCase().trim();
-
-  const m = s.match(/(\d{1,2})[-\/]([a-z]{3})[-\/](\d{2,4})/);
-
-  if(m){
-
-    let year = m[3];
-    if(year.length === 2) year = "20" + year;
-
-    return `${year}-${months[m[2]]}-${m[1].padStart(2,"0")}`;
+    const [h, m] = timeStr.split(":").map(Number);
+    return h * 60 + m;
   }
 
-  const d = new Date(input);
-  if(!isNaN(d.getTime())){
-    return d.toISOString().split("T")[0];
-  }
+  let isPM = timeStr.toLowerCase().includes("pm");
+  let cleaned = timeStr.toLowerCase().replace("am","").replace("pm","").trim();
 
-  return null;
+  let [h, m] = cleaned.split(":").map(Number);
+
+  if (isPM && h < 12) h += 12;
+  if (!isPM && h === 12) h = 0;
+
+  return h * 60 + m;
 }
 
 /* =========================
-   TIME → MINUTES (CRITICAL)
+   FIND SERVICE (FIXED LOGIC)
 ========================= */
 
-function toMinutes(t){
+function findServiceId(reportTime) {
 
-  if(!t) return null;
+  const t = toMinutes(reportTime);
+  if (t == null) return null;
 
-  const s = t.toString().toLowerCase().trim();
+  for (const s of servicesCache) {
 
-  // HH:MM or HH:MM:SS (DB format)
-  const m24 = s.match(/^(\d{1,2}):(\d{2})/);
-  if(m24){
-    return parseInt(m24[1]) * 60 + parseInt(m24[2]);
-  }
+    const start = toMinutes(s.start_time);
+    const end = toMinutes(s.end_time);
 
-  // AM/PM format (sheet format)
-  const m12 = s.match(/(\d{1,2}):(\d{2})\s*(am|pm)/i);
-  if(m12){
+    if (start == null || end == null) continue;
 
-    let h = parseInt(m12[1]);
-    const min = parseInt(m12[2]);
-    const ap = m12[3].toLowerCase();
-
-    if(ap === "pm" && h !== 12) h += 12;
-    if(ap === "am" && h === 12) h = 0;
-
-    return h * 60 + min;
-  }
-
-  return null;
-}
-
-/* =========================
-   MATCH ENGINE (FINAL LOGIC)
-========================= */
-
-async function findServiceId(date, reportTime){
-
-  const cleanDate = normalizeDate(date);
-  const rt = toMinutes(reportTime);
-
-  if(!cleanDate || rt === null) return null;
-
-  const { data: services } = await db
-    .from("services")
-    .select(`
-      id,
-      service_date,
-      service_slots(
-        start_time,
-        end_time
-      )
-    `)
-    .eq("service_date", cleanDate);
-
-  if(!services || services.length === 0){
-    return null;
-  }
-
-  for(const s of services){
-
-    const slot = s.service_slots;
-    if(!slot) continue;
-
-    const start = toMinutes(slot.start_time);
-    const end = toMinutes(slot.end_time);
-
-    if(start === null || end === null) continue;
-
-    // ✅ CORE RULE: time inside range
-    if(rt >= start && rt <= end){
+    if (t >= start && t <= end) {
       return s.id;
     }
   }
@@ -213,40 +155,81 @@ async function findServiceId(date, reportTime){
 }
 
 /* =========================
-   PREVIEW
+   LOAD SERVICES
 ========================= */
 
-window.previewSheet = async function(){
+async function loadServices() {
+
+  const res = await fetch(
+    "https://qnxiuojefowyzeanfhdz.supabase.co/rest/v1/services?select=id,start_time,end_time",
+    {
+      headers: {
+        apikey: "YOUR_ANON_KEY_HERE",
+        Authorization: "Bearer YOUR_ANON_KEY_HERE"
+      }
+    }
+  );
+
+  servicesCache = await res.json();
+}
+
+/* =========================
+   PARSE SHEET
+========================= */
+
+function parseDate(v){
+  if(!v) return null;
+  return new Date(v).toISOString().split("T")[0];
+}
+
+/* =========================
+   PREVIEW SHEET
+========================= */
+
+window.previewSheet = async function () {
 
   const sheetUrl = document.getElementById("sheetUrl").value;
-  const anonKey = document.getElementById("anonKey").value;
 
-  const res = await fetch(EDGE_URL,{
-    method:"POST",
-    headers:{
-      "Content-Type":"application/json",
-      "Authorization":`Bearer ${anonKey}`
-    },
-    body:JSON.stringify({
-      sheetUrl,
-      mode:"preview"
-    })
-  });
+  if (!sheetUrl) return alert("Paste sheet URL");
 
-  const data = await res.json();
+  await loadServices();
 
-  if(!res.ok){
-    alert(data.error || "Preview failed");
-    return;
+  const csvUrl = sheetUrl
+    .replace("/edit#gid=", "/export?format=csv&gid=");
+
+  const res = await fetch(csvUrl);
+  const text = await res.text();
+
+  const rows = text.split("\n").map(r => r.split(","));
+
+  parsedRows = [];
+
+  let matched = 0;
+  let unmatched = 0;
+
+  for (const r of rows.slice(1)) {
+
+    const dutyDate = parseDate(r[0]);
+    const reportTime = r[1];
+
+    const serviceId = findServiceId(reportTime);
+
+    if (serviceId) matched++;
+    else unmatched++;
+
+    parsedRows.push({
+      duty_date: dutyDate,
+      report_time: reportTime,
+      end_time: r[2],
+      pastor: r[3],
+      leader: r[4],
+      sheet_url: sheetUrl,
+      service_id: serviceId
+    });
   }
 
-  previewData = data.rows;
-
-  document.getElementById("summary").innerHTML = `
-    ✅ Matched: ${data.matched} |
-    ❌ Unmatched: ${data.unmatched} |
-    📄 Total: ${data.rows.length}
-  `;
+  document.getElementById("summary").innerHTML =
+    `✅ Matched: ${matched} | ❌ Unmatched: ${unmatched} | 📄 Total: ${parsedRows.length}`;
 
   document.getElementById("preview").innerHTML = `
     <table>
@@ -258,14 +241,14 @@ window.previewSheet = async function(){
         <th>Status</th>
       </tr>
 
-      ${data.rows.map(r => `
+      ${parsedRows.map(r => `
         <tr>
           <td>${r.duty_date || ""}</td>
           <td>${r.report_time || ""}</td>
           <td>${r.pastor || ""}</td>
           <td>${r.leader || ""}</td>
           <td class="${r.service_id ? 'good' : 'bad'}">
-            ${r.service_id ? "Matched" : "No Match"}
+            ${r.service_id ? 'Matched' : 'No Match'}
           </td>
         </tr>
       `).join("")}
@@ -277,31 +260,29 @@ window.previewSheet = async function(){
    IMPORT
 ========================= */
 
-window.importHospitality = async function(){
+window.importHospitality = async function () {
 
   const sheetUrl = document.getElementById("sheetUrl").value;
-  const anonKey = document.getElementById("anonKey").value;
 
-  const res = await fetch(EDGE_URL,{
-    method:"POST",
-    headers:{
-      "Content-Type":"application/json",
-      "Authorization":`Bearer ${anonKey}`
+  const res = await fetch(EDGE_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
     },
-    body:JSON.stringify({
+    body: JSON.stringify({
       sheetUrl,
-      mode:"import"
+      mode: "import"
     })
   });
 
   const data = await res.json();
 
-  if(!res.ok){
+  if (!res.ok) {
     alert(data.error || "Import failed");
     return;
   }
 
-  alert(`Imported ${data.rows.length} rows`);
+  alert(`✅ Imported ${data.rows?.length || 0} rows`);
 };
 
 </script>
