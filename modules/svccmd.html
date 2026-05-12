@@ -1182,6 +1182,14 @@ load();
 
  window.notifyHospitality = async function(serviceId){
 
+   const service = serviceMap.get(String(serviceId));
+
+const slotLabel =
+  service?.service_slots?.label || "";
+
+const slotTime =
+  service?.service_slots?.time || "";
+   
   const hosp = hospitalityMap.get(String(serviceId));
 
   if (!hosp) {
@@ -1202,21 +1210,21 @@ load();
   }
 
   // 🧠 TEMPLATE MESSAGE (your version)
-  const message = `
+ const message = `
 Hi ${leader.name}! 😊
 
 This is Ronald here.
 
-Your cell is rostered for this Sat ${hosp.report_time || ""} Service to do hospitality!
+Your cell is rostered for this Sat ${slotLabel} Service to do hospitality!
 
-Please see the list and inform your members to report at ${hosp.report_time || "11:15AM"} at Atrium.
+Please see the list and inform your members to report at ${slotTime || "11:15AM"} at Atrium.
 
 We will have a time of prayers before we start our duties 🙏
 
 Please acknowledge the message 👍
 
 Thank you for serving! 😄
-  `.trim();
+`.trim();
 
   const url =
     `https://wa.me/${leader.phone}?text=${encodeURIComponent(message)}`;
