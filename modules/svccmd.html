@@ -865,24 +865,59 @@ function extractNames(raw) {
   if (!raw) return [];
 
   return raw
-    .replace(/\n/g, " / ")
-    .split(/\/|,| and /i)
-    .map(n =>
-      n
-        .replace(/\(.*?\)/g, "") // remove (CL), (ACL)
-        .trim()
-    )
+    .replace(/\r/g, " ")              // FIX CR
+    .replace(/\n/g, " ")              // FIX LF
+    .replace(/\s+/g, " ")             // normalize spaces
+    .split(/\/|,| and |&/i)           // better separators
+    .flatMap(part => {
+
+      return part
+        .split(" ")                  // handle multi-name chains
+        .reduce((acc, word) => {
+
+          // rebuild chunks until next capitalised name
+          if (!word) return acc;
+
+          const last = acc[acc.length - 1] || "";
+
+          if (
+            word.match(/^[A-Z]/) &&
+            last &&
+            !last.endsWith(")")
+          ) {
+            acc.push(word);
+          } else {
+            acc[acc.length - 1] =
+              (acc[acc.length - 1] || "") + " " + word;
+          }
+
+          return acc;
+        }, [])
+        .map(n =>
+          n
+            .replace(/\(.*?\)/g, "")
+            .trim()
+        );
+    })
     .filter(Boolean);
 }
 
 function findPerson(name, people) {
-  const target = name.toLowerCase();
+  const target = name.toLowerCase().trim();
 
-  return people.find(p =>
-    (p.name || "").toLowerCase() === target
-  );
+  return people.find(p => {
+
+    const dbName = (p.name || "")
+      .toLowerCase()
+      .trim();
+
+    return (
+      dbName === target ||
+      dbName.includes(target) ||
+      target.includes(dbName)
+    );
+  });
 }
-
 function resolveLeader(raw, people) {
   const names = extractNames(raw);
 
