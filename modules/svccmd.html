@@ -257,6 +257,7 @@ let availabilityServices = [];
 
 let currentService = null;
 let currentRole = null;
+  let hospitalityMap = new Map();
 
 /* ================= DATE ================= */
 
@@ -356,17 +357,12 @@ async function load(){
 
   const staffMap =
     new Map(staffList.map(s => [String(s.id), s.name]));
-const hospitalityMap = new Map();
-
-(hospitalityRes.data || []).forEach(d => {
-
-  if(!d.service_id) return;
-
-  hospitalityMap.set(
+hospitalityMap = new Map(
+  (hospitalityRes.data || []).map(d => [
     String(d.service_id),
     d
-  );
-});
+  ])
+);
 
   
   const templateMap = new Map();
