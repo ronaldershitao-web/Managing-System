@@ -312,12 +312,17 @@ async function load(){
 
   const staffMap =
     new Map(staffList.map(s => [String(s.id), s.name]));
-const hospitalityMap = new Map(
-  (hospitalityRes.data || []).map(d => [
+const hospitalityMap = new Map();
+
+(hospitalityRes.data || []).forEach(d => {
+
+  if(!d.service_id) return;
+
+  hospitalityMap.set(
     String(d.service_id),
     d
-  ])
-);
+  );
+});
 
   
   const templateMap = new Map();
@@ -514,26 +519,69 @@ const hospitalityMap = new Map(
               
 
              
-<b>🏠 Home Cell Serving Hospitality</b>
+${(() => {
 
-<div class="row">
-  <span>Hospitality Cell Leader</span>
+  const hosp =
+    hospitalityMap.get(String(s.id));
 
-  <span class="${hospitalityMap.get(String(s.id))?.leader ? 'good' : 'bad'}">
-    ${
-      hospitalityMap.get(String(s.id))?.leader
-        ? (staffMap.get(String(hospitalityMap.get(String(s.id)).leader)) ||
-           hospitalityMap.get(String(s.id)).leader)
-        : 'Not Assigned'
-    }
-  </span>
+  return `
 
-  <button class="small save"
-    onclick="notifyLeader('${s.id}')">
-    Notify
-  </button>
-</div>
+    <b>🏠 Home Cell Serving Hospitality</b>
 
+    <div class="row">
+
+      <span>
+        Hospitality Cell Leader
+      </span>
+
+      <span class="${
+        hosp?.leader ? 'good' : 'bad'
+      }">
+
+        ${
+          hosp?.leader || 'Not Assigned'
+        }
+
+      </span>
+
+      <button
+        class="small save"
+        onclick="notifyLeader('${s.id}')">
+
+        Notify
+
+      </button>
+
+    </div>
+
+    <div class="row">
+
+      <span>
+        Cell Pastor
+      </span>
+
+      <span class="${
+        hosp?.pastor ? 'good' : 'bad'
+      }">
+
+        ${
+          hosp?.pastor || 'Not Assigned'
+        }
+
+      </span>
+
+      <button
+        class="small save"
+        onclick="notifyPastor('${s.id}')">
+
+        Notify
+
+      </button>
+
+    </div>
+
+  `;
+})()}
 
                 <b>Staff Summary</b>
 
