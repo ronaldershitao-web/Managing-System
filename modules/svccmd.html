@@ -345,6 +345,9 @@ async function load(){
   ]);
 
   const allServices = servicesRes.data || [];
+  serviceMap = new Map(
+  allServices.map(s => [String(s.id), s])
+);
   people = peopleRes.data || [];
 
   let displayServices =
@@ -1185,11 +1188,8 @@ load();
 
    const service = serviceMap.get(String(serviceId));
 
-const slotLabel =
-  service?.service_slots?.label || "";
-
-const slotTime =
-  service?.service_slots?.time || "";
+const slotLabel = service?.service_slots?.label || "Service";
+const slotTime = service?.service_slots?.time || "11:15AM";
    
   const hosp = hospitalityMap.get(String(serviceId));
 
@@ -1216,7 +1216,7 @@ Hi ${leader.name}! 😊
 
 This is Ronald here.
 
-Your cell is rostered for this Sat ${slotLabel} Service to do hospitality!
+Your cell is rostered for this ${slotLabel} Service to do hospitality!
 
 Please see the list and inform your members to report at ${slotTime || "11:15AM"} at Atrium.
 
