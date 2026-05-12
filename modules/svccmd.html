@@ -557,19 +557,12 @@ ${(() => {
 
     <div class="top-grid">
 
-  <!-- HOSPITALITY PANEL -->
-  <div class="panel">
+      <!-- HOSPITALITY PANEL -->
+      <div class="panel">
 
-    <div class="panel-title">
-      🏠 Hospitality
-    </div>
-
-    ${(() => {
-
-      const hosp =
-        hospitalityMap.get(String(s.id));
-
-      return `
+        <div class="panel-title">
+          🏠 Hospitality
+        </div>
 
         <div class="row">
 
@@ -616,48 +609,48 @@ ${(() => {
 
         </button>
 
-      `;
-    })()}
+      </div>
 
-  </div>
+      <!-- STAFF SUMMARY PANEL -->
+      <div class="panel">
 
-  <!-- STAFF SUMMARY PANEL -->
-  <div class="panel">
+        <div class="panel-title">
+          👥 Staff Summary
+        </div>
 
-    <div class="panel-title">
-      👥 Staff Summary
+        <div class="row">
+          <span>Total Assigned</span>
+          <span>${assignedIds.size}</span>
+        </div>
+
+        <div class="row">
+          <span>Unavailable</span>
+
+          <span class="bad"
+            onclick="showUnavailable(
+              '${s.service_date}',
+              '${s.service_slot_id}'
+            )">
+
+            ${unavailableIds.size}
+
+          </span>
+        </div>
+
+        <div class="row">
+          <span>Available</span>
+
+          <span class="good">
+            ${availableIds.length}
+          </span>
+        </div>
+
+      </div>
+
     </div>
 
-    <div class="row">
-      <span>Total Assigned</span>
-      <span>${assignedIds.size}</span>
-    </div>
-
-    <div class="row">
-      <span>Unavailable</span>
-
-      <span class="bad"
-        onclick="showUnavailable(
-          '${s.service_date}',
-          '${s.service_slot_id}'
-        )">
-
-        ${unavailableIds.size}
-
-      </span>
-    </div>
-
-    <div class="row">
-      <span>Available</span>
-      <span class="good">
-        ${availableIds.length}
-      </span>
-    </div>
-
-  </div>
-
-</div>
-
+  `;
+})()}
               
 
               <div class="appointment-panel">
