@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Attendance Input</title>
+  <style>
+    body {
+      font-family: Arial;
+      margin: 0;
+      display: flex;
+      height: 100vh;
+      background: #0f172a;
+      color: white;
+    }
+
+    .left {
+      width: 30%;
+      border-right: 1px solid #334155;
+      padding: 16px;
+      overflow-y: auto;
+    }
+
+    .service {
+      padding: 10px;
+      margin-bottom: 10px;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      cursor: pointer;
+      background: #111827;
+    }
+
+    .service:hover {
+      background: #1f2937;
+    }
+
+    .right {
+      flex: 1;
+      padding: 20px;
+    }
+
+    input {
+      width: 200px;
+      padding: 6px;
+      margin: 6px 0;
+    }
+
+    button {
+      padding: 10px;
+      margin-top: 15px;
+      cursor: pointer;
+    }
+
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+<div class="left">
+  <h3>Services</h3>
+  <div id="serviceList"></div>
+</div>
+
+<div class="right">
+  <h2>Attendance Input</h2>
+  <div id="formArea" class="hidden">
+    <h3 id="serviceTitle"></h3>
+
+    <label>On-site Attendance</label><br>
+    <input id="onsite" type="number" /><br>
+
+    <div id="onlineBlock">
+      <label>Online Attendance</label><br>
+      <input id="online" type="number" /><br>
+    </div>
+
+    <div id="communionBlock">
+      <label>Communicants</label><br>
+      <input id="communicants" type="number" /><br>
+    </div>
+
+    <button onclick="saveData()">Save</button>
+  </div>
+</div>
+
+<script>
+// -------------------------
+// MOCK SERVICES (replace with Supabase fetch)
+// -------------------------
+let services = [];
+
+let selectedService = null;
+
+// -------------------------
+// INIT
+// -------------------------
+function loadServices() {
+  const list = document.getElementById("serviceList");
+  list.innerHTML = "";
+
+  services.forEach(s => {
+    const div = document.createElement("div");
+    div.className = "service";
+    div.innerHTML = s.date + " - " + s.type;
+    div.onclick = () => selectService(s);
+    list.appendChild(div);
+  });
+}
+
+// -------------------------
+// SELECT SERVICE
+// -------------------------
+function selectService(service) {
+  selectedService = service;
+
+  document.getElementById("formArea").classList.remove("hidden");
+  document.getElementById("serviceTitle").innerText = service.date + " (" + service.type + ")";
+
+  // reset fields
+  document.getElementById("onsite").value = 0;
+  document.getElementById("online").value = 0;
+  document.getElementById("communicants").value = 0;
+
+  // conditional UI
+  if (service.type === "1045") {
+    document.getElementById("onlineBlock").style.display = "block";
+    document.getElementById("communionBlock").style.display = "none";
+  } else if (service.type === "communion") {
+    document.getElementById("onlineBlock").style.display = "none";
+    document.getElementById("communionBlock").style.display = "block";
+  }
+}
+
+// -------------------------
+// SAVE
+// -------------------------
+async function saveData() {
+  const payload = {
+    service_id: selectedService.id,
+    on_site_attendance: Number(document.getElementById("onsite").value),
+    online_attendance: selectedService.type === "1045"
+      ? Number(document.getElementById("online").value)
+      : 0,
+    communicants_count: selectedService.type === "communion"
+      ? Number(document.getElementById("communicants").value)
+      : null,
+    total_attendance: Number(document.getElementById("onsite").value) +
+      (selectedService.type === "1045"
+        ? Number(document.getElementById("online").value)
+        : 0)
+  };
+
+  console.log("SAVE PAYLOAD", payload);
+
+  // TODO: replace with Supabase REST API
+  // fetch('https://YOUR_SUPABASE/rest/v1/service_attendance_metrics', ...)
+}
+
+loadServices();
+</script>
+
+</body>
+</html>
