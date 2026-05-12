@@ -260,6 +260,7 @@ let currentRole = null;
   let hospitalityMap = new Map();
   let people = [];
   let serviceMap = new Map();
+  let attendanceMetricsMap = new Map();
 
 /* ================= DATE ================= */
 
@@ -321,6 +322,7 @@ async function load(){
     templateRolesRes,
     hospitalityRes,
     peopleRes,
+      attendanceRes
   ] = await Promise.all([
 
     db.from("services")
@@ -341,7 +343,8 @@ async function load(){
     db.from("service_template_roles")
       .select("*"),
     db.from("hospitality_duty").select("*") ,
-    db.from("people").select("*")
+    db.from("people").select("*"),
+    db.from("service_attendance_metrics").select("*")
   ]);
 
   const allServices = servicesRes.data || [];
@@ -349,6 +352,12 @@ async function load(){
   allServices.map(s => [String(s.id), s])
 );
   people = peopleRes.data || [];
+  attendanceMetricsMap = new Map(
+  (attendanceRes.data || []).map(a => [
+    String(a.service_id),
+    a
+  ])
+);
 
   let displayServices =
     allServices.filter(s => inWindow(s.service_date));
@@ -575,7 +584,134 @@ ${(() => {
   return `
 
     <div class="top-grid">
+${(() => {
 
+  const attendance =
+    attendanceMetricsMap.get(String(s.id)) || {};
+
+  const onsite =
+    attendance.onsite_count || 0;
+
+  const online =
+    attendance.online_count || 0;
+
+  const communicants =
+    attendance.communicants_count || 0;
+
+  const total =
+    onsite + online;
+
+  const allowOnline =
+    (s.service_slots?.label || "")
+      .includes("10.45");
+
+  const allowCommunion =
+    s.is_communion_service === true;
+
+  const participation =
+    onsite > 0
+      ? ((communicants / onsite) * 100).toFixed(1)
+      : 0;
+
+  return `
+
+    <div class="panel" style="margin-top:12px;">
+
+      <div class="panel-title">
+        📊 Attendance
+      </div>
+
+      <div class="row">
+        <span>On-site</span>
+
+        <input
+          type="number"
+          value="${onsite}"
+          min="0"
+          style="width:90px;"
+          onchange="
+            updateAttendance(
+              '${s.id}',
+              'onsite_count',
+              this.value
+            )
+          ">
+      </div>
+
+      ${
+        allowOnline
+        ? `
+          <div class="row">
+            <span>Online</span>
+
+            <input
+              type="number"
+              value="${online}"
+              min="0"
+              style="width:90px;"
+              onchange="
+                updateAttendance(
+                  '${s.id}',
+                  'online_count',
+                  this.value
+                )
+              ">
+          </div>
+        `
+        : ""
+      }
+
+      ${
+        allowCommunion
+        ? `
+          <div class="row">
+            <span>Communicants</span>
+
+            <input
+              type="number"
+              value="${communicants}"
+              min="0"
+              style="width:90px;"
+              onchange="
+                updateAttendance(
+                  '${s.id}',
+                  'communicants_count',
+                  this.value
+                )
+              ">
+          </div>
+
+          <div class="row">
+            <span>Participation</span>
+
+            <span class="good">
+              ${participation}%
+            </span>
+          </div>
+        `
+        : ""
+      }
+
+      <div class="row"
+        style="
+          margin-top:10px;
+          padding-top:10px;
+          border-top:1px solid #334155;
+          font-weight:bold;
+        ">
+
+        <span>Total</span>
+
+        <span class="good">
+          ${total}
+        </span>
+
+      </div>
+
+    </div>
+
+  `;
+})()}
       <!-- HOSPITALITY PANEL -->
       <div class="panel">
 
@@ -1183,6 +1319,40 @@ window.markUnavailable = async function(){
 window.load = load;
 
 load();
+
+  window.updateAttendance = async function(
+  serviceId,
+  field,
+  value
+){
+
+  const existing =
+    attendanceMetricsMap.get(String(serviceId)) || {};
+
+  const payload = {
+
+    service_id: serviceId,
+
+    onsite_count:
+      existing.onsite_count || 0,
+
+    online_count:
+      existing.online_count || 0,
+
+    communicants_count:
+      existing.communicants_count || 0
+  };
+
+  payload[field] = Number(value) || 0;
+
+  await db
+    .from("service_attendance_metrics")
+    .upsert(payload, {
+      onConflict: "service_id"
+    });
+
+  load();
+};
 
  window.notifyHospitality = async function(serviceId){
 
