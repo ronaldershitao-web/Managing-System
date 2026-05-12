@@ -618,7 +618,7 @@ ${(() => {
         <button
           class="small save"
           style="margin-top:10px;width:100%;"
-          onclick="notifyLeader('${s.id}')">
+          onclick="notifyHospitality('${s.id}')">
 
           Notify Hospitality
 
@@ -866,6 +866,42 @@ window.refreshStaffOptions = function(){
     `).join("");
 };
 
+function extractNames(raw) {
+  if (!raw) return [];
+
+  return raw
+    .replace(/\n/g, " / ")
+    .split(/\/|,| and /i)
+    .map(n => n.replace(/\(.*?\)/g, "").trim())
+    .filter(Boolean);
+}
+
+function findPerson(name, people) {
+  const target = name.toLowerCase();
+
+  return people.find(p =>
+    (p.name || "").toLowerCase() === target
+  );
+}
+
+function resolveLeader(raw, people) {
+  const names = extractNames(raw);
+
+  for (const name of names) {
+    const match = findPerson(name, people);
+    if (match) return match;
+  }
+
+  return null;
+}
+
+function sendWhatsApp(phone, message) {
+  const url =
+    `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+
+  window.open(url, "_blank");
+}
+  
 /* ================= ASSIGN ================= */
 
 window.openAssign = function(
@@ -1106,12 +1142,48 @@ window.load = load;
 
 load();
 
-  window.notifyLeader = async function(serviceId){
+ window.notifyHospitality = async function(serviceId){
 
-  // later connect to whatsapp / email / supabase logs
-  console.log("Notify Leader for service:", serviceId);
+  const hosp = hospitalityMap.get(String(serviceId));
 
-  alert("Leader notified (stub)");
+  if (!hosp) {
+    alert("No hospitality duty found");
+    return;
+  }
+
+  const leader = resolveLeader(hosp.leader, staffList);
+
+  if (!leader) {
+    alert("Leader not found in people panel");
+    return;
+  }
+
+  if (!leader.phone) {
+    alert("Leader has no phone number");
+    return;
+  }
+
+  // 🧠 TEMPLATE MESSAGE (your version)
+  const message = `
+Hi ${leader.name}! 😊
+
+This is Ronald here.
+
+Your cell is rostered for this Sat ${hosp.report_time || ""} Service to do hospitality!
+
+Please see the list and inform your members to report at ${hosp.report_time || "11:15AM"} at Atrium.
+
+We will have a time of prayers before we start our duties 🙏
+
+Please acknowledge the message 👍
+
+Thank you for serving! 😄
+  `.trim();
+
+  const url =
+    `https://wa.me/${leader.phone}?text=${encodeURIComponent(message)}`;
+
+  window.open(url, "_blank");
 };
 
 window.notifyPastor = async function(serviceId){
