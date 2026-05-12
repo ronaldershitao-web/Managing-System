@@ -258,6 +258,7 @@ let availabilityServices = [];
 let currentService = null;
 let currentRole = null;
   let hospitalityMap = new Map();
+  let people = [];
 
 /* ================= DATE ================= */
 
@@ -317,7 +318,8 @@ async function load(){
     staffRes,
     rolesRes,
     templateRolesRes,
-    hospitalityRes
+    hospitalityRes,
+    peopleRes,
   ] = await Promise.all([
 
     db.from("services")
@@ -337,10 +339,12 @@ async function load(){
 
     db.from("service_template_roles")
       .select("*"),
-    db.from("hospitality_duty").select("*") 
+    db.from("hospitality_duty").select("*") ,
+    db.from("people").select("*");
   ]);
 
   const allServices = servicesRes.data || [];
+  people = peopleRes.data || [];
 
   let displayServices =
     allServices.filter(s => inWindow(s.service_date));
