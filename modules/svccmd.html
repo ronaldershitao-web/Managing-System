@@ -861,14 +861,17 @@ window.refreshStaffOptions = function(){
       </option>
     `).join("");
 };
-
 function extractNames(raw) {
   if (!raw) return [];
 
   return raw
     .replace(/\n/g, " / ")
     .split(/\/|,| and /i)
-    .map(n => n.replace(/\(.*?\)/g, "").trim())
+    .map(n =>
+      n
+        .replace(/\(.*?\)/g, "") // remove (CL), (ACL)
+        .trim()
+    )
     .filter(Boolean);
 }
 
