@@ -38,7 +38,7 @@
     }
 
     input {
-      width: 200px;
+      width: 220px;
       padding: 6px;
       margin: 6px 0;
     }
@@ -52,6 +52,12 @@
     .hidden {
       display: none;
     }
+
+    .meta {
+      font-size: 12px;
+      opacity: 0.7;
+      margin-bottom: 10px;
+    }
   </style>
 </head>
 <body>
@@ -63,8 +69,10 @@
 
 <div class="right">
   <h2>Attendance Input</h2>
+
   <div id="formArea" class="hidden">
     <h3 id="serviceTitle"></h3>
+    <div class="meta" id="serviceMeta"></div>
 
     <label>On-site Attendance</label><br>
     <input id="onsite" type="number" /><br>
@@ -85,9 +93,26 @@
 
 <script>
 // -------------------------
-// MOCK SERVICES (replace with Supabase fetch)
+// MOCK SERVICES (replace with Supabase)
 // -------------------------
-let services = [];
+let services = [
+  {
+    id: "1",
+    service_date: "2026-01-03",
+    start_time: "10:45:00",
+    end_time: "12:15:00",
+    is_communion_service: false,
+    hospitality_enabled: true
+  },
+  {
+    id: "2",
+    service_date: "2026-01-03",
+    start_time: "13:45:00",
+    end_time: "17:00:00",
+    is_communion_service: true,
+    hospitality_enabled: true
+  }
+];
 
 let selectedService = null;
 
@@ -101,7 +126,10 @@ function loadServices() {
   services.forEach(s => {
     const div = document.createElement("div");
     div.className = "service";
-    div.innerHTML = s.date + " - " + s.type;
+    div.innerHTML = `
+      <div>${s.service_date}</div>
+      <div style='font-size:12px;opacity:0.7'>${s.start_time} - ${s.end_time}</div>
+    `;
     div.onclick = () => selectService(s);
     list.appendChild(div);
   });
@@ -114,46 +142,51 @@ function selectService(service) {
   selectedService = service;
 
   document.getElementById("formArea").classList.remove("hidden");
-  document.getElementById("serviceTitle").innerText = service.date + " (" + service.type + ")";
 
-  // reset fields
+  document.getElementById("serviceTitle").innerText =
+    service.service_date;
+
+  document.getElementById("serviceMeta").innerText =
+    `Time: ${service.start_time} - ${service.end_time} | Communion: ${service.is_communion_service ? 'Yes' : 'No'}`;
+
+  // reset
   document.getElementById("onsite").value = 0;
   document.getElementById("online").value = 0;
   document.getElementById("communicants").value = 0;
 
-  // conditional UI
-  if (service.type === "1045") {
-    document.getElementById("onlineBlock").style.display = "block";
-    document.getElementById("communionBlock").style.display = "none";
-  } else if (service.type === "communion") {
-    document.getElementById("onlineBlock").style.display = "none";
-    document.getElementById("communionBlock").style.display = "block";
-  }
+  // RULE 1: Online only for 10:45 service
+  const onlineEnabled = service.start_time === "10:45:00";
+
+  document.getElementById("onlineBlock").style.display = onlineEnabled ? "block" : "none";
+
+  // RULE 2: Communion flag from service table
+  document.getElementById("communionBlock").style.display = service.is_communion_service ? "block" : "none";
 }
 
 // -------------------------
 // SAVE
 // -------------------------
 async function saveData() {
+  if (!selectedService) return;
+
+  const onsite = Number(document.getElementById("onsite").value);
+  const online = selectedService.start_time === "10:45:00"
+    ? Number(document.getElementById("online").value)
+    : 0;
+
   const payload = {
     service_id: selectedService.id,
-    on_site_attendance: Number(document.getElementById("onsite").value),
-    online_attendance: selectedService.type === "1045"
-      ? Number(document.getElementById("online").value)
-      : 0,
-    communicants_count: selectedService.type === "communion"
+    on_site_attendance: onsite,
+    online_attendance: online,
+    communicants_count: selectedService.is_communion_service
       ? Number(document.getElementById("communicants").value)
       : null,
-    total_attendance: Number(document.getElementById("onsite").value) +
-      (selectedService.type === "1045"
-        ? Number(document.getElementById("online").value)
-        : 0)
+    total_attendance: onsite + online
   };
 
   console.log("SAVE PAYLOAD", payload);
 
-  // TODO: replace with Supabase REST API
-  // fetch('https://YOUR_SUPABASE/rest/v1/service_attendance_metrics', ...)
+  // TODO: Supabase upsert
 }
 
 loadServices();
