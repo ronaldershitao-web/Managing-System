@@ -70,6 +70,35 @@
       align-items:center;
     }
 
+    .top-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  margin-top:12px;
+}
+
+.panel{
+  background:#111827;
+  border:1px solid #334155;
+  border-radius:8px;
+  padding:10px;
+}
+
+.panel-title{
+  font-size:13px;
+  font-weight:bold;
+  color:#fbbf24;
+  margin-bottom:8px;
+}
+
+.appointment-panel{
+  margin-top:12px;
+  background:#111827;
+  border:1px solid #334155;
+  border-radius:8px;
+  padding:10px;
+}
+
     .good{
       color:#22c55e;
       font-weight:bold;
@@ -526,94 +555,112 @@ ${(() => {
 
   return `
 
-    <b>🏠 Home Cell Serving Hospitality</b>
+    <div class="top-grid">
 
-    <div class="row">
+  <!-- HOSPITALITY PANEL -->
+  <div class="panel">
 
-      <span>
-        Hospitality Cell Leader
-      </span>
+    <div class="panel-title">
+      🏠 Hospitality
+    </div>
 
-      <span class="${
-        hosp?.leader ? 'good' : 'bad'
-      }">
+    ${(() => {
 
-        ${
-          hosp?.leader || 'Not Assigned'
-        }
+      const hosp =
+        hospitalityMap.get(String(s.id));
 
-      </span>
+      return `
 
-      <button
-        class="small save"
-        onclick="notifyLeader('${s.id}')">
+        <div class="row">
 
-        Notify
+          <span>
+            Cell Leader
+          </span>
 
-      </button>
+          <span class="${
+            hosp?.leader ? 'good' : 'bad'
+          }">
 
+            ${
+              hosp?.leader || 'Not Assigned'
+            }
+
+          </span>
+
+        </div>
+
+        <div class="row">
+
+          <span>
+            Cell Pastor
+          </span>
+
+          <span class="${
+            hosp?.pastor ? 'good' : 'bad'
+          }">
+
+            ${
+              hosp?.pastor || 'Not Assigned'
+            }
+
+          </span>
+
+        </div>
+
+        <button
+          class="small save"
+          style="margin-top:10px;width:100%;"
+          onclick="notifyLeader('${s.id}')">
+
+          Notify Hospitality
+
+        </button>
+
+      `;
+    })()}
+
+  </div>
+
+  <!-- STAFF SUMMARY PANEL -->
+  <div class="panel">
+
+    <div class="panel-title">
+      👥 Staff Summary
     </div>
 
     <div class="row">
-
-      <span>
-        Cell Pastor
-      </span>
-
-      <span class="${
-        hosp?.pastor ? 'good' : 'bad'
-      }">
-
-        ${
-          hosp?.pastor || 'Not Assigned'
-        }
-
-      </span>
-
-      <button
-        class="small save"
-        onclick="notifyPastor('${s.id}')">
-
-        Notify
-
-      </button>
-
+      <span>Total Assigned</span>
+      <span>${assignedIds.size}</span>
     </div>
 
-  `;
-})()}
+    <div class="row">
+      <span>Unavailable</span>
 
-                <b>Staff Summary</b>
+      <span class="bad"
+        onclick="showUnavailable(
+          '${s.service_date}',
+          '${s.service_slot_id}'
+        )">
 
-                <div class="row">
-                  <span>Total Assigned</span>
-                  <span>${assignedIds.size}</span>
-                </div>
+        ${unavailableIds.size}
 
-                <div class="row">
-                  <span>Unavailable</span>
+      </span>
+    </div>
 
-                  <span class="bad"
-                    onclick="showUnavailable(
-                      '${s.service_date}',
-                      '${s.service_slot_id}'
-                    )">
+    <div class="row">
+      <span>Available</span>
+      <span class="good">
+        ${availableIds.length}
+      </span>
+    </div>
 
-                    ${unavailableIds.size}
+  </div>
 
-                  </span>
-                </div>
-
-                <div class="row">
-                  <span>Available</span>
-                  <span class="good">
-                    ${availableIds.length}
-                  </span>
-                </div>
+</div>
 
               
 
-              <div class="section">
+              <div class="appointment-panel">
 
                 <b>Appointments</b>
 
