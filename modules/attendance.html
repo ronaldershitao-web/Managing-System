@@ -1,195 +1,552 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Attendance Input</title>
+  <title>Attendance Backfill Console</title>
+
   <style>
-    body {
-      font-family: Arial;
-      margin: 0;
-      display: flex;
-      height: 100vh;
-      background: #0f172a;
-      color: white;
+    body{
+      margin:0;
+      font-family:Arial;
+      background:#0f172a;
+      color:white;
     }
 
-    .left {
-      width: 30%;
-      border-right: 1px solid #334155;
-      padding: 16px;
-      overflow-y: auto;
+    header{
+      background:#111827;
+      padding:14px;
+      font-size:20px;
+      font-weight:bold;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
     }
 
-    .service {
-      padding: 10px;
-      margin-bottom: 10px;
-      border: 1px solid #334155;
-      border-radius: 6px;
-      cursor: pointer;
-      background: #111827;
+    .container{
+      padding:14px;
     }
 
-    .service:hover {
-      background: #1f2937;
+    .summary{
+      display:grid;
+      grid-template-columns:repeat(4,1fr);
+      gap:12px;
+      margin-bottom:16px;
     }
 
-    .right {
-      flex: 1;
-      padding: 20px;
+    .summary-card{
+      background:#111827;
+      border:1px solid #334155;
+      border-radius:10px;
+      padding:14px;
     }
 
-    input {
-      width: 220px;
-      padding: 6px;
-      margin: 6px 0;
+    .summary-title{
+      font-size:12px;
+      color:#94a3b8;
     }
 
-    button {
-      padding: 10px;
-      margin-top: 15px;
-      cursor: pointer;
+    .summary-value{
+      font-size:28px;
+      margin-top:6px;
+      font-weight:bold;
+      color:#22c55e;
     }
 
-    .hidden {
-      display: none;
+    table{
+      width:100%;
+      border-collapse:collapse;
+      background:#111827;
+      border-radius:10px;
+      overflow:hidden;
     }
 
-    .meta {
-      font-size: 12px;
-      opacity: 0.7;
-      margin-bottom: 10px;
+    th{
+      background:#1e293b;
+      color:#fbbf24;
+      padding:10px;
+      font-size:13px;
+      text-align:left;
+      border-bottom:1px solid #334155;
+    }
+
+    td{
+      padding:10px;
+      border-bottom:1px solid #1f2937;
+      font-size:13px;
+    }
+
+    tr:hover{
+      background:#172033;
+    }
+
+    input{
+      width:90px;
+      padding:6px;
+      border-radius:6px;
+      border:none;
+      background:#0f172a;
+      color:white;
+    }
+
+    .save-btn{
+      background:#22c55e;
+      color:white;
+      border:none;
+      padding:8px 12px;
+      border-radius:6px;
+      cursor:pointer;
+      font-weight:bold;
+    }
+
+    .pending{
+      color:#ef4444;
+      font-weight:bold;
+    }
+
+    .done{
+      color:#22c55e;
+      font-weight:bold;
+    }
+
+    .toolbar{
+      display:flex;
+      gap:10px;
+      margin-bottom:14px;
+    }
+
+    select{
+      padding:8px;
+      border:none;
+      border-radius:6px;
+      background:#111827;
+      color:white;
+    }
+
+    .empty{
+      margin-top:20px;
+      padding:30px;
+      text-align:center;
+      background:#111827;
+      border:1px solid #334155;
+      border-radius:10px;
+      color:#22c55e;
+      font-size:18px;
+      font-weight:bold;
     }
   </style>
 </head>
+
 <body>
 
-<div class="left">
-  <h3>Services</h3>
-  <div id="serviceList"></div>
-</div>
+<header>
+  📊 Attendance Backfill Console
 
-<div class="right">
-  <h2>Attendance Input</h2>
+  <button class="save-btn" onclick="loadAttendance()">
+    Refresh
+  </button>
+</header>
 
-  <div id="formArea" class="hidden">
-    <h3 id="serviceTitle"></h3>
-    <div class="meta" id="serviceMeta"></div>
+<div class="container">
 
-    <label>On-site Attendance</label><br>
-    <input id="onsite" type="number" /><br>
+  <div class="summary">
 
-    <div id="onlineBlock">
-      <label>Online Attendance</label><br>
-      <input id="online" type="number" /><br>
+    <div class="summary-card">
+      <div class="summary-title">Total Services</div>
+      <div class="summary-value" id="totalServices">0</div>
     </div>
 
-    <div id="communionBlock">
-      <label>Communicants</label><br>
-      <input id="communicants" type="number" /><br>
+    <div class="summary-card">
+      <div class="summary-title">Attendance Submitted</div>
+      <div class="summary-value" id="submittedCount">0</div>
     </div>
 
-    <button onclick="saveData()">Save</button>
+    <div class="summary-card">
+      <div class="summary-title">Missing Attendance</div>
+      <div class="summary-value" id="missingCount">0</div>
+    </div>
+
+    <div class="summary-card">
+      <div class="summary-title">Total Attendance</div>
+      <div class="summary-value" id="totalAttendance">0</div>
+    </div>
+
   </div>
+
+  <div class="toolbar">
+
+    <select id="yearFilter" onchange="renderTable()">
+      <option value="all">All Years</option>
+    </select>
+
+  </div>
+
+  <table>
+
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Service</th>
+        <th>On-site</th>
+        <th>Online</th>
+        <th>Communicants</th>
+        <th>Total</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+
+    <tbody id="attendanceBody"></tbody>
+
+  </table>
+
+  <div id="emptyState"></div>
+
 </div>
 
-<script>
-// -------------------------
-// MOCK SERVICES (replace with Supabase)
-// -------------------------
-let services = [
-  {
-    id: "1",
-    service_date: "2026-01-03",
-    start_time: "10:45:00",
-    end_time: "12:15:00",
-    is_communion_service: false,
-    hospitality_enabled: true
-  },
-  {
-    id: "2",
-    service_date: "2026-01-03",
-    start_time: "13:45:00",
-    end_time: "17:00:00",
-    is_communion_service: true,
-    hospitality_enabled: true
-  }
-];
+<script type="module">
+import { db } from "../assets/app.js";
 
-let selectedService = null;
+let services = [];
+let attendanceMap = new Map();
 
-// -------------------------
-// INIT
-// -------------------------
-function loadServices() {
-  const list = document.getElementById("serviceList");
-  list.innerHTML = "";
+async function loadAttendance(){
 
-  services.forEach(s => {
-    const div = document.createElement("div");
-    div.className = "service";
-    div.innerHTML = `
-      <div>${s.service_date}</div>
-      <div style='font-size:12px;opacity:0.7'>${s.start_time} - ${s.end_time}</div>
-    `;
-    div.onclick = () => selectService(s);
-    list.appendChild(div);
+  const [
+    servicesRes,
+    attendanceRes
+  ] = await Promise.all([
+
+    db
+      .from("services")
+      .select(`
+        *,
+        service_slots(label,time)
+      `)
+      .order("service_date",{ascending:false}),
+
+    db
+      .from("service_attendance_metrics")
+      .select("*")
+  ]);
+
+  services = servicesRes.data || [];
+
+  attendanceMap = new Map(
+    (attendanceRes.data || []).map(a => [
+      String(a.service_id),
+      a
+    ])
+  );
+
+  populateYearFilter();
+  renderSummary();
+  renderTable();
+}
+
+function populateYearFilter(){
+
+  const years = [
+    ...new Set(
+      services.map(s =>
+        new Date(s.service_date)
+          .getFullYear()
+      )
+    )
+  ];
+
+  const filter =
+    document.getElementById("yearFilter");
+
+  filter.innerHTML = `
+    <option value="all">
+      All Years
+    </option>
+  `;
+
+  years
+    .sort((a,b)=>b-a)
+    .forEach(y=>{
+
+      filter.innerHTML += `
+        <option value="${y}">
+          ${y}
+        </option>
+      `;
+    });
+}
+
+function formatDate(dateStr){
+
+  const d = new Date(dateStr);
+
+  return d.toLocaleDateString("en-GB",{
+    day:"2-digit",
+    month:"short",
+    year:"numeric"
   });
 }
 
-// -------------------------
-// SELECT SERVICE
-// -------------------------
-function selectService(service) {
-  selectedService = service;
+function renderSummary(){
 
-  document.getElementById("formArea").classList.remove("hidden");
+  const totalServices = services.length;
 
-  document.getElementById("serviceTitle").innerText =
-    service.service_date;
+  let submitted = 0;
+  let totalAttendance = 0;
 
-  document.getElementById("serviceMeta").innerText =
-    `Time: ${service.start_time} - ${service.end_time} | Communion: ${service.is_communion_service ? 'Yes' : 'No'}`;
+  services.forEach(s=>{
 
-  // reset
-  document.getElementById("onsite").value = 0;
-  document.getElementById("online").value = 0;
-  document.getElementById("communicants").value = 0;
+    const att =
+      attendanceMap.get(String(s.id));
 
-  // RULE 1: Online only for 10:45 service
-  const onlineEnabled = service.start_time === "10:45:00";
+    if(att){
 
-  document.getElementById("onlineBlock").style.display = onlineEnabled ? "block" : "none";
+      const onsite =
+        att.onsite_count || 0;
 
-  // RULE 2: Communion flag from service table
-  document.getElementById("communionBlock").style.display = service.is_communion_service ? "block" : "none";
+      const online =
+        att.online_count || 0;
+
+      const communicants =
+        att.communicants_count || 0;
+
+      const hasAttendance =
+        onsite > 0 ||
+        online > 0 ||
+        communicants > 0;
+
+      if(hasAttendance){
+
+        submitted++;
+
+        totalAttendance +=
+          onsite + online;
+      }
+    }
+  });
+
+  document.getElementById("totalServices").innerText =
+    totalServices;
+
+  document.getElementById("submittedCount").innerText =
+    submitted;
+
+  document.getElementById("missingCount").innerText =
+    totalServices - submitted;
+
+  document.getElementById("totalAttendance").innerText =
+    totalAttendance;
 }
 
-// -------------------------
-// SAVE
-// -------------------------
-async function saveData() {
-  if (!selectedService) return;
+window.renderTable = function(){
 
-  const onsite = Number(document.getElementById("onsite").value);
-  const online = selectedService.start_time === "10:45:00"
-    ? Number(document.getElementById("online").value)
-    : 0;
+  const body =
+    document.getElementById("attendanceBody");
+
+  const emptyState =
+    document.getElementById("emptyState");
+
+  const selectedYear =
+    document.getElementById("yearFilter").value;
+
+  body.innerHTML = "";
+  emptyState.innerHTML = "";
+
+  let pendingCount = 0;
+
+  services.forEach(service=>{
+
+    const serviceYear =
+      new Date(service.service_date)
+        .getFullYear()
+        .toString();
+
+    if(
+      selectedYear !== "all" &&
+      selectedYear !== serviceYear
+    ){
+      return;
+    }
+
+    const attendance =
+      attendanceMap.get(String(service.id));
+
+    const onsite =
+      attendance?.onsite_count || 0;
+
+    const online =
+      attendance?.online_count || 0;
+
+    const communicants =
+      attendance?.communicants_count || 0;
+
+    const submitted =
+      attendance &&
+      (
+        onsite > 0 ||
+        online > 0 ||
+        communicants > 0
+      );
+
+    // HIDE COMPLETED
+    if(submitted){
+      return;
+    }
+
+    pendingCount++;
+
+    const allowOnline =
+      (service.service_slots?.label || "")
+        .includes("10.45");
+
+    const allowCommunion =
+      service.is_communion_service === true;
+
+    body.innerHTML += `
+
+      <tr>
+
+        <td>
+          ${formatDate(service.service_date)}
+        </td>
+
+        <td>
+          ${service.service_slots?.label || ""}
+          <br>
+
+          <span style="color:#94a3b8;">
+            ${service.service_slots?.time || ""}
+          </span>
+
+        </td>
+
+        <td>
+
+          <input
+            type="number"
+            min="0"
+            id="onsite_${service.id}"
+            value="${onsite}">
+
+        </td>
+
+        <td>
+
+          ${
+            allowOnline
+            ? `
+              <input
+                type="number"
+                min="0"
+                id="online_${service.id}"
+                value="${online}">
+            `
+            : "-"
+          }
+
+        </td>
+
+        <td>
+
+          ${
+            allowCommunion
+            ? `
+              <input
+                type="number"
+                min="0"
+                id="communion_${service.id}"
+                value="${communicants}">
+            `
+            : "-"
+          }
+
+        </td>
+
+        <td>
+          <b>${onsite + online}</b>
+        </td>
+
+        <td>
+
+          <button
+            class="save-btn"
+            onclick="saveAttendance('${service.id}')">
+
+            Save
+
+          </button>
+
+        </td>
+
+      </tr>
+    `;
+  });
+
+  if(pendingCount === 0){
+
+    emptyState.innerHTML = `
+      <div class="empty">
+        ✅ All attendance records completed
+      </div>
+    `;
+  }
+};
+
+window.saveAttendance = async function(serviceId){
+
+  const onsite =
+    Number(
+      document.getElementById(
+        `onsite_${serviceId}`
+      )?.value || 0
+    );
+
+  const online =
+    Number(
+      document.getElementById(
+        `online_${serviceId}`
+      )?.value || 0
+    );
+
+  const communicants =
+    Number(
+      document.getElementById(
+        `communion_${serviceId}`
+      )?.value || 0
+    );
 
   const payload = {
-    service_id: selectedService.id,
-    on_site_attendance: onsite,
-    online_attendance: online,
-    communicants_count: selectedService.is_communion_service
-      ? Number(document.getElementById("communicants").value)
-      : null,
-    total_attendance: onsite + online
+
+    service_id: serviceId,
+
+    onsite_count: onsite,
+
+    online_count: online,
+
+    communicants_count: communicants
   };
 
-  console.log("SAVE PAYLOAD", payload);
+  const { error } =
+    await db
+      .from("service_attendance_metrics")
+      .upsert(payload,{
+        onConflict:"service_id"
+      });
 
-  // TODO: Supabase upsert
-}
+  if(error){
 
-loadServices();
+    alert(error.message);
+    return;
+  }
+
+  attendanceMap.set(
+    String(serviceId),
+    payload
+  );
+
+  renderSummary();
+  renderTable();
+};
+
+loadAttendance();
+
 </script>
 
 </body>
