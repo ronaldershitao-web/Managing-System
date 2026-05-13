@@ -364,47 +364,163 @@ async function load(){
 
     `).join("");
 
+/* =========================
+   ATTENDANCE TREND
+========================= */
+
+const attendanceMap =
+  new Map(
+    attendance.map(a => [
+      String(a.service_id),
+      a
+    ])
+  );
+
+/* =========================
+   GROUP SERVICES
+========================= */
+
+const grouped = {
+
+  "Saturday 2.30PM": [],
+  "Sunday 8.30AM": [],
+  "Sunday 10.45AM": [],
+  "Sunday Jurong": [],
+  "Sunday MD": []
+};
+
+/* =========================
+   BUILD GROUPS
+========================= */
+
+services.forEach(s => {
+
+  const label =
+    s.service_slots?.label || "";
+
+  const location =
+    (s.service_slots?.location || "")
+      .toLowerCase();
+
+  const att =
+    attendanceMap.get(String(s.id));
+
+  if(!att) return;
+
+  // 🔥 TOTAL = ONSITE + ONLINE
+  const total =
+    (att.onsite_count || 0) +
+    (att.online_count || 0);
+
+  const item = {
+
+    date:s.service_date,
+    total,
+    label
+  };
+
   /* =========================
-     ATTENDANCE TREND
+     SATURDAY 2.30PM
   ========================= */
 
-  const attendanceMap =
-    new Map(
-      attendance.map(a => [
-        String(a.service_id),
-        a
-      ])
-    );
+  if(
+    label.includes("2.30")
+  ){
 
-  const labels = [];
-  const values = [];
+    grouped["Saturday 2.30PM"]
+      .push(item);
 
-  services.forEach(s => {
+    grouped["Sunday MD"]
+      .push(item);
+  }
 
-    const att =
-      attendanceMap.get(String(s.id));
+  /* =========================
+     SUNDAY 8.30AM
+  ========================= */
 
-    if(!att) return;
+  else if(
+    label.includes("8.30")
+  ){
 
-    const total =
-      (att.onsite_count || 0) +
-      (att.online_count || 0);
+    grouped["Sunday 8.30AM"]
+      .push(item);
 
-    labels.push(
-      `${s.service_date}\n${s.service_slots?.label || ""}`
-    );
+    grouped["Sunday MD"]
+      .push(item);
+  }
 
-    values.push(total);
-  });
+  /* =========================
+     JURONG
+  ========================= */
+
+  else if(
+    label.includes("10.45") &&
+    location.includes("jurong")
+  ){
+
+    grouped["Sunday Jurong"]
+      .push(item);
+  }
+
+  /* =========================
+     SUNDAY 10.45AM
+  ========================= */
+
+  else if(
+    label.includes("10.45")
+  ){
+
+    grouped["Sunday 10.45AM"]
+      .push(item);
+
+    grouped["Sunday MD"]
+      .push(item);
+  }
+});
+
+/* =========================
+   SORT BY DATE
+========================= */
+
+Object.values(grouped).forEach(arr => {
+
+  arr.sort((a,b)=>
+    new Date(a.date) -
+    new Date(b.date)
+  );
+});
+
+/* =========================
+   RENDER CHARTS
+========================= */
+
+const chartsContainer =
+  document.getElementById("chartsContainer");
+
+chartsContainer.innerHTML = "";
+
+Object.entries(grouped).forEach(([name,data],index)=>{
+
+  if(data.length === 0) return;
+
+  const values =
+    data.map(d => d.total);
+
+  const labels =
+    data.map(d => d.date);
+
+  /* =========================
+     SPC CALCULATIONS
+  ========================= */
 
   const avg =
-    values.reduce((a,b)=>a+b,0) /
-    (values.length || 1);
+    values.reduce((a,b)=>a+b,0)
+    / values.length;
 
   const variance =
     values.reduce((sum,v)=>
       sum + Math.pow(v-avg,2)
-    ,0) / (values.length || 1);
+    ,0) / values.length;
 
   const stdDev =
     Math.sqrt(variance);
@@ -418,91 +534,100 @@ async function load(){
       0
     );
 
-  const uclData =
-    values.map(()=>UCL);
+  const canvasId =
+    `chart_${index}`;
 
-  const lclData =
-    values.map(()=>LCL);
+  chartsContainer.innerHTML += `
 
-  const avgData =
-    values.map(()=>avg);
+    <div class="panel"
+      style="margin-bottom:20px;">
 
-  if(chart){
-    chart.destroy();
-  }
+      <div class="panel-title">
+        📈 ${name}
+      </div>
 
-  const ctx =
-    document
-      .getElementById("attendanceChart");
+      <canvas
+        id="${canvasId}"
+        height="120">
+      </canvas>
 
-  chart = new Chart(ctx, {
+    </div>
+  `;
 
-    type:"line",
+  new Chart(
 
-    data:{
+    document.getElementById(canvasId),
 
-      labels,
+    {
 
-      datasets:[
+      type:"line",
 
-        {
-          label:"Attendance",
-          data:values,
-          borderWidth:2,
-          tension:0.3
-        },
+      data:{
 
-        {
-          label:"Average",
-          data:avgData,
-          borderDash:[5,5],
-          borderWidth:1
-        },
+        labels,
 
-        {
-          label:"UCL",
-          data:uclData,
-          borderDash:[10,5],
-          borderWidth:1
-        },
+        datasets:[
 
-        {
-          label:"LCL",
-          data:lclData,
-          borderDash:[10,5],
-          borderWidth:1
-        }
-      ]
-    },
+          {
+            label:"Attendance",
+            data:values,
+            borderWidth:2,
+            tension:0.3
+          },
 
-    options:{
+          {
+            label:"Average",
+            data:values.map(()=>avg),
+            borderDash:[5,5],
+            borderWidth:1
+          },
 
-      responsive:true,
+          {
+            label:"UCL",
+            data:values.map(()=>UCL),
+            borderDash:[10,5],
+            borderWidth:1
+          },
 
-      plugins:{
-        legend:{
-          labels:{
-            color:"black"
+          {
+            label:"LCL",
+            data:values.map(()=>LCL),
+            borderDash:[10,5],
+            borderWidth:1
           }
-        }
+        ]
       },
 
-      scales:{
+      options:{
 
-        x:{
-          ticks:{
-            color:"black"
+        responsive:true,
+
+        plugins:{
+          legend:{
+            labels:{
+              color:"black"
+            }
           }
         },
 
-        y:{
-          ticks:{
-            color:"black"
+        scales:{
+
+          x:{
+            ticks:{
+              color:"black"
+            }
+          },
+
+          y:{
+            ticks:{
+              color:"black"
+            }
           }
         }
       }
     }
-  });
+  );
+});
 }
 
 load();
