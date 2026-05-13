@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Attendance Backfill Console</title>
+  <title>Attendance Backfill Console (Upgraded)</title>
 
   <style>
     body{
@@ -21,35 +21,7 @@
       align-items:center;
     }
 
-    .container{
-      padding:14px;
-    }
-
-    .summary{
-      display:grid;
-      grid-template-columns:repeat(4,1fr);
-      gap:12px;
-      margin-bottom:16px;
-    }
-
-    .summary-card{
-      background:#111827;
-      border:1px solid #334155;
-      border-radius:10px;
-      padding:14px;
-    }
-
-    .summary-title{
-      font-size:12px;
-      color:#94a3b8;
-    }
-
-    .summary-value{
-      font-size:28px;
-      margin-top:6px;
-      font-weight:bold;
-      color:#22c55e;
-    }
+    .container{ padding:14px; }
 
     table{
       width:100%;
@@ -63,19 +35,14 @@
       background:#1e293b;
       color:#fbbf24;
       padding:10px;
-      font-size:13px;
       text-align:left;
-      border-bottom:1px solid #334155;
+      font-size:13px;
     }
 
     td{
       padding:10px;
       border-bottom:1px solid #1f2937;
       font-size:13px;
-    }
-
-    tr:hover{
-      background:#172033;
     }
 
     input{
@@ -89,48 +56,25 @@
 
     .save-btn{
       background:#22c55e;
-      color:white;
       border:none;
-      padding:8px 12px;
+      padding:6px 10px;
       border-radius:6px;
+      color:white;
       cursor:pointer;
       font-weight:bold;
     }
 
-    .pending{
-      color:#ef4444;
-      font-weight:bold;
-    }
-
-    .done{
-      color:#22c55e;
-      font-weight:bold;
-    }
-
-    .toolbar{
-      display:flex;
-      gap:10px;
-      margin-bottom:14px;
-    }
-
-    select{
-      padding:8px;
-      border:none;
-      border-radius:6px;
-      background:#111827;
-      color:white;
-    }
+    .status-done{ color:#22c55e; font-weight:bold; }
+    .status-pending{ color:#fbbf24; font-weight:bold; }
+    .status-update{ color:#ef4444; font-weight:bold; }
 
     .empty{
-      margin-top:20px;
-      padding:30px;
       text-align:center;
+      padding:30px;
+      margin-top:20px;
       background:#111827;
-      border:1px solid #334155;
       border-radius:10px;
-      color:#22c55e;
-      font-size:18px;
-      font-weight:bold;
+      border:1px solid #334155;
     }
   </style>
 </head>
@@ -138,49 +82,13 @@
 <body>
 
 <header>
-  📊 Attendance Backfill Console
-
-  <button class="save-btn" onclick="loadAttendance()">
-    Refresh
-  </button>
+  📊 Attendance Backfill (Smart Mode)
+  <button class="save-btn" onclick="load()">Refresh</button>
 </header>
 
 <div class="container">
 
-  <div class="summary">
-
-    <div class="summary-card">
-      <div class="summary-title">Total Services</div>
-      <div class="summary-value" id="totalServices">0</div>
-    </div>
-
-    <div class="summary-card">
-      <div class="summary-title">Attendance Submitted</div>
-      <div class="summary-value" id="submittedCount">0</div>
-    </div>
-
-    <div class="summary-card">
-      <div class="summary-title">Missing Attendance</div>
-      <div class="summary-value" id="missingCount">0</div>
-    </div>
-
-    <div class="summary-card">
-      <div class="summary-title">Total Attendance</div>
-      <div class="summary-value" id="totalAttendance">0</div>
-    </div>
-
-  </div>
-
-  <div class="toolbar">
-
-    <select id="yearFilter" onchange="renderTable()">
-      <option value="all">All Years</option>
-    </select>
-
-  </div>
-
   <table>
-
     <thead>
       <tr>
         <th>Date</th>
@@ -189,16 +97,15 @@
         <th>Online</th>
         <th>Communicants</th>
         <th>Total</th>
+        <th>Status</th>
         <th>Action</th>
       </tr>
     </thead>
 
-    <tbody id="attendanceBody"></tbody>
-
+    <tbody id="body"></tbody>
   </table>
 
-  <div id="emptyState"></div>
-
+  <div id="empty"></div>
 </div>
 
 <script type="module">
@@ -207,346 +114,201 @@ import { db } from "../assets/app.js";
 let services = [];
 let attendanceMap = new Map();
 
-async function loadAttendance(){
+/* ================= DATE ================= */
 
-  const [
-    servicesRes,
-    attendanceRes
-  ] = await Promise.all([
+function parse(d){
+  const [y,m,day] = d.split("-");
+  return new Date(y,m-1,day);
+}
 
-    db
-      .from("services")
-      .select(`
-        *,
-        service_slots(label,time)
-      `)
-      .order("service_date",{ascending:false}),
+/* ================= LOAD ================= */
 
-    db
-      .from("service_attendance_metrics")
-      .select("*")
+async function load(){
+
+  const [sRes,aRes] = await Promise.all([
+
+    db.from("services")
+      .select("*, service_slots(label,time)")
+      .order("service_date",{ascending:true}),   // ✅ ASC FIX
+
+    db.from("service_attendance_metrics").select("*")
   ]);
 
-  services = servicesRes.data || [];
+  services = sRes.data || [];
 
   attendanceMap = new Map(
-    (attendanceRes.data || []).map(a => [
-      String(a.service_id),
-      a
-    ])
+    (aRes.data || []).map(a => [String(a.service_id), a])
   );
 
-  populateYearFilter();
-  renderSummary();
-  renderTable();
+  render();
 }
 
-function populateYearFilter(){
+/* ================= LOGIC ================= */
 
-  const years = [
-    ...new Set(
-      services.map(s =>
-        new Date(s.service_date)
-          .getFullYear()
-      )
-    )
-  ];
-
-  const filter =
-    document.getElementById("yearFilter");
-
-  filter.innerHTML = `
-    <option value="all">
-      All Years
-    </option>
-  `;
-
-  years
-    .sort((a,b)=>b-a)
-    .forEach(y=>{
-
-      filter.innerHTML += `
-        <option value="${y}">
-          ${y}
-        </option>
-      `;
-    });
+function today(){
+  const t = new Date();
+  t.setHours(0,0,0,0);
+  return t;
 }
 
-function formatDate(dateStr){
-
-  const d = new Date(dateStr);
-
-  return d.toLocaleDateString("en-GB",{
-    day:"2-digit",
-    month:"short",
-    year:"numeric"
-  });
+function serviceDate(d){
+  const x = parse(d);
+  x.setHours(0,0,0,0);
+  return x;
 }
 
-function renderSummary(){
+function status(att, svcDate){
 
-  const totalServices = services.length;
+  const now = today();
 
-  let submitted = 0;
-  let totalAttendance = 0;
+  const filled =
+    att &&
+    (att.onsite_count > 0 ||
+     att.online_count > 0 ||
+     att.communicants_count > 0);
 
-  services.forEach(s=>{
+  if(filled) return "DONE";
 
-    const att =
-      attendanceMap.get(String(s.id));
+  if(svcDate < now) return "UPDATE";
 
-    if(att){
+  if(svcDate > now) return "FUTURE";
 
-      const onsite =
-        att.onsite_count || 0;
-
-      const online =
-        att.online_count || 0;
-
-      const communicants =
-        att.communicants_count || 0;
-
-      const hasAttendance =
-        onsite > 0 ||
-        online > 0 ||
-        communicants > 0;
-
-      if(hasAttendance){
-
-        submitted++;
-
-        totalAttendance +=
-          onsite + online;
-      }
-    }
-  });
-
-  document.getElementById("totalServices").innerText =
-    totalServices;
-
-  document.getElementById("submittedCount").innerText =
-    submitted;
-
-  document.getElementById("missingCount").innerText =
-    totalServices - submitted;
-
-  document.getElementById("totalAttendance").innerText =
-    totalAttendance;
+  return "PENDING";
 }
 
-window.renderTable = function(){
+/* ================= RENDER ================= */
 
-  const body =
-    document.getElementById("attendanceBody");
+function render(){
 
-  const emptyState =
-    document.getElementById("emptyState");
-
-  const selectedYear =
-    document.getElementById("yearFilter").value;
+  const body = document.getElementById("body");
+  const empty = document.getElementById("empty");
 
   body.innerHTML = "";
-  emptyState.innerHTML = "";
 
-  let pendingCount = 0;
+  let showCount = 0;
 
-  services.forEach(service=>{
+  services.forEach(s => {
 
-    const serviceYear =
-      new Date(service.service_date)
-        .getFullYear()
-        .toString();
+    const svcDate = serviceDate(s.service_date);
+    const att = attendanceMap.get(String(s.id));
 
-    if(
-      selectedYear !== "all" &&
-      selectedYear !== serviceYear
-    ){
-      return;
-    }
+    const st = status(att, svcDate);
 
-    const attendance =
-      attendanceMap.get(String(service.id));
+    // ❌ RULE: hide future services
+    if(st === "FUTURE") return;
 
-    const onsite =
-      attendance?.onsite_count || 0;
+    // ❌ RULE: hide already completed
+    if(st === "DONE") return;
 
-    const online =
-      attendance?.online_count || 0;
+    showCount++;
 
-    const communicants =
-      attendance?.communicants_count || 0;
-
-    const submitted =
-      attendance &&
-      (
-        onsite > 0 ||
-        online > 0 ||
-        communicants > 0
-      );
-
-    // HIDE COMPLETED
-    if(submitted){
-      return;
-    }
-
-    pendingCount++;
+    const onsite = att?.onsite_count || 0;
+    const online = att?.online_count || 0;
+    const comm = att?.communicants_count || 0;
 
     const allowOnline =
-      (service.service_slots?.label || "")
-        .includes("10.45");
+      (s.service_slots?.label || "").includes("10.45");
 
-    const allowCommunion =
-      service.is_communion_service === true;
+    const allowComm = s.is_communion_service;
 
     body.innerHTML += `
-
       <tr>
 
-        <td>
-          ${formatDate(service.service_date)}
-        </td>
+        <td>${s.service_date}</td>
 
         <td>
-          ${service.service_slots?.label || ""}
+          ${s.service_slots?.label || ""}
           <br>
+          <small style="color:#94a3b8;">
+            ${s.service_slots?.time || ""}
+          </small>
+        </td>
 
-          <span style="color:#94a3b8;">
-            ${service.service_slots?.time || ""}
+        <td>
+          <input id="o_${s.id}" value="${onsite}">
+        </td>
+
+        <td>
+          ${allowOnline
+            ? `<input id="on_${s.id}" value="${online}">`
+            : "-"}
+        </td>
+
+        <td>
+          ${allowComm
+            ? `<input id="c_${s.id}" value="${comm}">`
+            : "-"}
+        </td>
+
+        <td>${onsite + online}</td>
+
+        <td>
+          <span class="${
+            st === 'UPDATE'
+              ? 'status-update'
+              : 'status-pending'
+          }">
+            ${st}
           </span>
-
         </td>
 
         <td>
-
-          <input
-            type="number"
-            min="0"
-            id="onsite_${service.id}"
-            value="${onsite}">
-
-        </td>
-
-        <td>
-
-          ${
-            allowOnline
-            ? `
-              <input
-                type="number"
-                min="0"
-                id="online_${service.id}"
-                value="${online}">
-            `
-            : "-"
-          }
-
-        </td>
-
-        <td>
-
-          ${
-            allowCommunion
-            ? `
-              <input
-                type="number"
-                min="0"
-                id="communion_${service.id}"
-                value="${communicants}">
-            `
-            : "-"
-          }
-
-        </td>
-
-        <td>
-          <b>${onsite + online}</b>
-        </td>
-
-        <td>
-
-          <button
-            class="save-btn"
-            onclick="saveAttendance('${service.id}')">
-
+          <button class="save-btn"
+            onclick="save('${s.id}')">
             Save
-
           </button>
-
         </td>
 
       </tr>
     `;
   });
 
-  if(pendingCount === 0){
-
-    emptyState.innerHTML = `
+  if(showCount === 0){
+    empty.innerHTML = `
       <div class="empty">
-        ✅ All attendance records completed
+        ✅ No pending attendance (All up to date or future)
       </div>
     `;
   }
-};
+}
 
-window.saveAttendance = async function(serviceId){
+/* ================= SAVE ================= */
+
+window.save = async function(id){
 
   const onsite =
-    Number(
-      document.getElementById(
-        `onsite_${serviceId}`
-      )?.value || 0
-    );
+    Number(document.getElementById(`o_${id}`)?.value || 0);
 
   const online =
-    Number(
-      document.getElementById(
-        `online_${serviceId}`
-      )?.value || 0
-    );
+    Number(document.getElementById(`on_${id}`)?.value || 0);
 
-  const communicants =
-    Number(
-      document.getElementById(
-        `communion_${serviceId}`
-      )?.value || 0
-    );
+  const comm =
+    Number(document.getElementById(`c_${id}`)?.value || 0);
 
   const payload = {
-
-    service_id: serviceId,
-
+    service_id: id,
     onsite_count: onsite,
-
     online_count: online,
-
-    communicants_count: communicants
+    communicants_count: comm
   };
 
-  const { error } =
-    await db
-      .from("service_attendance_metrics")
-      .upsert(payload,{
-        onConflict:"service_id"
-      });
+  const { error } = await db
+    .from("service_attendance_metrics")
+    .upsert(payload,{
+      onConflict:"service_id"
+    });
 
   if(error){
-
     alert(error.message);
     return;
   }
 
-  attendanceMap.set(
-    String(serviceId),
-    payload
-  );
+  attendanceMap.set(String(id), payload);
 
-  renderSummary();
-  renderTable();
+  load();
 };
 
-loadAttendance();
-
+load();
 </script>
 
 </body>
