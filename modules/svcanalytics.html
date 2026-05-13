@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Service Analytics Dashboard</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    body{
+      margin:0;
+      font-family:Arial;
+      background:#0f172a;
+      color:white;
+    }
+
+    header{
+      background:#111827;
+      padding:14px;
+      font-size:22px;
+      font-weight:bold;
+    }
+
+    .container{
+      padding:14px;
+    }
+
+    .top-grid{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:14px;
+      margin-bottom:14px;
+    }
+
+    .panel{
+      background:#111827;
+      border:1px solid #334155;
+      border-radius:10px;
+      padding:14px;
+    }
+
+    .panel-title{
+      color:#fbbf24;
+      font-size:16px;
+      font-weight:bold;
+      margin-bottom:14px;
+    }
+
+    table{
+      width:100%;
+      border-collapse:collapse;
+    }
+
+    th{
+      background:#1e293b;
+      color:#fbbf24;
+      padding:10px;
+      text-align:left;
+      font-size:12px;
+    }
+
+    td{
+      padding:10px;
+      border-bottom:1px solid #1f2937;
+      font-size:12px;
+    }
+
+    .count{
+      color:#22c55e;
+      font-weight:bold;
+    }
+
+    canvas{
+      background:white;
+      border-radius:8px;
+      padding:10px;
+    }
+
+    .summary-grid{
+      display:grid;
+      grid-template-columns:repeat(4,1fr);
+      gap:12px;
+      margin-bottom:14px;
+    }
+
+    .summary-card{
+      background:#111827;
+      border:1px solid #334155;
+      border-radius:10px;
+      padding:14px;
+    }
+
+    .summary-title{
+      color:#94a3b8;
+      font-size:12px;
+    }
+
+    .summary-value{
+      margin-top:6px;
+      font-size:28px;
+      font-weight:bold;
+      color:#22c55e;
+    }
+  </style>
+</head>
+
+<body>
+
+<header>
+  📊 Service Analytics Dashboard
+</header>
+
+<div class="container">
+
+  <!-- SUMMARY -->
+  <div class="summary-grid">
+
+    <div class="summary-card">
+      <div class="summary-title">Total Services</div>
+      <div class="summary-value" id="totalServices">0</div>
+    </div>
+
+    <div class="summary-card">
+      <div class="summary-title">Total Attendance</div>
+      <div class="summary-value" id="totalAttendance">0</div>
+    </div>
+
+    <div class="summary-card">
+      <div class="summary-title">Total Staff Assignments</div>
+      <div class="summary-value" id="totalAssignments">0</div>
+    </div>
+
+    <div class="summary-card">
+      <div class="summary-title">Hospitality Duties</div>
+      <div class="summary-value" id="totalHospitality">0</div>
+    </div>
+
+  </div>
+
+  <div class="top-grid">
+
+    <!-- STAFF ROLE ANALYTICS -->
+    <div class="panel">
+
+      <div class="panel-title">
+        👥 Analytics 1: Staff Role Metrics
+      </div>
+
+      <table>
+
+        <thead>
+          <tr>
+            <th>Staff</th>
+            <th>Role</th>
+            <th>Count</th>
+          </tr>
+        </thead>
+
+        <tbody id="staffRoleBody"></tbody>
+
+      </table>
+
+    </div>
+
+    <!-- HOSPITALITY -->
+    <div class="panel">
+
+      <div class="panel-title">
+        🏠 Analytics 2: Hospitality Metrics
+      </div>
+
+      <table>
+
+        <thead>
+          <tr>
+            <th>Cell Leader</th>
+            <th>Count</th>
+          </tr>
+        </thead>
+
+        <tbody id="hospitalityBody"></tbody>
+
+      </table>
+
+    </div>
+
+  </div>
+
+  <!-- ATTENDANCE TREND -->
+  <div class="panel">
+
+    <div class="panel-title">
+      📈 Analytics 3: Attendance Trend (LCL/UCL)
+    </div>
+
+    <canvas id="attendanceChart" height="120"></canvas>
+
+  </div>
+
+</div>
+
+<script type="module">
+import { db } from "../assets/app.js";
+
+let chart;
+
+async function load(){
+
+  const [
+    servicesRes,
+    attendanceRes,
+    rolesRes,
+    staffRes,
+    hospitalityRes
+  ] = await Promise.all([
+
+    db.from("services")
+      .select(`
+        *,
+        service_slots(label,time)
+      `)
+      .order("service_date",{ascending:true}),
+
+    db.from("service_attendance_metrics")
+      .select("*"),
+
+    db.from("service_roles")
+      .select("*"),
+
+    db.from("staff")
+      .select("*"),
+
+    db.from("hospitality_duty")
+      .select("*")
+  ]);
+
+  const services =
+    servicesRes.data || [];
+
+  const attendance =
+    attendanceRes.data || [];
+
+  const roles =
+    rolesRes.data || [];
+
+  const staff =
+    staffRes.data || [];
+
+  const hospitality =
+    hospitalityRes.data || [];
+
+  /* =========================
+     SUMMARY
+  ========================= */
+
+  const totalAttendance =
+    attendance.reduce((sum,a)=>
+      sum +
+      (a.onsite_count || 0) +
+      (a.online_count || 0)
+    ,0);
+
+  document.getElementById("totalServices").innerText =
+    services.length;
+
+  document.getElementById("totalAttendance").innerText =
+    totalAttendance;
+
+  document.getElementById("totalAssignments").innerText =
+    roles.length;
+
+  document.getElementById("totalHospitality").innerText =
+    hospitality.length;
+
+  /* =========================
+     STAFF ROLE METRICS
+  ========================= */
+
+  const staffMap =
+    new Map(
+      staff.map(s => [
+        String(s.id),
+        s.name
+      ])
+    );
+
+  const roleMetrics = {};
+
+  roles.forEach(r => {
+
+    const staffName =
+      staffMap.get(String(r.staff_id))
+      || "Unknown";
+
+    const key =
+      `${staffName}||${r.role}`;
+
+    if(!roleMetrics[key]){
+
+      roleMetrics[key] = {
+        staff: staffName,
+        role: r.role,
+        count:0
+      };
+    }
+
+    roleMetrics[key].count++;
+  });
+
+  const roleRows =
+    Object.values(roleMetrics)
+      .sort((a,b)=>b.count-a.count);
+
+  document.getElementById("staffRoleBody").innerHTML =
+    roleRows.map(r => `
+
+      <tr>
+
+        <td>${r.staff}</td>
+
+        <td>${r.role}</td>
+
+        <td class="count">${r.count}</td>
+
+      </tr>
+
+    `).join("");
+
+  /* =========================
+     HOSPITALITY METRICS
+  ========================= */
+
+  const leaderMetrics = {};
+
+  hospitality.forEach(h => {
+
+    const leader =
+      (h.leader || "Unknown").trim();
+
+    if(!leaderMetrics[leader]){
+      leaderMetrics[leader] = 0;
+    }
+
+    leaderMetrics[leader]++;
+  });
+
+  const hospitalityRows =
+    Object.entries(leaderMetrics)
+      .map(([leader,count])=>({
+        leader,
+        count
+      }))
+      .sort((a,b)=>b.count-a.count);
+
+  document.getElementById("hospitalityBody").innerHTML =
+    hospitalityRows.map(r => `
+
+      <tr>
+
+        <td>${r.leader}</td>
+
+        <td class="count">${r.count}</td>
+
+      </tr>
+
+    `).join("");
+
+  /* =========================
+     ATTENDANCE TREND
+  ========================= */
+
+  const attendanceMap =
+    new Map(
+      attendance.map(a => [
+        String(a.service_id),
+        a
+      ])
+    );
+
+  const labels = [];
+  const values = [];
+
+  services.forEach(s => {
+
+    const att =
+      attendanceMap.get(String(s.id));
+
+    if(!att) return;
+
+    const total =
+      (att.onsite_count || 0) +
+      (att.online_count || 0);
+
+    labels.push(
+      `${s.service_date}\n${s.service_slots?.label || ""}`
+    );
+
+    values.push(total);
+  });
+
+  const avg =
+    values.reduce((a,b)=>a+b,0) /
+    (values.length || 1);
+
+  const variance =
+    values.reduce((sum,v)=>
+      sum + Math.pow(v-avg,2)
+    ,0) / (values.length || 1);
+
+  const stdDev =
+    Math.sqrt(variance);
+
+  const UCL =
+    avg + (3 * stdDev);
+
+  const LCL =
+    Math.max(
+      avg - (3 * stdDev),
+      0
+    );
+
+  const uclData =
+    values.map(()=>UCL);
+
+  const lclData =
+    values.map(()=>LCL);
+
+  const avgData =
+    values.map(()=>avg);
+
+  if(chart){
+    chart.destroy();
+  }
+
+  const ctx =
+    document
+      .getElementById("attendanceChart");
+
+  chart = new Chart(ctx, {
+
+    type:"line",
+
+    data:{
+
+      labels,
+
+      datasets:[
+
+        {
+          label:"Attendance",
+          data:values,
+          borderWidth:2,
+          tension:0.3
+        },
+
+        {
+          label:"Average",
+          data:avgData,
+          borderDash:[5,5],
+          borderWidth:1
+        },
+
+        {
+          label:"UCL",
+          data:uclData,
+          borderDash:[10,5],
+          borderWidth:1
+        },
+
+        {
+          label:"LCL",
+          data:lclData,
+          borderDash:[10,5],
+          borderWidth:1
+        }
+      ]
+    },
+
+    options:{
+
+      responsive:true,
+
+      plugins:{
+        legend:{
+          labels:{
+            color:"black"
+          }
+        }
+      },
+
+      scales:{
+
+        x:{
+          ticks:{
+            color:"black"
+          }
+        },
+
+        y:{
+          ticks:{
+            color:"black"
+          }
+        }
+      }
+    }
+  });
+}
+
+load();
+</script>
+
+</body>
+</html>
