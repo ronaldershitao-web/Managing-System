@@ -36,6 +36,7 @@
       border:1px solid #334155;
       border-radius:10px;
       padding:14px;
+      margin-bottom:20px;
     }
 
     .panel-title{
@@ -185,23 +186,13 @@
 
   </div>
 
-  <!-- ATTENDANCE TREND -->
-  <div class="panel">
-
-    <div class="panel-title">
-      📈 Analytics 3: Attendance Trend (LCL/UCL)
-    </div>
-
-    <canvas id="attendanceChart" height="120"></canvas>
-
-  </div>
+  <!-- DYNAMIC CHARTS -->
+  <div id="chartsContainer"></div>
 
 </div>
 
 <script type="module">
 import { db } from "../assets/app.js";
-
-let chart;
 
 async function load(){
 
@@ -216,7 +207,7 @@ async function load(){
     db.from("services")
       .select(`
         *,
-        service_slots(label,time)
+        service_slots(label,time,location)
       `)
       .order("service_date",{ascending:true}),
 
@@ -364,270 +355,240 @@ async function load(){
 
     `).join("");
 
-/* =========================
-   ATTENDANCE TREND
-========================= */
-
-const attendanceMap =
-  new Map(
-    attendance.map(a => [
-      String(a.service_id),
-      a
-    ])
-  );
-
-/* =========================
-   GROUP SERVICES
-========================= */
-
-const grouped = {
-
-  "Saturday 2.30PM": [],
-  "Sunday 8.30AM": [],
-  "Sunday 10.45AM": [],
-  "Sunday Jurong": [],
-  "Sunday MD": []
-};
-
-/* =========================
-   BUILD GROUPS
-========================= */
-
-services.forEach(s => {
-
-  const label =
-    s.service_slots?.label || "";
-
-  const location =
-    (s.service_slots?.location || "")
-      .toLowerCase();
-
-  const att =
-    attendanceMap.get(String(s.id));
-
-  if(!att) return;
-
-  // 🔥 TOTAL = ONSITE + ONLINE
-  const total =
-    (att.onsite_count || 0) +
-    (att.online_count || 0);
-
-  const item = {
-
-    date:s.service_date,
-    total,
-    label
-  };
-
   /* =========================
-     SATURDAY 2.30PM
+     ATTENDANCE TREND
   ========================= */
 
-  if(
-    label.includes("2.30")
-  ){
-
-    grouped["Saturday 2.30PM"]
-      .push(item);
-
-    grouped["Sunday MD"]
-      .push(item);
-  }
-
-  /* =========================
-     SUNDAY 8.30AM
-  ========================= */
-
-  else if(
-    label.includes("8.30")
-  ){
-
-    grouped["Sunday 8.30AM"]
-      .push(item);
-
-    grouped["Sunday MD"]
-      .push(item);
-  }
-
-  /* =========================
-     JURONG
-  ========================= */
-
-  else if(
-    label.includes("10.45") &&
-    location.includes("jurong")
-  ){
-
-    grouped["Sunday Jurong"]
-      .push(item);
-  }
-
-  /* =========================
-     SUNDAY 10.45AM
-  ========================= */
-
-  else if(
-    label.includes("10.45")
-  ){
-
-    grouped["Sunday 10.45AM"]
-      .push(item);
-
-    grouped["Sunday MD"]
-      .push(item);
-  }
-});
-
-/* =========================
-   SORT BY DATE
-========================= */
-
-Object.values(grouped).forEach(arr => {
-
-  arr.sort((a,b)=>
-    new Date(a.date) -
-    new Date(b.date)
-  );
-});
-
-/* =========================
-   RENDER CHARTS
-========================= */
-
-const chartsContainer =
-  document.getElementById("chartsContainer");
-
-chartsContainer.innerHTML = "";
-
-Object.entries(grouped).forEach(([name,data],index)=>{
-
-  if(data.length === 0) return;
-
-  const values =
-    data.map(d => d.total);
-
-  const labels =
-    data.map(d => d.date);
-
-  /* =========================
-     SPC CALCULATIONS
-  ========================= */
-
-  const avg =
-    values.reduce((a,b)=>a+b,0)
-    / values.length;
-
-  const variance =
-    values.reduce((sum,v)=>
-      sum + Math.pow(v-avg,2)
-    ,0) / values.length;
-
-  const stdDev =
-    Math.sqrt(variance);
-
-  const UCL =
-    avg + (3 * stdDev);
-
-  const LCL =
-    Math.max(
-      avg - (3 * stdDev),
-      0
+  const attendanceMap =
+    new Map(
+      attendance.map(a => [
+        String(a.service_id),
+        a
+      ])
     );
 
-  const canvasId =
-    `chart_${index}`;
+  const grouped = {
 
-  chartsContainer.innerHTML += `
+    "Saturday 2.30PM": [],
+    "Sunday 8.30AM": [],
+    "Sunday 10.45AM": [],
+    "Sunday Jurong": [],
+    "Sunday MD": []
+  };
 
-    <div class="panel"
-      style="margin-bottom:20px;">
+  services.forEach(s => {
 
-      <div class="panel-title">
-        📈 ${name}
+    const label =
+      s.service_slots?.label || "";
+
+    const location =
+      (s.service_slots?.location || "")
+        .toLowerCase();
+
+    const att =
+      attendanceMap.get(String(s.id));
+
+    if(!att) return;
+
+    const total =
+      (att.onsite_count || 0) +
+      (att.online_count || 0);
+
+    const item = {
+
+      date:s.service_date,
+      total,
+      label
+    };
+
+    /* SATURDAY */
+
+    if(
+      label.includes("2.30")
+    ){
+
+      grouped["Saturday 2.30PM"]
+        .push(item);
+
+      grouped["Sunday MD"]
+        .push(item);
+    }
+
+    /* 8.30 */
+
+    else if(
+      label.includes("8.30")
+    ){
+
+      grouped["Sunday 8.30AM"]
+        .push(item);
+
+      grouped["Sunday MD"]
+        .push(item);
+    }
+
+    /* JURONG */
+
+    else if(
+      label.includes("10.45") &&
+      location.includes("jurong")
+    ){
+
+      grouped["Sunday Jurong"]
+        .push(item);
+    }
+
+    /* 10.45 */
+
+    else if(
+      label.includes("10.45")
+    ){
+
+      grouped["Sunday 10.45AM"]
+        .push(item);
+
+      grouped["Sunday MD"]
+        .push(item);
+    }
+  });
+
+  Object.values(grouped).forEach(arr => {
+
+    arr.sort((a,b)=>
+      new Date(a.date) -
+      new Date(b.date)
+    );
+  });
+
+  const chartsContainer =
+    document.getElementById("chartsContainer");
+
+  chartsContainer.innerHTML = "";
+
+  Object.entries(grouped).forEach(([name,data],index)=>{
+
+    if(data.length === 0) return;
+
+    const values =
+      data.map(d => d.total);
+
+    const labels =
+      data.map(d => d.date);
+
+    const avg =
+      values.reduce((a,b)=>a+b,0)
+      / values.length;
+
+    const variance =
+      values.reduce((sum,v)=>
+        sum + Math.pow(v-avg,2)
+      ,0) / values.length;
+
+    const stdDev =
+      Math.sqrt(variance);
+
+    const UCL =
+      avg + (3 * stdDev);
+
+    const LCL =
+      Math.max(
+        avg - (3 * stdDev),
+        0
+      );
+
+    const canvasId =
+      `chart_${index}`;
+
+    chartsContainer.innerHTML += `
+
+      <div class="panel">
+
+        <div class="panel-title">
+          📈 ${name}
+        </div>
+
+        <canvas
+          id="${canvasId}"
+          height="120">
+        </canvas>
+
       </div>
+    `;
 
-      <canvas
-        id="${canvasId}"
-        height="120">
-      </canvas>
+    new Chart(
 
-    </div>
-  `;
+      document.getElementById(canvasId),
 
-  new Chart(
+      {
 
-    document.getElementById(canvasId),
+        type:"line",
 
-    {
+        data:{
 
-      type:"line",
+          labels,
 
-      data:{
+          datasets:[
 
-        labels,
+            {
+              label:"Attendance",
+              data:values,
+              borderWidth:2,
+              tension:0.3
+            },
 
-        datasets:[
+            {
+              label:"Average",
+              data:values.map(()=>avg),
+              borderDash:[5,5],
+              borderWidth:1
+            },
 
-          {
-            label:"Attendance",
-            data:values,
-            borderWidth:2,
-            tension:0.3
-          },
+            {
+              label:"UCL",
+              data:values.map(()=>UCL),
+              borderDash:[10,5],
+              borderWidth:1
+            },
 
-          {
-            label:"Average",
-            data:values.map(()=>avg),
-            borderDash:[5,5],
-            borderWidth:1
-          },
-
-          {
-            label:"UCL",
-            data:values.map(()=>UCL),
-            borderDash:[10,5],
-            borderWidth:1
-          },
-
-          {
-            label:"LCL",
-            data:values.map(()=>LCL),
-            borderDash:[10,5],
-            borderWidth:1
-          }
-        ]
-      },
-
-      options:{
-
-        responsive:true,
-
-        plugins:{
-          legend:{
-            labels:{
-              color:"black"
+            {
+              label:"LCL",
+              data:values.map(()=>LCL),
+              borderDash:[10,5],
+              borderWidth:1
             }
-          }
+          ]
         },
 
-        scales:{
+        options:{
 
-          x:{
-            ticks:{
-              color:"black"
+          responsive:true,
+
+          plugins:{
+            legend:{
+              labels:{
+                color:"black"
+              }
             }
           },
 
-          y:{
-            ticks:{
-              color:"black"
+          scales:{
+
+            x:{
+              ticks:{
+                color:"black"
+              }
+            },
+
+            y:{
+              ticks:{
+                color:"black"
+              }
             }
           }
         }
       }
-    }
-  );
-});
+    );
+  });
 }
 
 load();
