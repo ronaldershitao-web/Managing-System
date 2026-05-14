@@ -459,7 +459,12 @@ async function load(){
 const today = new Date();
 
 today.setHours(0,0,0,0);
+/* =========================
+   MD DAILY TOTALS
+========================= */
 
+const mdTotals = {};
+  
 /* =========================
    CLASSIFY SERVICES
 ========================= */
@@ -536,8 +541,14 @@ services.forEach(service => {
     grouped["Saturday 2.30PM"]
       .push(item);
 
-    grouped["Sunday MD"]
-      .push(item);
+    const key = service.service_date;
+
+if(!mdTotals[key]){
+  mdTotals[key] = 0;
+}
+
+mdTotals[key] += total;
+    
   }
 
   /* =========================
@@ -551,8 +562,13 @@ services.forEach(service => {
     grouped["Sunday 8.30AM"]
       .push(item);
 
-    grouped["Sunday MD"]
-      .push(item);
+   const key = service.service_date;
+
+if(!mdTotals[key]){
+  mdTotals[key] = 0;
+}
+
+mdTotals[key] += total;
   }
 
   /* =========================
@@ -577,11 +593,37 @@ services.forEach(service => {
 
     grouped["Sunday 10.45AM"]
       .push(item);
+const key = service.service_date;
 
-    grouped["Sunday MD"]
-      .push(item);
+if(!mdTotals[key]){
+  mdTotals[key] = 0;
+}
+
+mdTotals[key] += total;
+   
   }
 });
+
+  /* =========================
+   BUILD MD GROUP
+========================= */
+
+grouped["Sunday MD"] =
+
+  Object.entries(mdTotals)
+
+    .map(([date,total]) => ({
+
+      date,
+      total
+
+    }))
+
+    .sort((a,b)=>
+
+      new Date(a.date) -
+      new Date(b.date)
+    );
   /* =========================
      RENDER CHARTS
   ========================= */
