@@ -449,7 +449,8 @@ async function load(){
     "Sunday 8.30AM": [],
     "Sunday 10.45AM": [],
     "Sunday Jurong": [],
-    "Sunday MD": []
+    "Sunday MD": [],
+    "Weekend MD": []
   };
 
 /* =========================
@@ -465,6 +466,7 @@ today.setHours(0,0,0,0);
 
 const mdTotals = {};
   
+  const weekendTotals = {};
 /* =========================
    CLASSIFY SERVICES
 ========================= */
@@ -539,15 +541,46 @@ services.forEach(service => {
   ){
 
     grouped["Saturday 2.30PM"]
-      .push(item);
+  .push(item);
 
-    const key = service.service_date;
+/* =========================
+   DAILY MD
+========================= */
+
+const key = service.service_date;
 
 if(!mdTotals[key]){
   mdTotals[key] = 0;
 }
 
 mdTotals[key] += total;
+
+/* =========================
+   WEEKEND MD
+   Saturday contributes to
+   NEXT SUNDAY
+========================= */
+
+const satDate =
+  new Date(service.service_date);
+
+const sundayDate =
+  new Date(satDate);
+
+sundayDate.setDate(
+  satDate.getDate() + 1
+);
+
+const sundayKey =
+  sundayDate
+    .toISOString()
+    .split("T")[0];
+
+if(!weekendTotals[sundayKey]){
+  weekendTotals[sundayKey] = 0;
+}
+
+weekendTotals[sundayKey] += total;
     
   }
 
@@ -560,15 +593,25 @@ mdTotals[key] += total;
   ){
 
     grouped["Sunday 8.30AM"]
-      .push(item);
+  .push(item);
 
-   const key = service.service_date;
+/* DAILY MD */
+
+const key = service.service_date;
 
 if(!mdTotals[key]){
   mdTotals[key] = 0;
 }
 
 mdTotals[key] += total;
+
+/* WEEKEND MD */
+
+if(!weekendTotals[key]){
+  weekendTotals[key] = 0;
+}
+
+weekendTotals[key] += total;
   }
 
   /* =========================
@@ -592,7 +635,10 @@ mdTotals[key] += total;
   ){
 
     grouped["Sunday 10.45AM"]
-      .push(item);
+  .push(item);
+
+/* DAILY MD */
+
 const key = service.service_date;
 
 if(!mdTotals[key]){
@@ -600,7 +646,14 @@ if(!mdTotals[key]){
 }
 
 mdTotals[key] += total;
-   
+
+/* WEEKEND MD */
+
+if(!weekendTotals[key]){
+  weekendTotals[key] = 0;
+}
+
+weekendTotals[key] += total;
   }
 });
 
@@ -611,6 +664,27 @@ mdTotals[key] += total;
 grouped["Sunday MD"] =
 
   Object.entries(mdTotals)
+
+    .map(([date,total]) => ({
+
+      date,
+      total
+
+    }))
+
+    .sort((a,b)=>
+
+      new Date(a.date) -
+      new Date(b.date)
+    );
+
+  /* =========================
+   BUILD WEEKEND MD GROUP
+========================= */
+
+grouped["Weekend MD"] =
+
+  Object.entries(weekendTotals)
 
     .map(([date,total]) => ({
 
