@@ -24,6 +24,32 @@
       padding:14px;
     }
 
+    .summary-grid{
+      display:grid;
+      grid-template-columns:repeat(4,1fr);
+      gap:12px;
+      margin-bottom:14px;
+    }
+
+    .summary-card{
+      background:#111827;
+      border:1px solid #334155;
+      border-radius:10px;
+      padding:14px;
+    }
+
+    .summary-title{
+      color:#94a3b8;
+      font-size:12px;
+    }
+
+    .summary-value{
+      margin-top:6px;
+      font-size:28px;
+      font-weight:bold;
+      color:#22c55e;
+    }
+
     .top-grid{
       display:grid;
       grid-template-columns:1fr 1fr;
@@ -36,7 +62,7 @@
       border:1px solid #334155;
       border-radius:10px;
       padding:14px;
-      margin-bottom:20px;
+      margin-bottom:14px;
     }
 
     .panel-title{
@@ -74,32 +100,27 @@
       background:white;
       border-radius:8px;
       padding:10px;
+      box-sizing:border-box;
     }
 
-    .summary-grid{
-      display:grid;
-      grid-template-columns:repeat(4,1fr);
-      gap:12px;
-      margin-bottom:14px;
+    #chartsContainer{
+      display:flex;
+      flex-direction:column;
+      gap:20px;
     }
 
-    .summary-card{
+    .chart-panel{
       background:#111827;
       border:1px solid #334155;
       border-radius:10px;
       padding:14px;
     }
 
-    .summary-title{
-      color:#94a3b8;
-      font-size:12px;
-    }
-
-    .summary-value{
-      margin-top:6px;
-      font-size:28px;
+    .chart-title{
+      color:#fbbf24;
+      font-size:15px;
       font-weight:bold;
-      color:#22c55e;
+      margin-bottom:10px;
     }
   </style>
 </head>
@@ -116,30 +137,55 @@
   <div class="summary-grid">
 
     <div class="summary-card">
-      <div class="summary-title">Total Services</div>
-      <div class="summary-value" id="totalServices">0</div>
+      <div class="summary-title">
+        Total Services
+      </div>
+
+      <div class="summary-value"
+        id="totalServices">
+        0
+      </div>
     </div>
 
     <div class="summary-card">
-      <div class="summary-title">Total Attendance</div>
-      <div class="summary-value" id="totalAttendance">0</div>
+      <div class="summary-title">
+        Total Attendance
+      </div>
+
+      <div class="summary-value"
+        id="totalAttendance">
+        0
+      </div>
     </div>
 
     <div class="summary-card">
-      <div class="summary-title">Total Staff Assignments</div>
-      <div class="summary-value" id="totalAssignments">0</div>
+      <div class="summary-title">
+        Total Staff Assignments
+      </div>
+
+      <div class="summary-value"
+        id="totalAssignments">
+        0
+      </div>
     </div>
 
     <div class="summary-card">
-      <div class="summary-title">Hospitality Duties</div>
-      <div class="summary-value" id="totalHospitality">0</div>
+      <div class="summary-title">
+        Hospitality Duties
+      </div>
+
+      <div class="summary-value"
+        id="totalHospitality">
+        0
+      </div>
     </div>
 
   </div>
 
+  <!-- TABLES -->
   <div class="top-grid">
 
-    <!-- STAFF ROLE ANALYTICS -->
+    <!-- STAFF ROLE -->
     <div class="panel">
 
       <div class="panel-title">
@@ -186,7 +232,7 @@
 
   </div>
 
-  <!-- DYNAMIC CHARTS -->
+  <!-- CHARTS -->
   <div id="chartsContainer"></div>
 
 </div>
@@ -204,23 +250,32 @@ async function load(){
     hospitalityRes
   ] = await Promise.all([
 
-    db.from("services")
+    db
+      .from("services")
       .select(`
         *,
-        service_slots(label,time,location)
+        service_slots(
+          label,
+          location,
+          time
+        )
       `)
       .order("service_date",{ascending:true}),
 
-    db.from("service_attendance_metrics")
+    db
+      .from("service_attendance_metrics")
       .select("*"),
 
-    db.from("service_roles")
+    db
+      .from("service_roles")
       .select("*"),
 
-    db.from("staff")
+    db
+      .from("staff")
       .select("*"),
 
-    db.from("hospitality_duty")
+    db
+      .from("hospitality_duty")
       .select("*")
   ]);
 
@@ -240,14 +295,29 @@ async function load(){
     hospitalityRes.data || [];
 
   /* =========================
+     ATTENDANCE MAP
+  ========================= */
+
+  const attendanceMap =
+    new Map(
+      attendance.map(a => [
+        String(a.service_id),
+        a
+      ])
+    );
+
+  /* =========================
      SUMMARY
   ========================= */
 
   const totalAttendance =
     attendance.reduce((sum,a)=>
+
       sum +
+
       (a.onsite_count || 0) +
       (a.online_count || 0)
+
     ,0);
 
   document.getElementById("totalServices").innerText =
@@ -290,7 +360,7 @@ async function load(){
       roleMetrics[key] = {
         staff: staffName,
         role: r.role,
-        count:0
+        count: 0
       };
     }
 
@@ -299,9 +369,12 @@ async function load(){
 
   const roleRows =
     Object.values(roleMetrics)
-      .sort((a,b)=>b.count-a.count);
+      .sort((a,b)=>
+        b.count - a.count
+      );
 
   document.getElementById("staffRoleBody").innerHTML =
+
     roleRows.map(r => `
 
       <tr>
@@ -310,7 +383,9 @@ async function load(){
 
         <td>${r.role}</td>
 
-        <td class="count">${r.count}</td>
+        <td class="count">
+          ${r.count}
+        </td>
 
       </tr>
 
@@ -325,7 +400,8 @@ async function load(){
   hospitality.forEach(h => {
 
     const leader =
-      (h.leader || "Unknown").trim();
+      (h.leader || "Unknown")
+      .trim();
 
     if(!leaderMetrics[leader]){
       leaderMetrics[leader] = 0;
@@ -335,37 +411,37 @@ async function load(){
   });
 
   const hospitalityRows =
+
     Object.entries(leaderMetrics)
-      .map(([leader,count])=>({
+
+      .map(([leader,count]) => ({
         leader,
         count
       }))
-      .sort((a,b)=>b.count-a.count);
+
+      .sort((a,b)=>
+        b.count - a.count
+      );
 
   document.getElementById("hospitalityBody").innerHTML =
+
     hospitalityRows.map(r => `
 
       <tr>
 
         <td>${r.leader}</td>
 
-        <td class="count">${r.count}</td>
+        <td class="count">
+          ${r.count}
+        </td>
 
       </tr>
 
     `).join("");
 
   /* =========================
-     ATTENDANCE TREND
+     CHART GROUPS
   ========================= */
-
-  const attendanceMap =
-    new Map(
-      attendance.map(a => [
-        String(a.service_id),
-        a
-      ])
-    );
 
   const grouped = {
 
@@ -376,35 +452,44 @@ async function load(){
     "Sunday MD": []
   };
 
-  services.forEach(s => {
+  /* =========================
+     CLASSIFY SERVICES
+  ========================= */
+
+  services.forEach(service => {
+
+    const slot =
+      service.service_slots || {};
 
     const label =
-      s.service_slots?.label || "";
+      slot.label || "";
 
     const location =
-      (s.service_slots?.location || "")
-        .toLowerCase();
+      (slot.location || "")
+      .toLowerCase();
 
-    const att =
-      attendanceMap.get(String(s.id));
-
-    if(!att) return;
+    const attendance =
+      attendanceMap.get(
+        String(service.id)
+      );
 
     const total =
-      (att.onsite_count || 0) +
-      (att.online_count || 0);
+
+      (attendance?.onsite_count || 0) +
+      (attendance?.online_count || 0);
 
     const item = {
 
-      date:s.service_date,
-      total,
-      label
+      date: service.service_date,
+      total
     };
 
-    /* SATURDAY */
+    /* =========================
+       SATURDAY 2.30PM
+    ========================= */
 
     if(
-      label.includes("2.30")
+      label === "Saturday Service"
     ){
 
       grouped["Saturday 2.30PM"]
@@ -414,10 +499,12 @@ async function load(){
         .push(item);
     }
 
-    /* 8.30 */
+    /* =========================
+       SUNDAY 8.30AM
+    ========================= */
 
     else if(
-      label.includes("8.30")
+      label === "Sunday 8.30am"
     ){
 
       grouped["Sunday 8.30AM"]
@@ -427,21 +514,24 @@ async function load(){
         .push(item);
     }
 
-    /* JURONG */
+    /* =========================
+       JURONG
+    ========================= */
 
     else if(
-      label.includes("10.45") &&
-      location.includes("jurong")
+      label === "Sunday Jurong"
     ){
 
       grouped["Sunday Jurong"]
         .push(item);
     }
 
-    /* 10.45 */
+    /* =========================
+       MAIN 10.45AM
+    ========================= */
 
     else if(
-      label.includes("10.45")
+      label === "Sunday 10.45am"
     ){
 
       grouped["Sunday 10.45AM"]
@@ -452,146 +542,172 @@ async function load(){
     }
   });
 
-  Object.values(grouped).forEach(arr => {
+  /* =========================
+     SORT ALL GROUPS
+  ========================= */
 
-    arr.sort((a,b)=>
-      new Date(a.date) -
-      new Date(b.date)
-    );
-  });
+  Object.values(grouped)
+    .forEach(arr => {
+
+      arr.sort((a,b)=>
+
+        new Date(a.date) -
+        new Date(b.date)
+      );
+    });
+
+  /* =========================
+     RENDER CHARTS
+  ========================= */
 
   const chartsContainer =
-    document.getElementById("chartsContainer");
+    document.getElementById(
+      "chartsContainer"
+    );
 
   chartsContainer.innerHTML = "";
 
-  Object.entries(grouped).forEach(([name,data],index)=>{
+  Object.entries(grouped)
+    .forEach(([name,data],index)=>{
 
-    if(data.length === 0) return;
+      if(data.length === 0){
+        return;
+      }
 
-    const values =
-      data.map(d => d.total);
+      const labels =
+        data.map(d => d.date);
 
-    const labels =
-      data.map(d => d.date);
+      const values =
+        data.map(d => d.total);
 
-    const avg =
-      values.reduce((a,b)=>a+b,0)
-      / values.length;
+      /* =========================
+         SPC
+      ========================= */
 
-    const variance =
-      values.reduce((sum,v)=>
-        sum + Math.pow(v-avg,2)
-      ,0) / values.length;
+      const avg =
+        values.reduce((a,b)=>a+b,0)
+        / values.length;
 
-    const stdDev =
-      Math.sqrt(variance);
+      const variance =
+        values.reduce((sum,v)=>
 
-    const UCL =
-      avg + (3 * stdDev);
+          sum + Math.pow(v-avg,2)
 
-    const LCL =
-      Math.max(
-        avg - (3 * stdDev),
-        0
-      );
+        ,0) / values.length;
 
-    const canvasId =
-      `chart_${index}`;
+      const stdDev =
+        Math.sqrt(variance);
 
-    chartsContainer.innerHTML += `
+      const UCL =
+        avg + (3 * stdDev);
 
-      <div class="panel">
+      const LCL =
+        Math.max(
+          avg - (3 * stdDev),
+          0
+        );
 
-        <div class="panel-title">
-          📈 ${name}
+      const canvasId =
+        `chart_${index}`;
+
+      chartsContainer.innerHTML += `
+
+        <div class="chart-panel">
+
+          <div class="chart-title">
+            📈 ${name}
+          </div>
+
+          <canvas
+            id="${canvasId}"
+            height="120">
+          </canvas>
+
         </div>
+      `;
 
-        <canvas
-          id="${canvasId}"
-          height="120">
-        </canvas>
+      setTimeout(()=>{
 
-      </div>
-    `;
+        const ctx =
+          document.getElementById(canvasId);
 
-    new Chart(
+        if(!ctx) return;
 
-      document.getElementById(canvasId),
+        new Chart(ctx, {
 
-      {
+          type:"line",
 
-        type:"line",
+          data:{
 
-        data:{
+            labels,
 
-          labels,
+            datasets:[
 
-          datasets:[
+              {
+                label:"Attendance",
+                data:values,
+                borderWidth:2,
+                tension:0.3
+              },
 
-            {
-              label:"Attendance",
-              data:values,
-              borderWidth:2,
-              tension:0.3
-            },
+              {
+                label:"Average",
+                data:values.map(()=>avg),
+                borderDash:[5,5],
+                borderWidth:1
+              },
 
-            {
-              label:"Average",
-              data:values.map(()=>avg),
-              borderDash:[5,5],
-              borderWidth:1
-            },
+              {
+                label:"UCL",
+                data:values.map(()=>UCL),
+                borderDash:[10,5],
+                borderWidth:1
+              },
 
-            {
-              label:"UCL",
-              data:values.map(()=>UCL),
-              borderDash:[10,5],
-              borderWidth:1
-            },
-
-            {
-              label:"LCL",
-              data:values.map(()=>LCL),
-              borderDash:[10,5],
-              borderWidth:1
-            }
-          ]
-        },
-
-        options:{
-
-          responsive:true,
-
-          plugins:{
-            legend:{
-              labels:{
-                color:"black"
+              {
+                label:"LCL",
+                data:values.map(()=>LCL),
+                borderDash:[10,5],
+                borderWidth:1
               }
-            }
+            ]
           },
 
-          scales:{
+          options:{
 
-            x:{
-              ticks:{
-                color:"black"
+            responsive:true,
+
+            plugins:{
+              legend:{
+                labels:{
+                  color:"black"
+                }
               }
             },
 
-            y:{
-              ticks:{
-                color:"black"
+            scales:{
+
+              x:{
+                ticks:{
+                  color:"black"
+                }
+              },
+
+              y:{
+                ticks:{
+                  color:"black"
+                }
               }
             }
           }
-        }
-      }
-    );
-  });
+        });
+
+      },50);
+    });
 }
 
 load();
+
 </script>
 
 </body>
