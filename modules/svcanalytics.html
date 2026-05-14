@@ -452,110 +452,136 @@ async function load(){
     "Sunday MD": []
   };
 
+/* =========================
+   TODAY
+========================= */
+
+const today = new Date();
+
+today.setHours(0,0,0,0);
+
+/* =========================
+   CLASSIFY SERVICES
+========================= */
+
+services.forEach(service => {
+
   /* =========================
-     CLASSIFY SERVICES
+     FILTER FUTURE SERVICES
   ========================= */
 
-  services.forEach(service => {
+  const serviceDate =
+    new Date(service.service_date);
 
-    const slot =
-      service.service_slots || {};
+  serviceDate.setHours(0,0,0,0);
 
-    const label =
-      slot.label || "";
+  if(serviceDate > today){
+    return;
+  }
 
-    const location =
-      (slot.location || "")
+  const slot =
+    service.service_slots || {};
+
+  const label =
+    slot.label || "";
+
+  const location =
+    (slot.location || "")
       .toLowerCase();
 
-    const attendance =
-      attendanceMap.get(
-        String(service.id)
-      );
-
-    const total =
-
-      (attendance?.onsite_count || 0) +
-      (attendance?.online_count || 0);
-
-    const item = {
-
-      date: service.service_date,
-      total
-    };
-
-    /* =========================
-       SATURDAY 2.30PM
-    ========================= */
-
-    if(
-      label === "Saturday Service"
-    ){
-
-      grouped["Saturday 2.30PM"]
-        .push(item);
-
-      grouped["Sunday MD"]
-        .push(item);
-    }
-
-    /* =========================
-       SUNDAY 8.30AM
-    ========================= */
-
-    else if(
-      label === "Sunday 8.30am"
-    ){
-
-      grouped["Sunday 8.30AM"]
-        .push(item);
-
-      grouped["Sunday MD"]
-        .push(item);
-    }
-
-    /* =========================
-       JURONG
-    ========================= */
-
-    else if(
-      label === "Sunday Jurong"
-    ){
-
-      grouped["Sunday Jurong"]
-        .push(item);
-    }
-
-    /* =========================
-       MAIN 10.45AM
-    ========================= */
-
-    else if(
-      label === "Sunday 10.45am"
-    ){
-
-      grouped["Sunday 10.45AM"]
-        .push(item);
-
-      grouped["Sunday MD"]
-        .push(item);
-    }
-  });
+  const attendance =
+    attendanceMap.get(
+      String(service.id)
+    );
 
   /* =========================
-     SORT ALL GROUPS
+     SKIP EMPTY ATTENDANCE
   ========================= */
 
-  Object.values(grouped)
-    .forEach(arr => {
+  if(!attendance){
+    return;
+  }
 
-      arr.sort((a,b)=>
+  const onsite =
+    attendance.onsite_count || 0;
 
-        new Date(a.date) -
-        new Date(b.date)
-      );
-    });
+  const online =
+    attendance.online_count || 0;
 
+  const total =
+    onsite + online;
+
+  /* =========================
+     SKIP ZERO ATTENDANCE
+  ========================= */
+
+  if(total <= 0){
+    return;
+  }
+
+  const item = {
+
+    date: service.service_date,
+    total
+  };
+
+  /* =========================
+     SATURDAY 2.30PM
+  ========================= */
+
+  if(
+    label === "Saturday Service"
+  ){
+
+    grouped["Saturday 2.30PM"]
+      .push(item);
+
+    grouped["Sunday MD"]
+      .push(item);
+  }
+
+  /* =========================
+     SUNDAY 8.30AM
+  ========================= */
+
+  else if(
+    label === "Sunday 8.30am"
+  ){
+
+    grouped["Sunday 8.30AM"]
+      .push(item);
+
+    grouped["Sunday MD"]
+      .push(item);
+  }
+
+  /* =========================
+     JURONG
+  ========================= */
+
+  else if(
+    label === "Sunday Jurong"
+  ){
+
+    grouped["Sunday Jurong"]
+      .push(item);
+  }
+
+  /* =========================
+     SUNDAY 10.45AM
+  ========================= */
+
+  else if(
+    label === "Sunday 10.45am"
+  ){
+
+    grouped["Sunday 10.45AM"]
+      .push(item);
+
+    grouped["Sunday MD"]
+      .push(item);
+  }
+});
   /* =========================
      RENDER CHARTS
   ========================= */
