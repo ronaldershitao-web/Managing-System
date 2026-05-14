@@ -493,40 +493,93 @@ hospitalityMap = new Map(
             ) || [];
 
           const appointments =
-            templateDefinedRoles.map(roleRow=>{
+  templateDefinedRoles.map(roleRow => {
 
-              const role = roleRow.role;
+    const normalize = value =>
 
-              const assignedRole =
-                (roleMap.get(String(s.id)) || [])
-                .find(r =>
-                  (r.role || "").toLowerCase() ===
-                  role.toLowerCase()
-                );
+      String(value || "")
+        .trim()
+        .toLowerCase();
 
-              const templateMatch =
-                templateStaff.find(t =>
-                  (t.role || "").toLowerCase() ===
-                  role.toLowerCase()
-                );
+    const role =
+      roleRow.role || "";
 
-              const staffId =
-                assignedRole?.staff_id ||
-                templateMatch?.staff_id;
+    /* =========================
+       FIND ASSIGNED ROLE
+    ========================= */
 
-              const unavailable =
-                unavailableIds.has(String(staffId));
+    const assignedRole =
 
-              return {
-                role,
-                group_name: roleRow.group_name,
-                staffId,
-                unavailable,
-                name: staffId
-                  ? staffMap.get(String(staffId))
-                  : "-"
-              };
-            });
+      (roleMap.get(String(s.id)) || [])
+
+        .find(r =>
+
+          normalize(r.role) ===
+          normalize(role)
+        );
+
+    /* =========================
+       FALLBACK TEMPLATE STAFF
+    ========================= */
+
+    const templateMatch =
+
+      templateStaff.find(t =>
+
+        normalize(t.role) ===
+        normalize(role)
+      );
+
+    /* =========================
+       PRIORITY:
+       1. SERVICE ASSIGNMENT
+       2. TEMPLATE DEFAULT
+    ========================= */
+
+    const rawStaffId =
+
+      assignedRole?.staff_id ||
+
+      templateMatch?.staff_id ||
+
+      null;
+
+    const staffId =
+
+      rawStaffId
+        ? String(rawStaffId).trim()
+        : null;
+
+    /* =========================
+       RESOLVE STAFF NAME
+    ========================= */
+
+    const resolvedName =
+
+      staffId &&
+      staffMap.has(staffId)
+
+        ? staffMap.get(staffId)
+
+        : "-";
+
+    const unavailable =
+      unavailableIds.has(staffId);
+
+    return {
+
+      role,
+
+      group_name:
+        roleRow.group_name,
+
+      staffId,
+
+      unavailable,
+
+      name: resolvedName
+    };
+  });
 
           const groupedAppointments = {};
 
