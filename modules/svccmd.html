@@ -373,9 +373,9 @@ async function load(){
   const roles = rolesRes.data || [];
   const templateRoles = templateRolesRes.data || [];
 
-  staffMap = new Map(
+ staffMap = new Map(
   staffList.map(s => [
-    String(s.id).trim().toLowerCase(),
+    String(s.id).trim(),
     s.name
   ])
 );
@@ -549,10 +549,10 @@ hospitalityMap = new Map(
 
       null;
 
-    const staffId =
+   const staffId =
 
   rawStaffId
-    ? String(rawStaffId).trim().toLowerCase()
+    ? String(rawStaffId).trim()
     : null;
 
     /* =========================
