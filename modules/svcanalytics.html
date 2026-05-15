@@ -355,10 +355,11 @@ const staffMap = new Map(
 
 const roleMetrics = {};
 
-roles.forEach(r => {
+for (const r of roles) {
 
   const staffName =
-    staffMap.get(String(r.staff_id)) || "Unknown Staff";
+    staff.find(s => String(s.id) === String(r.staff_id))?.name
+    || "Unknown Staff";
 
   const role = r.role || "Unknown Role";
 
@@ -373,8 +374,18 @@ roles.forEach(r => {
   }
 
   roleMetrics[key].count++;
-});
-  
+}
+
+const roleRows = Object.values(roleMetrics);
+
+document.getElementById("staffRoleBody").innerHTML =
+  roleRows.map(r => `
+    <tr>
+      <td>${r.staff}</td>
+      <td>${r.role}</td>
+      <td class="count">${r.count}</td>
+    </tr>
+  `).join("");  
   //========================= */
 
 //* =========================
