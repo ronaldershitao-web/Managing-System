@@ -411,67 +411,32 @@ async function load(){
    HOSPITALITY METRICS
 ========================= */
 
-function extractNames(raw){
-
-  if(!raw) return [];
-
-  return raw
-    .replace(/\r/g," ")
-    .replace(/\n/g," ")
-    .replace(/\s+/g," ")
-    .split(/\/|,| and |&/i)
-    .map(n =>
-      n
-        .replace(/\(.*?\)/g,"")
-        .trim()
-    )
-    .filter(Boolean);
-}
-
-function normalizeName(name){
-  return (name || "")
-    .toLowerCase()
-    .trim();
-}
-
-/* ✅ Build people lookup ONCE */
-const peopleMap = new Map();
-
-people.forEach(p => {
-  peopleMap.set(
-    normalizeName(p.name),
-    p.name
-  );
-});
-
-/* =========================
-   GROUP HOSPITALITY
-========================= */
-
-const leaderMetrics = {};
+const metrics = {};
 
 hospitality.forEach(h => {
 
-  const names = extractNames(h.leader);
+  const leader = h.leader || "Unknown";
+  const pastor = h.pastor || "Unknown";
 
-  if(names.length === 0){
+  metrics[leader] = metrics[leader] || {
+    leader,
+    leaderCount: 0,
+    pastorCount: 0,
+    total: 0
+  };
 
-    leaderMetrics["Unknown"] =
-      (leaderMetrics["Unknown"] || 0) + 1;
+  metrics[leader].leaderCount++;
+  metrics[leader].total++;
 
-    return;
-  }
+  metrics[pastor] = metrics[pastor] || {
+    leader,
+    leaderCount: 0,
+    pastorCount: 0,
+    total: 0
+  };
 
-  names.forEach(rawName => {
-
-    const normalized = normalizeName(rawName);
-
-    const resolvedName =
-      peopleMap.get(normalized) || rawName;
-
-    leaderMetrics[resolvedName] =
-      (leaderMetrics[resolvedName] || 0) + 1;
-  });
+  metrics[pastor].pastorCount++;
+  metrics[pastor].total++;
 });
   /* =========================
      CHART GROUPS
