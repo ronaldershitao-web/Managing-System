@@ -399,54 +399,78 @@ async function load(){
 
     `).join("");
 
-  /* =========================
-     HOSPITALITY METRICS
-  ========================= */
+ /* =========================
+   HOSPITALITY METRICS
+========================= */
 
-  const leaderMetrics = {};
+function extractNames(raw){
 
-  hospitality.forEach(h => {
+  if(!raw) return [];
 
-    const leader =
-      (h.leader || "Unknown")
-      .trim();
+  return raw
+    .replace(/\r/g," ")
+    .replace(/\n/g," ")
+    .replace(/\s+/g," ")
+    .split(/\/|,| and |&/i)
+    .map(n =>
+      n
+        .replace(/\(.*?\)/g,"")
+        .trim()
+    )
+    .filter(Boolean);
+}
 
-    if(!leaderMetrics[leader]){
-      leaderMetrics[leader] = 0;
+function normalizeName(name){
+
+  return (name || "")
+    .toLowerCase()
+    .trim();
+}
+
+const peopleMap = new Map();
+
+staff.forEach(s => {
+
+  peopleMap.set(
+    normalizeName(s.name),
+    s.name
+  );
+});
+
+const leaderMetrics = {};
+
+hospitality.forEach(h => {
+
+  const names =
+    extractNames(h.leader);
+
+  if(names.length === 0){
+
+    if(!leaderMetrics["Unknown"]){
+      leaderMetrics["Unknown"] = 0;
     }
 
-    leaderMetrics[leader]++;
+    leaderMetrics["Unknown"]++;
+
+    return;
+  }
+
+  names.forEach(rawName => {
+
+    const normalized =
+      normalizeName(rawName);
+
+    const resolvedName =
+      peopleMap.get(normalized)
+      || rawName;
+
+    if(!leaderMetrics[resolvedName]){
+      leaderMetrics[resolvedName] = 0;
+    }
+
+    leaderMetrics[resolvedName]++;
   });
-
-  const hospitalityRows =
-
-    Object.entries(leaderMetrics)
-
-      .map(([leader,count]) => ({
-        leader,
-        count
-      }))
-
-      .sort((a,b)=>
-        b.count - a.count
-      );
-
-  document.getElementById("hospitalityBody").innerHTML =
-
-    hospitalityRows.map(r => `
-
-      <tr>
-
-        <td>${r.leader}</td>
-
-        <td class="count">
-          ${r.count}
-        </td>
-
-      </tr>
-
-    `).join("");
-
+});
   /* =========================
      CHART GROUPS
   ========================= */
