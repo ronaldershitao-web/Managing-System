@@ -367,27 +367,15 @@ roles.forEach(r => {
   if (!roleMetrics[key]) {
     roleMetrics[key] = {
       staff: staffName,
-      role: role,
+      role,
       count: 0
     };
   }
 
   roleMetrics[key].count++;
 });
-
-const roleRows =
-  Object.values(roleMetrics)
-    .sort((a, b) => b.count - a.count);
-
-document.getElementById("staffRoleBody").innerHTML =
-  roleRows.map(r => `
-    <tr>
-      <td>${r.staff}</td>
-      <td>${r.role}</td>
-      <td class="count">${r.count}</td>
-    </tr>
-  `).join("");
-//========================= */
+  
+  //========================= */
 
 //* =========================
   // HOSPITALITY METRICS (FIXED)
