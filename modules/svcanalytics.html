@@ -349,70 +349,44 @@ async function load(){
     hospitality.length;
 
  
-// build lookup
-const staffMap = new Map();
-
-staff.forEach(s => {
-
-  staffMap.set(
-    String(s.id).trim(),
-    s.name
-  );
-
-});
+const staffMap = new Map(
+  staff.map(s => [String(s.id), s.name])
+);
 
 const roleMetrics = {};
 
 roles.forEach(r => {
 
-  const staffId =
-    String(r.staff_id).trim();
-
   const staffName =
-    staffMap.get(staffId)
-    || "Unknown Staff";
+    staffMap.get(String(r.staff_id)) || "Unknown Staff";
 
-  const role =
-    r.role || "Unknown Role";
+  const role = r.role || "Unknown Role";
 
-  const key =
-    `${staffName}||${role}`;
+  const key = `${staffName}||${role}`;
 
-  if(!roleMetrics[key]){
-
+  if (!roleMetrics[key]) {
     roleMetrics[key] = {
       staff: staffName,
-      role,
+      role: role,
       count: 0
     };
-
   }
 
   roleMetrics[key].count++;
-
 });
 
 const roleRows =
-
   Object.values(roleMetrics)
-
-    .sort((a,b)=>
-      b.count - a.count
-    );
+    .sort((a, b) => b.count - a.count);
 
 document.getElementById("staffRoleBody").innerHTML =
-
   roleRows.map(r => `
-
     <tr>
       <td>${r.staff}</td>
       <td>${r.role}</td>
       <td class="count">${r.count}</td>
     </tr>
-
   `).join("");
-  
-
 //========================= */
 
 //* =========================
