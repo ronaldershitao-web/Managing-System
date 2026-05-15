@@ -277,14 +277,7 @@ async function load(){
 
   db
   .from("service_roles")
-  .select(`
-    role,
-    staff_id,
-    staff (
-      id,
-      name
-    )
-  `),
+  .select("*"),
 
     db
       .from("staff")
@@ -362,42 +355,71 @@ async function load(){
    STAFF ROLE METRICS (FIXED + RELATIONAL JOIN)
 ========================= */
 
+/* =========================
+   STAFF ROLE METRICS
+========================= */
+
+// build staff lookup
+const staffMap = new Map();
+
+staff.forEach(s => {
+
+  staffMap.set(
+    String(s.id),
+    s.name
+  );
+
+});
+
 const roleMetrics = {};
 
-// build metrics
 roles.forEach(r => {
 
-  const staffName = r.staff?.name || "Unknown Staff";
-  const role = r.role || "Unknown Role";
+  const staffName =
+    staffMap.get(String(r.staff_id))
+    || "Unknown Staff";
 
-  const key = `${staffName}||${role}`;
+  const role =
+    r.role || "Unknown Role";
+
+  const key =
+    `${staffName}||${role}`;
 
   if(!roleMetrics[key]){
+
     roleMetrics[key] = {
       staff: staffName,
       role: role,
       count: 0
     };
+
   }
 
   roleMetrics[key].count++;
+
 });
 
-// convert to array
+// convert to rows
 const roleRows =
-  Object.values(roleMetrics)
-    .sort((a, b) => b.count - a.count);
 
-// render table
+  Object.values(roleMetrics)
+
+    .sort((a,b)=>
+      b.count - a.count
+    );
+
+// render
 document.getElementById("staffRoleBody").innerHTML =
+
   roleRows.map(r => `
+
     <tr>
       <td>${r.staff}</td>
       <td>${r.role}</td>
       <td class="count">${r.count}</td>
     </tr>
-  `).join("");
-/* =========================
+
+  `).join("");/* =========================
    HOSPITALITY METRICS
 ========================= */
 
