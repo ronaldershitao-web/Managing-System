@@ -411,33 +411,48 @@ async function load(){
    HOSPITALITY METRICS
 ========================= */
 
-const metrics = {};
+/* =========================
+   HOSPITALITY METRICS (FIXED)
+========================= */
+
+const leaderMetrics = {};
+
+// normalize helper
+function normalize(name){
+  return (name || "")
+    .toLowerCase()
+    .trim();
+}
 
 hospitality.forEach(h => {
 
-  const leader = h.leader || "Unknown";
-  const pastor = h.pastor || "Unknown";
+  const leader = (h.leader || "Unknown").trim();
 
-  metrics[leader] = metrics[leader] || {
-    leader,
-    leaderCount: 0,
-    pastorCount: 0,
-    total: 0
-  };
+  const key = normalize(leader);
 
-  metrics[leader].leaderCount++;
-  metrics[leader].total++;
+  if(!leaderMetrics[key]){
+    leaderMetrics[key] = {
+      leader: leader,
+      count: 0
+    };
+  }
 
-  metrics[pastor] = metrics[pastor] || {
-    leader,
-    leaderCount: 0,
-    pastorCount: 0,
-    total: 0
-  };
-
-  metrics[pastor].pastorCount++;
-  metrics[pastor].total++;
+  leaderMetrics[key].count++;
 });
+
+// convert to rows
+const hospitalityRows =
+  Object.values(leaderMetrics)
+    .sort((a,b) => b.count - a.count);
+
+// render table
+document.getElementById("hospitalityBody").innerHTML =
+  hospitalityRows.map(r => `
+    <tr>
+      <td>${r.leader}</td>
+      <td class="count">${r.count}</td>
+    </tr>
+  `).join("");
   /* =========================
      CHART GROUPS
   ========================= */
