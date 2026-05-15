@@ -407,7 +407,7 @@ async function load(){
 
     `).join("");
 
- /* =========================
+/* =========================
    HOSPITALITY METRICS
 ========================= */
 
@@ -429,58 +429,48 @@ function extractNames(raw){
 }
 
 function normalizeName(name){
-
   return (name || "")
     .toLowerCase()
     .trim();
 }
 
+/* ✅ Build people lookup ONCE */
 const peopleMap = new Map();
 
-staff.forEach(s => {
-
- const peopleMap = new Map();
-
 people.forEach(p => {
-
   peopleMap.set(
     normalizeName(p.name),
     p.name
   );
 });
 
+/* =========================
+   GROUP HOSPITALITY
+========================= */
+
 const leaderMetrics = {};
 
 hospitality.forEach(h => {
 
-  const names =
-    extractNames(h.leader);
+  const names = extractNames(h.leader);
 
   if(names.length === 0){
 
-    if(!leaderMetrics["Unknown"]){
-      leaderMetrics["Unknown"] = 0;
-    }
-
-    leaderMetrics["Unknown"]++;
+    leaderMetrics["Unknown"] =
+      (leaderMetrics["Unknown"] || 0) + 1;
 
     return;
   }
 
   names.forEach(rawName => {
 
-    const normalized =
-      normalizeName(rawName);
+    const normalized = normalizeName(rawName);
 
     const resolvedName =
-      peopleMap.get(normalized)
-      || rawName;
+      peopleMap.get(normalized) || rawName;
 
-    if(!leaderMetrics[resolvedName]){
-      leaderMetrics[resolvedName] = 0;
-    }
-
-    leaderMetrics[resolvedName]++;
+    leaderMetrics[resolvedName] =
+      (leaderMetrics[resolvedName] || 0) + 1;
   });
 });
   /* =========================
