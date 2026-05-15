@@ -358,25 +358,18 @@ async function load(){
  /* =========================
    STAFF ROLE METRICS (FIXED)
 ========================= */
-
-// build staff lookup map
-const staffMap = new Map(
-  staff.map(s => [
-    String(s.id),
-    s.name
-  ])
-);
+/* =========================
+   STAFF ROLE METRICS (FIXED + RELATIONAL JOIN)
+========================= */
 
 const roleMetrics = {};
 
+// build metrics
 roles.forEach(r => {
 
-  const staffId = String(r.staff_id);
-  const staffName = staffMap.get(staffId) || "Unknown Staff";
-
+  const staffName = r.staff?.name || "Unknown Staff";
   const role = r.role || "Unknown Role";
 
-  // unique key = staff + role
   const key = `${staffName}||${role}`;
 
   if(!roleMetrics[key]){
@@ -393,7 +386,7 @@ roles.forEach(r => {
 // convert to array
 const roleRows =
   Object.values(roleMetrics)
-    .sort((a,b) => b.count - a.count);
+    .sort((a, b) => b.count - a.count);
 
 // render table
 document.getElementById("staffRoleBody").innerHTML =
