@@ -261,6 +261,7 @@ let currentRole = null;
   let people = [];
   let serviceMap = new Map();
   let attendanceMetricsMap = new Map();
+  let staffMap = new Map();
 
 /* ================= DATE ================= */
 
@@ -372,8 +373,12 @@ async function load(){
   const roles = rolesRes.data || [];
   const templateRoles = templateRolesRes.data || [];
 
-  const staffMap =
-    new Map(staffList.map(s => [String(s.id), s.name]));
+  staffMap = new Map(
+  staffList.map(s => [
+    String(s.id).trim().toLowerCase(),
+    s.name
+  ])
+);
 hospitalityMap = new Map(
   (hospitalityRes.data || []).map(d => [
     String(d.service_id),
@@ -546,22 +551,16 @@ hospitalityMap = new Map(
 
     const staffId =
 
-      rawStaffId
-        ? String(rawStaffId).trim()
-        : null;
+  rawStaffId
+    ? String(rawStaffId).trim().toLowerCase()
+    : null;
 
     /* =========================
        RESOLVE STAFF NAME
     ========================= */
 
-    const resolvedName =
-
-      staffId &&
-      staffMap.has(staffId)
-
-        ? staffMap.get(staffId)
-
-        : "-";
+   const resolvedName =
+  staffMap.get(staffId) || "-";
 
     const unavailable =
       unavailableIds.has(staffId);
