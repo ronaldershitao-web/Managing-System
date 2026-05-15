@@ -348,65 +348,55 @@ async function load(){
   document.getElementById("totalHospitality").innerText =
     hospitality.length;
 
-  /* =========================
-     STAFF ROLE METRICS
-  ========================= */
+ /* =========================
+   STAFF ROLE METRICS (FIXED)
+========================= */
 
-  const staffMap =
-    new Map(
-      staff.map(s => [
-        String(s.id),
-        s.name
-      ])
-    );
+// build staff lookup map
+const staffMap = new Map(
+  staff.map(s => [
+    String(s.id),
+    s.name
+  ])
+);
 
-  const roleMetrics = {};
+const roleMetrics = {};
 
-  roles.forEach(r => {
+roles.forEach(r => {
 
-    const staffName =
-      staffMap.get(String(r.staff_id))
-      || "Unknown";
+  const staffId = String(r.staff_id);
+  const staffName = staffMap.get(staffId) || "Unknown Staff";
 
-    const key =
-      `${staffName}||${r.role}`;
+  const role = r.role || "Unknown Role";
 
-    if(!roleMetrics[key]){
+  // unique key = staff + role
+  const key = `${staffName}||${role}`;
 
-      roleMetrics[key] = {
-        staff: staffName,
-        role: r.role,
-        count: 0
-      };
-    }
+  if(!roleMetrics[key]){
+    roleMetrics[key] = {
+      staff: staffName,
+      role: role,
+      count: 0
+    };
+  }
 
-    roleMetrics[key].count++;
-  });
+  roleMetrics[key].count++;
+});
 
-  const roleRows =
-    Object.values(roleMetrics)
-      .sort((a,b)=>
-        b.count - a.count
-      );
+// convert to array
+const roleRows =
+  Object.values(roleMetrics)
+    .sort((a,b) => b.count - a.count);
 
-  document.getElementById("staffRoleBody").innerHTML =
-
-    roleRows.map(r => `
-
-      <tr>
-
-        <td>${r.staff}</td>
-
-        <td>${r.role}</td>
-
-        <td class="count">
-          ${r.count}
-        </td>
-
-      </tr>
-
-    `).join("");
-
+// render table
+document.getElementById("staffRoleBody").innerHTML =
+  roleRows.map(r => `
+    <tr>
+      <td>${r.staff}</td>
+      <td>${r.role}</td>
+      <td class="count">${r.count}</td>
+    </tr>
+  `).join("");
 /* =========================
    HOSPITALITY METRICS
 ========================= */
