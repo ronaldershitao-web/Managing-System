@@ -275,12 +275,12 @@ async function load(){
       .from("service_attendance_metrics")
       .select("*"),
 
-   db
+  db
   .from("service_roles")
   .select(`
     role,
     staff_id,
-    staff:staff_id (
+    staff (
       id,
       name
     )
