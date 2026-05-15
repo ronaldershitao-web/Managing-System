@@ -255,7 +255,8 @@ async function load(){
     attendanceRes,
     rolesRes,
     staffRes,
-    hospitalityRes
+    hospitalityRes,
+    peopleRes
   ] = await Promise.all([
 
     db
@@ -284,7 +285,11 @@ async function load(){
 
     db
       .from("hospitality_duty")
-      .select("*")
+      .select("*"),
+
+    db
+  .from("people")
+  .select("*")
   ]);
 
   const services =
@@ -301,6 +306,9 @@ async function load(){
 
   const hospitality =
     hospitalityRes.data || [];
+  
+  const people =
+  peopleRes.data || [];
 
   /* =========================
      ATTENDANCE MAP
@@ -431,9 +439,13 @@ const peopleMap = new Map();
 
 staff.forEach(s => {
 
+ const peopleMap = new Map();
+
+people.forEach(p => {
+
   peopleMap.set(
-    normalizeName(s.name),
-    s.name
+    normalizeName(p.name),
+    p.name
   );
 });
 
