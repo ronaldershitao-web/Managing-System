@@ -348,24 +348,14 @@ async function load(){
   document.getElementById("totalHospitality").innerText =
     hospitality.length;
 
- /* =========================
-   STAFF ROLE METRICS (FIXED)
-========================= */
-/* =========================
-   STAFF ROLE METRICS (FIXED + RELATIONAL JOIN)
-========================= */
-
-/* =========================
-   STAFF ROLE METRICS
-========================= */
-
-// build staff lookup
+ 
+// build lookup
 const staffMap = new Map();
 
 staff.forEach(s => {
 
   staffMap.set(
-    String(s.id),
+    String(s.id).trim(),
     s.name
   );
 
@@ -375,8 +365,11 @@ const roleMetrics = {};
 
 roles.forEach(r => {
 
+  const staffId =
+    String(r.staff_id).trim();
+
   const staffName =
-    staffMap.get(String(r.staff_id))
+    staffMap.get(staffId)
     || "Unknown Staff";
 
   const role =
@@ -389,7 +382,7 @@ roles.forEach(r => {
 
     roleMetrics[key] = {
       staff: staffName,
-      role: role,
+      role,
       count: 0
     };
 
@@ -399,7 +392,6 @@ roles.forEach(r => {
 
 });
 
-// convert to rows
 const roleRows =
 
   Object.values(roleMetrics)
@@ -408,7 +400,6 @@ const roleRows =
       b.count - a.count
     );
 
-// render
 document.getElementById("staffRoleBody").innerHTML =
 
   roleRows.map(r => `
@@ -419,12 +410,13 @@ document.getElementById("staffRoleBody").innerHTML =
       <td class="count">${r.count}</td>
     </tr>
 
-  `).join("");/* =========================
-   HOSPITALITY METRICS
+  `).join("");
+  
+
 ========================= */
 
-/* =========================
-   HOSPITALITY METRICS (FIXED)
+//* =========================
+  // HOSPITALITY METRICS (FIXED)
 ========================= */
 
 const leaderMetrics = {};
