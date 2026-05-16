@@ -111,7 +111,7 @@
 <body>
 
 <header>
-  ⛪ Command Post (Full Ops + Availability Control)
+  ⛪ Command Post
   <button onclick="load()">Refresh</button>
 </header>
 
@@ -119,7 +119,7 @@
 
 <!-- ASSIGN MODAL -->
 <div id="assignModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);">
-  <div style="background:#111827;width:300px;margin:10% auto;padding:20px;border-radius:10px;">
+  <div style="background:#111827;width:320px;margin:10% auto;padding:20px;border-radius:10px;">
     <h3 id="modalTitle"></h3>
     <select id="staffSelect"></select>
     <button class="save" onclick="saveAssign()">Assign</button>
@@ -133,7 +133,6 @@ import { db } from "../assets/app.js";
 let staffList = [];
 let templates = [];
 let roles = [];
-let availability = [];
 
 let roleMap = new Map();
 let templateMap = new Map();
@@ -149,36 +148,45 @@ async function load(){
     servicesRes,
     templateRes,
     roleRes,
-    staffRes,
-    templateRoleRes,
-    availabilityRes
+    staffRes
   ] = await Promise.all([
     db.from("services").select(`*, service_slots(label,time,location)`),
     db.from("staff_service_templates").select("*"),
     db.from("service_roles").select("*"),
-    db.from("staff").select("*"),
-    db.from("service_template_roles").select("*"),
-    db.from("staff_availability").select("*")
+    db.from("staff").select("*")
   ]);
 
   const services = servicesRes.data || [];
-  staffList = staffRes.data || [];
   templates = templateRes.data || [];
   roles = roleRes.data || [];
-  availability = availabilityRes.data || [];
+  staffList = staffRes.data || [];
 
   staffMap = new Map(staffList.map(s => [String(s.id), s.name]));
 
-  /* role map */
+  /* ================= SAFE ROLE MAP ================= */
   roleMap = new Map();
-  roles.forEach(r=>{
-    const k = String(r.service_id);
-    if(!roleMap.has(k)) roleMap.set(k,[]);
-    roleMap.get(k).push(r);
+
+  roles.forEach(r => {
+
+    const serviceId = String(r.service_id || "").trim();
+    const role = String(r.role || "").trim();
+    const staff_id = String(r.staff_id || "").trim();
+
+    // 🚨 HARD GUARD (prevents crash)
+    if (!serviceId || !role) return;
+
+    if (!roleMap.has(serviceId)) roleMap.set(serviceId, []);
+
+    roleMap.get(serviceId).push({
+      ...r,
+      role,
+      staff_id
+    });
   });
 
   /* template map */
   templateMap = new Map();
+
   templates.forEach(t=>{
     const k = String(t.template_id);
     if(!templateMap.has(k)) templateMap.set(k,[]);
@@ -222,24 +230,27 @@ function renderCard(s){
   const template = templateMap.get(String(s.service_template_id)) || [];
   const assigned = roleMap.get(String(s.id)) || [];
 
-  const appointments = template.map(t=>{
+  const appointments = template.map(t => {
 
-    const role = t.role;
+    const role = String(t.role || "").trim().toLowerCase();
 
-    // 🔥 IMPORTANT FIX: assigned overrides template
     const match = assigned.find(r =>
-      (r.role||"").trim().toLowerCase() === role.toLowerCase()
+      String(r.role || "").trim().toLowerCase() === role
     );
 
-    const staffId = match?.staff_id || t.staff_id || "";
+    const staffId =
+      match?.staff_id ||
+      t.staff_id ||
+      "";
+
     const name = staffMap.get(String(staffId)) || "-";
 
     return `
       <div class="row">
-        <span>${role}</span>
+        <span>${t.role}</span>
         <span>
           ${name}
-          <button class="small" onclick="openAssign('${s.id}','${role}')">Assign</button>
+          <button class="small" onclick="openAssign('${s.id}','${t.role}')">Assign</button>
         </span>
       </div>
     `;
@@ -272,7 +283,7 @@ window.openAssign = function(serviceId, role){
   currentRole = role;
 
   document.getElementById("assignModal").style.display="block";
-  document.getElementById("modalTitle").innerText="Assign "+role;
+  document.getElementById("modalTitle").innerText="Assign " + role;
 
   document.getElementById("staffSelect").innerHTML =
     staffList.map(s=>`<option value="${s.id}">${s.name}</option>`).join("");
