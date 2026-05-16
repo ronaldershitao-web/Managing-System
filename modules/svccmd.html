@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Command Post (Full Ops)</title>
+  <title>Command Post (Restored Stable)</title>
 
   <style>
     body{
@@ -16,7 +16,6 @@
       background:#111827;
       display:flex;
       justify-content:space-between;
-      align-items:center;
       font-weight:bold;
       border-bottom:1px solid #1f2937;
     }
@@ -37,11 +36,10 @@
       overflow:auto;
     }
 
-    .col-title{
-      font-size:16px;
+    .title{
+      color:#fbbf24;
       font-weight:bold;
       margin-bottom:10px;
-      color:#fbbf24;
     }
 
     .card{
@@ -49,36 +47,15 @@
       border:1px solid #334155;
       border-radius:10px;
       padding:10px;
-      margin-bottom:12px;
-    }
-
-    .service-title{
-      color:#60a5fa;
-      font-weight:bold;
-    }
-
-    .service-date{
-      font-size:12px;
-      color:#94a3b8;
       margin-bottom:10px;
-    }
-
-    .section-title{
-      margin-top:10px;
-      font-size:12px;
-      font-weight:bold;
-      color:#fbbf24;
-      border-top:1px solid #1f2937;
-      padding-top:6px;
     }
 
     .row{
       display:flex;
       justify-content:space-between;
-      align-items:center;
-      gap:8px;
-      margin:6px 0;
       font-size:12px;
+      margin:6px 0;
+      gap:6px;
     }
 
     .role{ flex:1; }
@@ -90,60 +67,54 @@
       color:#22c55e;
     }
 
-    .bad{ color:#ef4444; }
-
     button{
-      border:none;
-      border-radius:6px;
-      cursor:pointer;
-    }
-
-    .small{
       font-size:10px;
       padding:3px 6px;
       background:#3b82f6;
+      border:none;
       color:white;
-      width:auto;
+      border-radius:5px;
+      cursor:pointer;
+    }
+
+    select{
+      width:100%;
+      margin-top:8px;
+      padding:6px;
+      border-radius:6px;
+    }
+
+    .panel{
+      background:#0f172a;
+      border:1px solid #334155;
+      border-radius:10px;
+      padding:10px;
+    }
+
+    .danger{
+      background:#ef4444;
+      width:100%;
+      margin-top:10px;
+      padding:6px;
+      color:white;
+      border:none;
+      border-radius:6px;
     }
 
     .modal{
       display:none;
       position:fixed;
       inset:0;
-      background:rgba(0,0,0,0.7);
+      background:rgba(0,0,0,0.6);
       justify-content:center;
       align-items:center;
     }
 
     .modal-content{
       background:#111827;
-      border:1px solid #334155;
       padding:20px;
       border-radius:10px;
       width:360px;
-    }
-
-    select{
-      width:100%;
-      padding:8px;
-      margin-top:8px;
-      border-radius:6px;
-    }
-
-    .save{
-      width:100%;
-      margin-top:10px;
-      padding:8px;
-      background:#22c55e;
-      color:white;
-    }
-
-    .secondary{
-      width:100%;
-      margin-top:6px;
-      padding:8px;
-      background:#334155;
-      color:white;
     }
   </style>
 </head>
@@ -151,23 +122,21 @@
 <body>
 
 <header>
-  ⛪ Command Post
+  Command Post
   <button onclick="load()">Refresh</button>
 </header>
 
 <div class="grid" id="grid"></div>
 
-<!-- ASSIGN MODAL -->
+<!-- ASSIGN -->
 <div class="modal" id="assignModal">
   <div class="modal-content">
 
-    <div id="modalTitle">Assign</div>
+    <div id="assignTitle">Assign</div>
 
     <select id="staffSelect"></select>
 
-    <button class="save" onclick="saveAssign()">Assign</button>
-    <button class="secondary" onclick="closeAssignModal()">Close</button>
-
+    <button onclick="saveAssign()">Save</button>
   </div>
 </div>
 
@@ -175,37 +144,63 @@
 
 import { db } from "../assets/app.js";
 
+/* ================= DATA ================= */
 let services = [];
-let staffList = [];
+let staff = [];
 let templateRoles = [];
 let serviceRoles = [];
+let availability = [];
+
+let currentServiceId = null;
+let currentRole = null;
 
 /* ================= LOAD ================= */
 async function load(){
 
-  const [sRes, stRes, trRes, srRes] = await Promise.all([
+  const [s, st, tr, sr, av] = await Promise.all([
     db.from("services").select("*, service_slots(label,time,location)"),
     db.from("staff").select("*"),
     db.from("service_template_roles").select("*"),
-    db.from("service_roles").select("*")
+    db.from("service_roles").select("*"),
+    db.from("staff_availability").select("*")
   ]);
 
-  services = sRes.data || [];
-  staffList = stRes.data || [];
-  templateRoles = trRes.data || [];
-  serviceRoles = srRes.data || [];
+  services = s.data || [];
+  staff = st.data || [];
+  templateRoles = tr.data || [];
+  serviceRoles = sr.data || [];
+  availability = av.data || [];
 
   render();
 }
 
-/* ================= DATE FILTER ================= */
-function parseDate(d){
-  const [y,m,day] = d.split("-");
-  return new Date(y,m-1,day);
+/* ================= STAFF JOIN (FIXED CORE ISSUE) ================= */
+function getStaffName(serviceId, role){
+
+  const matches = serviceRoles
+    .filter(r =>
+      String(r.service_id) === String(serviceId) &&
+      (r.role || "").toLowerCase() === (role || "").toLowerCase()
+    )
+    .sort((a,b)=>
+      new Date(b.created_at || 0) - new Date(a.created_at || 0)
+    );
+
+  const latest = matches[0];
+
+  if(!latest) return "-";
+
+  const s = staff.find(x =>
+    String(x.id) === String(latest.staff_id)
+  );
+
+  return s?.name || "-";
 }
 
-function in8Days(d){
-  const dt = parseDate(d);
+/* ================= FILTER ================= */
+function inRange(dateStr){
+
+  const d = new Date(dateStr);
   const now = new Date();
 
   const min = new Date(now);
@@ -214,43 +209,22 @@ function in8Days(d){
   const max = new Date(now);
   max.setDate(now.getDate()+8);
 
-  return dt >= min && dt <= max;
-}
-
-/* ================= STAFF JOIN ================= */
-function getStaffName(id){
-  return staffList.find(s => String(s.id) === String(id))?.name || "-";
-}
-
-function getAssigned(serviceId, role){
-
-  const found = serviceRoles
-    .filter(r =>
-      String(r.service_id) === String(serviceId) &&
-      (r.role || "").toLowerCase() === (role || "").toLowerCase()
-    )
-    .sort((a,b)=>
-      new Date(b.created_at || 0) - new Date(a.created_at || 0)
-    )[0];
-
-  if(!found) return "-";
-
-  return getStaffName(found.staff_id);
+  return d >= min && d <= max;
 }
 
 /* ================= RENDER ================= */
 function render(){
 
-  const sat=[], sun830=[], sun1045=[], jurong=[];
+  const sat=[], s830=[], s1045=[], jurong=[];
 
   services
-    .filter(s => in8Days(s.service_date))
+    .filter(s => inRange(s.service_date))
     .forEach(s => {
 
       const t = (s.service_slots?.time || "").toLowerCase();
       const loc = (s.service_slots?.location || "").toLowerCase();
 
-      // IMPORTANT: Jurong FIRST
+      // IMPORTANT: Jurong FIRST (fix bug you had)
       if(loc.includes("jurong")){
         jurong.push(s);
       }
@@ -258,66 +232,61 @@ function render(){
         sat.push(s);
       }
       else if(t.includes("08")){
-        sun830.push(s);
+        s830.push(s);
       }
       else if(t.includes("10:45")){
-        sun1045.push(s);
+        s1045.push(s);
       }
     });
 
   document.getElementById("grid").innerHTML = `
     <div class="col">
-      <div class="col-title">Saturday 2.30pm</div>
-      ${sat.map(renderCard).join("")}
+      <div class="title">Saturday 2.30pm</div>
+      ${sat.map(card).join("")}
     </div>
 
     <div class="col">
-      <div class="col-title">Sunday 8.30am</div>
-      ${sun830.map(renderCard).join("")}
+      <div class="title">Sunday 8.30am</div>
+      ${s830.map(card).join("")}
     </div>
 
     <div class="col">
-      <div class="col-title">Sunday 10.45am</div>
-      ${sun1045.map(renderCard).join("")}
+      <div class="title">Sunday 10.45am</div>
+      ${s1045.map(card).join("")}
     </div>
 
     <div class="col">
-      <div class="col-title">Sunday Jurong</div>
-      ${jurong.map(renderCard).join("")}
+      <div class="title">Sunday Jurong</div>
+      ${jurong.map(card).join("")}
     </div>
 
     <div class="col">
-      <div class="col-title">Staff Availability (60 Days)</div>
-      ${renderAvailability()}
+      <div class="title">Availability (60 Days)</div>
+      ${availabilityPanel()}
     </div>
   `;
 }
 
 /* ================= CARD ================= */
-function renderCard(svc){
+function card(s){
 
   const roles = templateRoles.filter(r =>
-    String(r.template_id) === String(svc.service_template_id)
+    String(r.template_id) === String(s.service_template_id)
   );
 
-  const isCommunion = svc.is_communion_service === true;
+  const isComm = s.is_communion_service === true;
 
-  const filtered = isCommunion
+  const filtered = isComm
     ? roles
-    : roles.filter(r => !(r.role || "").toLowerCase().includes("communion"));
+    : roles.filter(r =>
+        !(r.role || "").toLowerCase().includes("communion")
+      );
 
   return `
     <div class="card">
 
-      <div class="service-title">
-        ${svc.service_slots?.label || "-"}
-      </div>
-
-      <div class="service-date">
-        ${svc.service_date}
-      </div>
-
-      <div class="section-title">Appointments</div>
+      <div><b>${s.service_slots?.label}</b></div>
+      <div style="font-size:11px;color:#94a3b8">${s.service_date}</div>
 
       ${filtered.map(r => `
         <div class="row">
@@ -325,11 +294,10 @@ function renderCard(svc){
           <div class="role">${r.role}</div>
 
           <div class="staff">
-            ${getAssigned(svc.id, r.role)}
+            ${getStaffName(s.id, r.role)}
           </div>
 
-          <button class="small"
-            onclick="openAssign('${svc.id}','${r.role}')">
+          <button onclick="openAssign('${s.id}','${r.role}')">
             Assign
           </button>
 
@@ -340,25 +308,25 @@ function renderCard(svc){
   `;
 }
 
-/* ================= AVAILABILITY ================= */
-function renderAvailability(){
+/* ================= 5th COLUMN ================= */
+function availabilityPanel(){
 
   const dates = [...new Set(
     services.map(s => s.service_date)
-  )];
+  )].sort();
 
   return `
-    <div class="card">
+    <div class="panel">
 
-      <select id="dateSelect" onchange="loadServices()">
-        ${dates.map(d => `<option value="${d}">${d}</option>`).join("")}
+      <select id="dateSel" onchange="loadServices()">
+        ${dates.map(d=>`<option value="${d}">${d}</option>`).join("")}
       </select>
 
-      <select id="serviceSelect" onchange="loadStaff()"></select>
+      <select id="serviceSel" onchange="loadStaff()"></select>
 
-      <select id="staffSelectAvail"></select>
+      <select id="staffSel"></select>
 
-      <button class="small" onclick="markUnavailable()">
+      <button class="danger" onclick="markUnavailable()">
         Mark Unavailable
       </button>
 
@@ -369,30 +337,33 @@ function renderAvailability(){
 /* ================= ASSIGN ================= */
 window.openAssign = function(serviceId, role){
 
-  window.currentService = serviceId;
-  window.currentRole = role;
+  currentServiceId = serviceId;
+  currentRole = role;
+
+  const eligible = staff;
 
   document.getElementById("staffSelect").innerHTML =
-    staffList.map(s => `<option value="${s.id}">${s.name}</option>`).join("");
+    eligible.map(s =>
+      `<option value="${s.id}">${s.name}</option>`
+    ).join("");
 
-  document.getElementById("assignModal").style.display = "flex";
+  document.getElementById("assignModal").style.display="flex";
 };
-
-window.closeAssignModal = () =>
-  document.getElementById("assignModal").style.display = "none";
 
 window.saveAssign = async function(){
 
   const staffId = document.getElementById("staffSelect").value;
 
   await db.from("service_roles").upsert({
-    service_id: currentService,
+    service_id: currentServiceId,
     role: currentRole,
     staff_id: staffId
-  }, { onConflict:"service_id,role" });
+  },{
+    onConflict:"service_id,role"
+  });
 
   await load();
-  closeAssignModal();
+  document.getElementById("assignModal").style.display="none";
 };
 
 /* ================= INIT ================= */
