@@ -76,9 +76,9 @@
       display:flex;
       justify-content:space-between;
       align-items:center;
+      gap:8px;
       margin:6px 0;
       font-size:12px;
-      gap:8px;
     }
 
     .role{ flex:1; }
@@ -180,28 +180,6 @@ let staffList = [];
 let templateRoles = [];
 let serviceRoles = [];
 
-let currentService = null;
-let currentRole = null;
-
-/* ================= DATE ================= */
-function parseDate(d){
-  const [y,m,day] = d.split("-");
-  return new Date(y,m-1,day);
-}
-
-function in8Days(dateStr){
-  const d = parseDate(dateStr);
-  const now = new Date();
-
-  const min = new Date(now);
-  min.setDate(now.getDate() - 8);
-
-  const max = new Date(now);
-  max.setDate(now.getDate() + 8);
-
-  return d >= min && d <= max;
-}
-
 /* ================= LOAD ================= */
 async function load(){
 
@@ -220,12 +198,30 @@ async function load(){
   render();
 }
 
-/* ================= STAFF ================= */
+/* ================= DATE FILTER ================= */
+function parseDate(d){
+  const [y,m,day] = d.split("-");
+  return new Date(y,m-1,day);
+}
+
+function in8Days(d){
+  const dt = parseDate(d);
+  const now = new Date();
+
+  const min = new Date(now);
+  min.setDate(now.getDate()-8);
+
+  const max = new Date(now);
+  max.setDate(now.getDate()+8);
+
+  return dt >= min && dt <= max;
+}
+
+/* ================= STAFF JOIN ================= */
 function getStaffName(id){
   return staffList.find(s => String(s.id) === String(id))?.name || "-";
 }
 
-/* ================= ASSIGNED ================= */
 function getAssigned(serviceId, role){
 
   const found = serviceRoles
@@ -245,14 +241,8 @@ function getAssigned(serviceId, role){
 /* ================= RENDER ================= */
 function render(){
 
-  const grid = document.getElementById("grid");
+  const sat=[], sun830=[], sun1045=[], jurong=[];
 
-  const sat = [];
-  const sun830 = [];
-  const sun1045 = [];
-  const jurong = [];
-
-  /* ✅ FIX: enforce filter FIRST */
   services
     .filter(s => in8Days(s.service_date))
     .forEach(s => {
@@ -260,7 +250,7 @@ function render(){
       const t = (s.service_slots?.time || "").toLowerCase();
       const loc = (s.service_slots?.location || "").toLowerCase();
 
-      /* ✅ FIX: Jurong FIRST priority */
+      // IMPORTANT: Jurong FIRST
       if(loc.includes("jurong")){
         jurong.push(s);
       }
@@ -275,7 +265,7 @@ function render(){
       }
     });
 
-  grid.innerHTML = `
+  document.getElementById("grid").innerHTML = `
     <div class="col">
       <div class="col-title">Saturday 2.30pm</div>
       ${sat.map(renderCard).join("")}
@@ -352,9 +342,26 @@ function renderCard(svc){
 
 /* ================= AVAILABILITY ================= */
 function renderAvailability(){
+
+  const dates = [...new Set(
+    services.map(s => s.service_date)
+  )];
+
   return `
     <div class="card">
-      <i>Select availability module (already stable)</i>
+
+      <select id="dateSelect" onchange="loadServices()">
+        ${dates.map(d => `<option value="${d}">${d}</option>`).join("")}
+      </select>
+
+      <select id="serviceSelect" onchange="loadStaff()"></select>
+
+      <select id="staffSelectAvail"></select>
+
+      <button class="small" onclick="markUnavailable()">
+        Mark Unavailable
+      </button>
+
     </div>
   `;
 }
@@ -362,15 +369,12 @@ function renderAvailability(){
 /* ================= ASSIGN ================= */
 window.openAssign = function(serviceId, role){
 
-  currentService = serviceId;
-  currentRole = role;
+  window.currentService = serviceId;
+  window.currentRole = role;
 
   document.getElementById("staffSelect").innerHTML =
-    staffList.map(s =>
-      `<option value="${s.id}">${s.name}</option>`
-    ).join("");
+    staffList.map(s => `<option value="${s.id}">${s.name}</option>`).join("");
 
-  document.getElementById("modalTitle").innerText = role;
   document.getElementById("assignModal").style.display = "flex";
 };
 
@@ -385,7 +389,7 @@ window.saveAssign = async function(){
     service_id: currentService,
     role: currentRole,
     staff_id: staffId
-  }, { onConflict: "service_id,role" });
+  }, { onConflict:"service_id,role" });
 
   await load();
   closeAssignModal();
