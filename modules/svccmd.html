@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Command Post</title>
+  <title>Command Post (Full Ops + Availability Control)</title>
 
   <style>
     body{
@@ -18,6 +18,7 @@
       justify-content:space-between;
       align-items:center;
       font-weight:bold;
+      border-bottom:1px solid #1f2937;
     }
 
     .grid{
@@ -36,33 +37,42 @@
       overflow:auto;
     }
 
+    .column-title{
+      font-size:18px;
+      font-weight:bold;
+      margin-bottom:12px;
+      color:#fbbf24;
+    }
+
     .card{
       background:#0f172a;
       border:1px solid #334155;
-      border-radius:8px;
+      border-radius:10px;
       padding:10px;
-      margin-bottom:10px;
+      margin-bottom:12px;
     }
 
     .service-title{
-      color:#60a5fa;
       font-weight:bold;
-      margin-bottom:4px;
+      color:#60a5fa;
+      font-size:15px;
     }
 
     .service-date{
       font-size:12px;
       color:#94a3b8;
+      margin-top:4px;
       margin-bottom:10px;
     }
 
-    .group-title{
-      color:#fbbf24;
+    .section-title{
+      font-size:12px;
       font-weight:bold;
-      margin-top:10px;
-      margin-bottom:6px;
-      border-top:1px solid #334155;
-      padding-top:6px;
+      color:#fbbf24;
+      margin-top:12px;
+      margin-bottom:8px;
+      border-top:1px solid #1f2937;
+      padding-top:8px;
     }
 
     .row{
@@ -70,45 +80,79 @@
       justify-content:space-between;
       align-items:center;
       gap:8px;
+      margin:5px 0;
       font-size:12px;
-      margin:4px 0;
+    }
+
+    .role-name{
+      flex:1;
+    }
+
+    .staff-name{
+      color:#22c55e;
+      font-weight:bold;
+      font-size:11px;
+      text-align:right;
+    }
+
+    .unavailable{
+      color:#ef4444;
     }
 
     .good{
       color:#22c55e;
+      font-weight:bold;
     }
 
     .bad{
       color:#ef4444;
+      font-weight:bold;
     }
 
     button{
       border:none;
-      border-radius:4px;
-      padding:4px 8px;
+      border-radius:6px;
       cursor:pointer;
-      font-size:11px;
     }
 
     .small{
+      padding:4px 8px;
+      font-size:10px;
       background:#3b82f6;
       color:white;
+      width:auto;
+    }
+
+    .save{
+      background:#22c55e;
+      color:white;
+      padding:8px;
+      width:100%;
+      margin-top:10px;
     }
 
     .danger{
       background:#ef4444;
       color:white;
+      padding:8px;
       width:100%;
       margin-top:10px;
-      padding:8px;
     }
 
-    select{
+    .secondary{
+      background:#334155;
+      color:white;
+      padding:8px;
+      width:100%;
+      margin-top:10px;
+    }
+
+    select,input{
       width:100%;
       padding:8px;
-      margin-top:10px;
       border:none;
       border-radius:6px;
+      margin-top:6px;
       box-sizing:border-box;
     }
 
@@ -123,11 +167,35 @@
     }
 
     .modal-content{
+      width:360px;
       background:#111827;
-      padding:20px;
-      border-radius:10px;
-      width:320px;
       border:1px solid #334155;
+      border-radius:10px;
+      padding:20px;
+      max-height:80vh;
+      overflow:auto;
+    }
+
+    .top-panel{
+      margin-top:10px;
+      background:#111827;
+      border:1px solid #334155;
+      border-radius:8px;
+      padding:10px;
+    }
+
+    .panel-title{
+      color:#fbbf24;
+      font-size:12px;
+      font-weight:bold;
+      margin-bottom:8px;
+    }
+
+    .staff-item{
+      border:1px solid #334155;
+      border-radius:8px;
+      padding:8px;
+      margin-top:8px;
     }
   </style>
 </head>
@@ -135,7 +203,7 @@
 <body>
 
 <header>
-  ⛪ Command Post
+  ⛪ Command Post (Full Ops + Availability Control)
   <button class="small" onclick="load()">Refresh</button>
 </header>
 
@@ -145,17 +213,30 @@
 <div class="modal" id="assignModal">
   <div class="modal-content">
 
-    <h3 id="assignTitle">Assign</h3>
+    <h3 id="modalTitle">Assign</h3>
 
     <select id="staffSelect"></select>
 
-    <button class="danger" onclick="saveAssign()">
-      Assign
+    <button class="save" onclick="saveAssign()">
+      Assign / Reassign
     </button>
 
-    <button class="small"
-      style="margin-top:10px;width:100%;"
-      onclick="closeAssignModal()">
+    <button class="secondary" onclick="closeAssignModal()">
+      Close
+    </button>
+
+  </div>
+</div>
+
+<!-- UNAVAILABLE MODAL -->
+<div class="modal" id="unavailableModal">
+  <div class="modal-content">
+
+    <h3>Unavailable Staff</h3>
+
+    <div id="unavailableList"></div>
+
+    <button class="secondary" onclick="closeUnavailableModal()">
       Close
     </button>
 
@@ -166,23 +247,15 @@
 
 import { db } from "../assets/app.js";
 
-/* ================= STATE ================= */
-
 let services = [];
 let staffList = [];
+let templates = [];
 let availability = [];
 let templateRoles = [];
-let serviceRoles = [];
-let templates = [];
+let assignedRoles = [];
 
 let currentService = null;
 let currentRole = null;
-
-let staffMap = new Map();
-let roleMap = new Map();
-let templateRoleMap = new Map();
-
-/* ================= DATE ================= */
 
 function parseDate(d){
   const [y,m,day] = d.split("-");
@@ -193,18 +266,18 @@ function formatDate(dateStr){
 
   if(!dateStr) return "-";
 
-  const date = parseDate(dateStr);
+  const d = parseDate(dateStr);
 
-  return date.toLocaleDateString("en-GB",{
+  return d.toLocaleDateString("en-GB",{
     day:"2-digit",
     month:"short",
     year:"numeric"
   });
 }
 
-function inWindow(d){
+function in8Days(dateStr){
 
-  const dt = parseDate(d);
+  const d = parseDate(dateStr);
 
   const now = new Date();
 
@@ -214,32 +287,30 @@ function inWindow(d){
   const max = new Date();
   max.setDate(now.getDate()+8);
 
-  return dt >= min && dt <= max;
+  return d >= min && d <= max;
 }
 
-function in60Days(d){
+function in60Days(dateStr){
 
-  const dt = parseDate(d);
+  const d = parseDate(dateStr);
 
   const now = new Date();
 
   const max = new Date();
   max.setDate(now.getDate()+60);
 
-  return dt >= now && dt <= max;
+  return d >= now && d <= max;
 }
-
-/* ================= LOAD ================= */
 
 async function load(){
 
   const [
     servicesRes,
     staffRes,
-    availabilityRes,
+    templatesRes,
+    availRes,
     templateRolesRes,
-    serviceRolesRes,
-    templatesRes
+    assignedRolesRes
   ] = await Promise.all([
 
     db.from("services")
@@ -248,237 +319,149 @@ async function load(){
         service_slots(label,time,location)
       `),
 
-    db.from("staff")
-      .select("*"),
+    db.from("staff").select("*"),
 
-    db.from("staff_availability")
-      .select("*"),
+    db.from("staff_service_templates").select("*"),
 
-    db.from("service_template_roles")
-      .select("*"),
+    db.from("staff_availability").select("*"),
 
-    db.from("service_roles")
-      .select("*"),
+    db.from("service_template_roles").select("*"),
 
-    db.from("staff_service_templates")
-      .select("*")
+    db.from("service_roles").select("*")
   ]);
 
   services = servicesRes.data || [];
   staffList = staffRes.data || [];
-  availability = availabilityRes.data || [];
-  templateRoles = templateRolesRes.data || [];
-  serviceRoles = serviceRolesRes.data || [];
   templates = templatesRes.data || [];
-
-  /* STAFF MAP */
-  staffMap = new Map(
-    staffList.map(s => [
-      String(s.id).trim(),
-      s.name
-    ])
-  );
-
-  /* ROLE MAP */
-  roleMap = new Map();
-
-  serviceRoles.forEach(r => {
-
-    const key = String(r.service_id).trim();
-
-    if(!roleMap.has(key)){
-      roleMap.set(key, []);
-    }
-
-    roleMap.get(key).push({
-      ...r,
-      role: String(r.role || "").trim(),
-      staff_id: String(r.staff_id || "").trim()
-    });
-  });
-
-  /* TEMPLATE ROLE MAP */
-  templateRoleMap = new Map();
-
-  templateRoles.forEach(r => {
-
-    const key = String(r.template_id);
-
-    if(!templateRoleMap.has(key)){
-      templateRoleMap.set(key, []);
-    }
-
-    templateRoleMap.get(key).push(r);
-  });
+  availability = availRes.data || [];
+  templateRoles = templateRolesRes.data || [];
+  assignedRoles = assignedRolesRes.data || [];
 
   render();
 }
 
-/* ================= RENDER ================= */
+function getAssignedName(serviceId, role){
+
+  const found = assignedRoles.find(r =>
+
+    String(r.service_id) === String(serviceId) &&
+    String(r.role || "").trim().toLowerCase() ===
+    String(role || "").trim().toLowerCase()
+  );
+
+  if(!found) return "-";
+
+  const staff = staffList.find(s =>
+    String(s.id) === String(found.staff_id)
+  );
+
+  return staff?.name || "-";
+}
 
 function render(){
 
-  const displayServices =
-    services.filter(s => inWindow(s.service_date));
+  const grid = document.getElementById("grid");
 
-  const availabilityServices =
-    services.filter(s => in60Days(s.service_date));
+  const saturday = [];
+  const sunday830 = [];
+  const sunday1045 = [];
+  const jurong = [];
 
-  const cols = [[],[],[],[]];
-
-  displayServices.forEach(s => {
-
-    const t =
-      (s.service_slots?.time || "")
-      .replace(":","");
-
-    const loc =
-      (s.service_slots?.location || "")
-      .toLowerCase();
-
-    let i = -1;
-
-    if(t.includes("1430")) i = 0;
-    else if(t.includes("0830")) i = 1;
-    else if(t.includes("1045") && !loc.includes("jurong")) i = 2;
-    else i = 3;
-
-    cols[i].push(s);
-  });
-
-  cols.forEach(col => {
-    col.sort((a,b)=>
+  services
+    .filter(s => in8Days(s.service_date))
+    .sort((a,b)=>
       parseDate(a.service_date) -
       parseDate(b.service_date)
-    );
-  });
-
-  const titles = [
-    "Saturday 2:30pm",
-    "Sunday 8:30am",
-    "Sunday 10:45am",
-    "Sunday Jurong"
-  ];
-
-  const grid =
-    document.getElementById("grid");
-
-  grid.innerHTML = "";
-
-  /* ================= SERVICE COLUMNS ================= */
-
-  cols.forEach((col,index)=>{
-
-    grid.innerHTML += `
-      <div class="col">
-
-        <h3>${titles[index]}</h3>
-
-        ${col.map(s => renderCard(s)).join("")}
-
-      </div>
-    `;
-  });
-
-  /* ================= AVAILABILITY COLUMN ================= */
-
-  const uniqueDates = [
-    ...new Set(
-      availabilityServices.map(s => s.service_date)
     )
-  ].sort();
+    .forEach(s=>{
 
-  grid.innerHTML += `
+      const label =
+        s.service_slots?.label || "";
+
+      const location =
+        s.service_slots?.location || "";
+
+      if(label.includes("2.30")){
+        saturday.push(s);
+      }
+      else if(label.includes("8.30")){
+        sunday830.push(s);
+      }
+      else if(
+        location.toLowerCase().includes("jurong")
+      ){
+        jurong.push(s);
+      }
+      else if(label.includes("10.45")){
+        sunday1045.push(s);
+      }
+    });
+
+  grid.innerHTML = `
+
     <div class="col">
+      <div class="column-title">
+        Saturday 2.30pm
+      </div>
 
-      <h3>Availability (60 Days)</h3>
+      ${saturday.map(renderCard).join("")}
+    </div>
 
-      <select id="manageDate"
-        onchange="refreshServiceOptions()">
+    <div class="col">
+      <div class="column-title">
+        Sunday 8.30am
+      </div>
 
-        ${uniqueDates.map(d => `
-          <option value="${d}">
-            ${formatDate(d)}
-          </option>
-        `).join("")}
+      ${sunday830.map(renderCard).join("")}
+    </div>
 
-      </select>
+    <div class="col">
+      <div class="column-title">
+        Sunday 10.45am
+      </div>
 
-      <select id="manageService"
-        onchange="refreshStaffOptions()">
-      </select>
+      ${sunday1045.map(renderCard).join("")}
+    </div>
 
-      <select id="manageStaff"></select>
+    <div class="col">
+      <div class="column-title">
+        Sunday Jurong
+      </div>
 
-      <button class="danger"
-        onclick="markUnavailable()">
+      ${jurong.map(renderCard).join("")}
+    </div>
 
-        Mark Unavailable
-
-      </button>
-
+    <div class="col">
+      ${renderAvailabilityPanel()}
     </div>
   `;
-
-  window.availabilityServices =
-    availabilityServices;
 
   refreshServiceOptions();
 }
 
-/* ================= CARD ================= */
-
 function renderCard(s){
 
-  const templateDefinedRoles =
-    templateRoleMap.get(
+  const isCommunion =
+    s.is_communion_service === true;
+
+  let roles =
+    templateRoles.filter(r =>
+      String(r.template_id) ===
       String(s.service_template_id)
-    ) || [];
+    );
 
-  const rolesForService =
-    roleMap.get(String(s.id)) || [];
+  // FIX 1:
+  // remove communion roles for non-communion services
+  if(!isCommunion){
 
-  const appointments =
-    templateDefinedRoles.map(roleRow => {
+    roles = roles.filter(r => {
 
-      const role =
-        String(roleRow.role || "").trim();
+      const roleName =
+        String(r.role || "").toLowerCase();
 
-      const matching =
-        rolesForService.find(r =>
-
-          String(r.role || "")
-            .trim()
-            .toLowerCase()
-
-          ===
-
-          role.toLowerCase()
-        );
-
-      const staffId =
-        String(matching?.staff_id || "");
-
-      return {
-        role,
-        group_name:
-          roleRow.group_name || "General",
-        staffId,
-        name:
-          staffMap.get(staffId) || "-"
-      };
+      return !roleName.includes("communion");
     });
-
-  const grouped = {};
-
-  appointments.forEach(a => {
-
-    if(!grouped[a.group_name]){
-      grouped[a.group_name] = [];
-    }
-
-    grouped[a.group_name].push(a);
-  });
+  }
 
   return `
     <div class="card">
@@ -491,74 +474,124 @@ function renderCard(s){
         ${formatDate(s.service_date)}
       </div>
 
-      ${Object.entries(grouped)
-        .map(([group,items]) => `
+      <div class="section-title">
+        Appointments
+      </div>
 
-          <div class="group-title">
-            ${group}
-          </div>
+      ${roles.map(r => {
 
-          ${items.map(a => `
+        const assignedName =
+          getAssignedName(s.id, r.role);
 
-            <div class="row">
+        return `
+          <div class="row">
 
-              <span>
-                ${a.role}
-              </span>
-
-              <span style="
-                display:flex;
-                align-items:center;
-                gap:6px;
-              ">
-
-                <span>
-                  ${a.name}
-                </span>
-
-                <button class="small"
-                  onclick="openAssign(
-                    '${s.id}',
-                    '${s.service_date}',
-                    '${s.service_slot_id}',
-                    '${a.role}'
-                  )">
-
-                  Assign
-
-                </button>
-
-              </span>
-
+            <div class="role-name">
+              ${r.role}
             </div>
 
-          `).join("")}
+            <div class="staff-name">
+              ${assignedName}
+            </div>
 
-        `).join("")}
+            <button
+              class="small"
+              onclick="openAssign(
+                '${s.id}',
+                '${s.service_date}',
+                '${s.service_slot_id}',
+                '${r.role}'
+              )">
+
+              Assign
+
+            </button>
+
+          </div>
+        `;
+      }).join("")}
 
     </div>
   `;
 }
 
-/* ================= AVAILABILITY FILTER ================= */
+function renderAvailabilityPanel(){
+
+  const futureDates =
+    [...new Set(
+      services
+        .filter(s => in60Days(s.service_date))
+        .map(s => s.service_date)
+    )]
+    .sort();
+
+  return `
+    <div class="column-title">
+      Availability (60 Days)
+    </div>
+
+    <div class="card">
+
+      <div>Select Date</div>
+
+      <select
+        id="manageDate"
+        onchange="refreshServiceOptions()">
+
+        ${futureDates.map(d => `
+          <option value="${d}">
+            ${formatDate(d)}
+          </option>
+        `).join("")}
+
+      </select>
+
+      <div style="margin-top:12px;">
+        Select Service
+      </div>
+
+      <select
+        id="manageService"
+        onchange="refreshStaffOptions()">
+      </select>
+
+      <div style="margin-top:12px;">
+        Select Staff
+      </div>
+
+      <select id="manageStaff"></select>
+
+      <button
+        class="danger"
+        onclick="markUnavailable()">
+
+        Mark Unavailable
+
+      </button>
+
+    </div>
+  `;
+}
 
 window.refreshServiceOptions = function(){
 
-  const selectedDate =
-    document.getElementById("manageDate").value;
+  const date =
+    document.getElementById("manageDate")?.value;
 
-  const serviceDropdown =
+  const dropdown =
     document.getElementById("manageService");
 
+  if(!dropdown) return;
+
   const filtered =
-    window.availabilityServices.filter(s =>
-      s.service_date === selectedDate
+    services.filter(s =>
+      s.service_date === date
     );
 
-  serviceDropdown.innerHTML =
+  dropdown.innerHTML =
     filtered.map(s => `
       <option value="${s.id}">
-        ${s.service_slots?.label}
+        ${s.service_slots?.label || "-"}
       </option>
     `).join("");
 
@@ -568,10 +601,10 @@ window.refreshServiceOptions = function(){
 window.refreshStaffOptions = function(){
 
   const serviceId =
-    document.getElementById("manageService").value;
+    document.getElementById("manageService")?.value;
 
   const service =
-    window.availabilityServices.find(s =>
+    services.find(s =>
       String(s.id) === String(serviceId)
     );
 
@@ -579,62 +612,29 @@ window.refreshStaffOptions = function(){
 
   const templateStaff =
     templates.filter(t =>
-      String(t.template_id)
-      ===
+      String(t.template_id) ===
       String(service.service_template_id)
     );
 
-  const eligibleIds =
+  const allowedIds =
     new Set(
       templateStaff.map(t =>
         String(t.staff_id)
       )
     );
 
-  const unavailableIds =
-    new Set(
-
-      availability
-        .filter(a =>
-
-          a.service_date
-          ===
-          service.service_date
-
-          &&
-
-          String(a.service_slot_id)
-          ===
-          String(service.service_slot_id)
-
-          &&
-
-          a.status === "unavailable"
-        )
-        .map(a =>
-          String(a.staff_id)
-        )
-    );
-
-  const eligibleStaff =
+  const eligible =
     staffList.filter(s =>
-
-      eligibleIds.has(String(s.id))
-
-      &&
-
-      !unavailableIds.has(String(s.id))
+      allowedIds.has(String(s.id))
     );
 
   document.getElementById("manageStaff").innerHTML =
-    eligibleStaff.map(s => `
+    eligible.map(s => `
       <option value="${s.id}">
         ${s.name}
       </option>
     `).join("");
 };
-
-/* ================= ASSIGN ================= */
 
 window.openAssign = function(
   serviceId,
@@ -656,42 +656,42 @@ window.openAssign = function(
 
       availability
         .filter(a =>
-
-          a.service_date === serviceDate
-
-          &&
-
-          String(a.service_slot_id)
-          ===
-          String(slotId)
-
-          &&
-
+          a.service_date === serviceDate &&
+          a.service_slot_id === slotId &&
           a.status === "unavailable"
         )
-        .map(a =>
-          String(a.staff_id)
-        )
+        .map(a => String(a.staff_id))
     );
 
-  const eligibleStaff =
-    staffList.filter(s =>
-      !unavailableIds.has(String(s.id))
-    );
+  const isCommunion =
+    String(role || "")
+      .toLowerCase()
+      .includes("communion");
 
-  eligibleStaff.sort((a,b)=>
-    (a.name || "")
-      .localeCompare(b.name || "")
-  );
+  const eligible =
+    staffList.filter(s => {
+
+      if(
+        unavailableIds.has(String(s.id))
+      ){
+        return false;
+      }
+
+      if(isCommunion){
+        return s.communion_eligible === true;
+      }
+
+      return true;
+    });
 
   document.getElementById("staffSelect").innerHTML =
-    eligibleStaff.map(s => `
+    eligible.map(s => `
       <option value="${s.id}">
         ${s.name}
       </option>
     `).join("");
 
-  document.getElementById("assignTitle").innerText =
+  document.getElementById("modalTitle").innerText =
     "Assign " + role;
 
   document.getElementById("assignModal").style.display =
@@ -709,59 +709,104 @@ window.saveAssign = async function(){
   const staffId =
     document.getElementById("staffSelect").value;
 
-  await db.from("service_roles").upsert({
+  await db
+    .from("service_roles")
+    .upsert({
+      service_id: currentService.id,
+      role: currentRole,
+      staff_id: staffId
+    },{
+      onConflict:"service_id,role"
+    });
 
-    service_id:
-      currentService.id,
+  // FIX 2:
+  // reload latest assignments so names appear immediately
+  const assignedRolesRes =
+    await db.from("service_roles").select("*");
 
-    role:
-      currentRole,
-
-    staff_id:
-      staffId
-
-  },{
-    onConflict:"service_id,role"
-  });
+  assignedRoles =
+    assignedRolesRes.data || [];
 
   closeAssignModal();
 
-  load();
+  render();
 };
 
-/* ================= MARK UNAVAILABLE ================= */
-
 window.markUnavailable = async function(){
-
-  const staffId =
-    document.getElementById("manageStaff").value;
 
   const serviceId =
     document.getElementById("manageService").value;
 
+  const staffId =
+    document.getElementById("manageStaff").value;
+
   const service =
-    window.availabilityServices.find(s =>
+    services.find(s =>
       String(s.id) === String(serviceId)
     );
 
   if(!service) return;
 
-  await db.from("staff_availability").upsert({
-
-    staff_id: staffId,
-    service_date: service.service_date,
-    service_slot_id: service.service_slot_id,
-    status: "unavailable"
-
-  },{
-    onConflict:
-      "staff_id,service_date,service_slot_id"
-  });
+  await db
+    .from("staff_availability")
+    .upsert({
+      staff_id: staffId,
+      service_date: service.service_date,
+      service_slot_id: service.service_slot_id,
+      status:"unavailable"
+    },{
+      onConflict:
+        "staff_id,service_date,service_slot_id"
+    });
 
   load();
 };
 
-/* ================= INIT ================= */
+window.showUnavailable = function(
+  serviceDate,
+  slotId
+){
+
+  const list =
+    availability.filter(a =>
+      a.service_date === serviceDate &&
+      a.service_slot_id === slotId &&
+      a.status === "unavailable"
+    );
+
+  document.getElementById("unavailableList").innerHTML =
+
+    list.map(a => {
+
+      const staff =
+        staffList.find(s =>
+          String(s.id) === String(a.staff_id)
+        );
+
+      return `
+        <div class="staff-item">
+
+          <div class="row">
+
+            <span>
+              ${staff?.name || "-"}
+            </span>
+
+          </div>
+
+        </div>
+      `;
+    }).join("");
+
+  document.getElementById("unavailableModal").style.display =
+    "flex";
+};
+
+window.closeUnavailableModal = function(){
+
+  document.getElementById("unavailableModal").style.display =
+    "none";
+};
 
 window.load = load;
 
