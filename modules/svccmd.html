@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Command Post (Restored)</title>
+  <title>SVCCMD Restored</title>
 
   <style>
     body{
@@ -36,16 +36,8 @@
       overflow:auto;
     }
 
-    .card{
-      background:#0f172a;
-      border:1px solid #334155;
-      border-radius:8px;
-      padding:10px;
-      margin-bottom:10px;
-    }
-
     .panel{
-      background:#111827;
+      background:#0f172a;
       border:1px solid #334155;
       border-radius:8px;
       padding:10px;
@@ -55,7 +47,7 @@
     .panel-title{
       color:#fbbf24;
       font-weight:bold;
-      margin-bottom:8px;
+      margin-bottom:6px;
     }
 
     .row{
@@ -65,39 +57,25 @@
       margin:4px 0;
     }
 
-    .good{color:#22c55e;font-weight:bold;}
-    .bad{color:#ef4444;font-weight:bold;}
-
-    .group-title{
-      color:#fbbf24;
-      font-weight:bold;
-      margin-top:10px;
-    }
-
     button{
       font-size:11px;
       padding:4px 6px;
-      background:#3b82f6;
       border:none;
+      background:#3b82f6;
       color:white;
       border-radius:4px;
       cursor:pointer;
     }
 
-    select, input{
-      width:100%;
-      padding:6px;
-      margin-top:5px;
-      border-radius:6px;
-      border:none;
-    }
+    .good{color:#22c55e;font-weight:bold;}
+    .bad{color:#ef4444;font-weight:bold;}
   </style>
 </head>
 
 <body>
 
 <header>
-  ⛪ Command Post (Restored)
+  ⛪ SVCCMD Restored System
   <button onclick="load()">Refresh</button>
 </header>
 
@@ -111,12 +89,11 @@ let services = [];
 let staffList = [];
 let templates = [];
 let roles = [];
-let availability = [];
 
 let staffMap = new Map();
 let roleMap = new Map();
 
-/* ================= DATE HELPERS ================= */
+/* ================= HELPERS ================= */
 
 function parseDate(d){
   const [y,m,day] = d.split("-");
@@ -136,36 +113,21 @@ function inServiceWindow(d){
   return dt >= min && dt <= max;
 }
 
-function inAvailabilityWindow(d){
-  const dt = parseDate(d);
-  const now = new Date();
-  const max = new Date(); max.setDate(now.getDate()+60);
-  return dt >= now && dt <= max;
-}
-
 /* ================= LOAD ================= */
 
 async function load(){
 
-  const [
-    sRes,
-    staffRes,
-    tRes,
-    rRes,
-    aRes
-  ] = await Promise.all([
+  const [sRes, staffRes, tRes, rRes] = await Promise.all([
     db.from("services").select("*, service_slots(label,time,location)"),
     db.from("staff").select("*"),
     db.from("staff_service_templates").select("*"),
-    db.from("service_roles").select("*"),
-    db.from("staff_availability").select("*")
+    db.from("service_roles").select("*")
   ]);
 
   services = sRes.data || [];
   staffList = staffRes.data || [];
   templates = tRes.data || [];
   roles = rRes.data || [];
-  availability = aRes.data || [];
 
   staffMap = new Map(staffList.map(s => [String(s.id), s.name]));
 
@@ -190,16 +152,16 @@ function render(){
     .filter(s => inServiceWindow(s.service_date))
     .sort((a,b)=>parseDate(a.service_date)-parseDate(b.service_date));
 
-  const columns = [[],[],[],[]];
+  const cols = [[],[],[],[]];
 
   filtered.forEach(s=>{
     const t = (s.service_slots?.time || "").replace(":","");
     const loc = (s.service_slots?.location || "").toLowerCase();
 
-    if(t.includes("1430")) columns[0].push(s);
-    else if(t.includes("0830")) columns[1].push(s);
-    else if(t.includes("1045") && !loc.includes("jurong")) columns[2].push(s);
-    else columns[3].push(s);
+    if(t.includes("1430")) cols[0].push(s);
+    else if(t.includes("0830")) cols[1].push(s);
+    else if(t.includes("1045") && !loc.includes("jurong")) cols[2].push(s);
+    else cols[3].push(s);
   });
 
   const labels = [
@@ -209,13 +171,12 @@ function render(){
     "Sunday Jurong"
   ];
 
-  columns.forEach((col,i)=>{
+  cols.forEach((col,i)=>{
 
     grid.innerHTML += `
       <div class="col">
         <h3>${labels[i]}</h3>
-
-        ${col.map(serviceCard).join("")}
+        ${col.map(renderService).join("")}
       </div>
     `;
   });
@@ -223,20 +184,44 @@ function render(){
   renderAvailability();
 }
 
-/* ================= SERVICE CARD ================= */
+/* ================= SERVICE CARD (FIXED APPOINTMENTS) ================= */
 
-function serviceCard(s){
+function renderService(s){
 
-  const assigned = roleMap.get(String(s.id)) || [];
+  const serviceId = String(s.id);
+
+  const templateRoles =
+    templates.filter(t =>
+      String(t.template_id) === String(s.service_template_id)
+    );
+
+  const assigned =
+    roleMap.get(serviceId) || [];
+
+  const assignedMap = new Map(
+    assigned.map(a => [String(a.role).toLowerCase(), a])
+  );
+
+  const merged = templateRoles.map(t => {
+
+    const role = t.role || "";
+
+    const match = assignedMap.get(role.toLowerCase());
+
+    return {
+      role,
+      staffId: match?.staff_id || null
+    };
+  });
 
   return `
     <div class="panel">
       <div class="panel-title">${formatDate(s.service_date)}</div>
 
-      ${assigned.map(r=>`
+      ${merged.map(r=>`
         <div class="row">
           <span>${r.role}</span>
-          <span>${staffMap.get(String(r.staff_id)) || "-"}</span>
+          <span>${staffMap.get(String(r.staffId)) || "-"}</span>
         </div>
       `).join("")}
 
@@ -245,27 +230,23 @@ function serviceCard(s){
   `;
 }
 
-/* ================= AVAILABILITY PANEL ================= */
+/* ================= AVAILABILITY ================= */
 
 function renderAvailability(){
 
   const col = document.createElement("div");
   col.className = "col";
 
-  const today = new Date();
-
   const list = services
-    .filter(s => inAvailabilityWindow(s.service_date))
-    .sort((a,b)=>parseDate(a.service_date)-parseDate(b.service_date));
+    .filter(s => {
+      const dt = parseDate(s.service_date);
+      const now = new Date();
+      const max = new Date(); max.setDate(now.getDate()+60);
+      return dt >= now && dt <= max;
+    });
 
   col.innerHTML = `
-    <h3>Staff Availability (60 Days)</h3>
-
-    <select id="dateSelect">
-      ${[...new Set(list.map(s=>s.service_date))].map(d=>`
-        <option value="${d}">${formatDate(d)}</option>
-      `).join("")}
-    </select>
+    <h3>Availability (60 Days)</h3>
 
     <select id="serviceSelect"></select>
     <select id="staffSelect"></select>
@@ -275,32 +256,14 @@ function renderAvailability(){
 
   document.getElementById("grid").appendChild(col);
 
-  window.refreshServices = function(){
-
-    const d = document.getElementById("dateSelect").value;
-
-    const filtered = list.filter(s=>s.service_date===d);
-
-    document.getElementById("serviceSelect").innerHTML =
-      filtered.map(s=>`
-        <option value="${s.id}">
-          ${s.service_slots?.label}
-        </option>
-      `).join("");
-
-    refreshStaff();
-  };
-
-  window.refreshStaff = function(){
+  window.refresh = function(){
 
     const serviceId = document.getElementById("serviceSelect").value;
     const service = list.find(s=>String(s.id)===String(serviceId));
     if(!service) return;
 
-    const eligible = staffList;
-
     document.getElementById("staffSelect").innerHTML =
-      eligible.map(s=>`
+      staffList.map(s=>`
         <option value="${s.id}">${s.name}</option>
       `).join("");
   };
@@ -308,9 +271,9 @@ function renderAvailability(){
   window.markUnavailable = async function(){
 
     const staff_id = document.getElementById("staffSelect").value;
-    const serviceId = document.getElementById("serviceSelect").value;
+    const service_id = document.getElementById("serviceSelect").value;
 
-    const service = services.find(s=>String(s.id)===String(serviceId));
+    const service = services.find(s=>String(s.id)===String(service_id));
 
     await db.from("staff_availability").upsert({
       staff_id,
@@ -323,36 +286,37 @@ function renderAvailability(){
   };
 
   setTimeout(()=>{
-    refreshServices();
-    document.getElementById("dateSelect").onchange = refreshServices;
-    document.getElementById("serviceSelect").onchange = refreshStaff;
-  },100);
+    const sel = document.getElementById("serviceSelect");
+    sel.innerHTML = list.map(s=>`
+      <option value="${s.id}">
+        ${s.service_slots?.label}
+      </option>
+    `).join("");
+
+    sel.onchange = refresh;
+    refresh();
+  },200);
 }
 
 /* ================= GLOBAL ================= */
 
 window.load = load;
+
+load();
+
 window.openAssign = async function(serviceId){
 
-  const staff = staffList;
-
-  const html = staff.map(s=>`
-    <option value="${s.id}">${s.name}</option>
-  `).join("");
-
-  const id = prompt("Enter staff id:");
-  const role = prompt("Enter role:");
+  const role = prompt("Role?");
+  const staffId = prompt("Staff ID?");
 
   await db.from("service_roles").upsert({
     service_id: serviceId,
-    staff_id: id,
-    role
+    role,
+    staff_id: staffId
   });
 
   load();
 };
-
-load();
 
 </script>
 
