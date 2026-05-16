@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Command Post (Stable Restore)</title>
+  <title>Command Post (Final Restored Stable)</title>
 
   <style>
     body{
@@ -45,8 +45,8 @@
     }
 
     .title{
-      color:#60a5fa;
       font-weight:bold;
+      color:#60a5fa;
       margin-bottom:6px;
     }
 
@@ -61,22 +61,16 @@
     .good{ color:#22c55e; font-weight:bold; }
     .bad{ color:#ef4444; font-weight:bold; }
 
-    select,input{
+    select,input,button{
       width:100%;
       padding:6px;
       margin-top:6px;
       border-radius:6px;
-      background:#0f172a;
-      color:white;
-      border:1px solid #334155;
+      border:none;
+      box-sizing:border-box;
     }
 
     button{
-      margin-top:8px;
-      width:100%;
-      padding:6px;
-      border:none;
-      border-radius:6px;
       background:#3b82f6;
       color:white;
       cursor:pointer;
@@ -87,7 +81,7 @@
 <body>
 
 <header>
-  ⛪ Command Post (Stable Restore)
+  ⛪ Command Post (Final Restore)
   <button onclick="load()">Refresh</button>
 </header>
 
@@ -104,37 +98,44 @@ let availability = [];
 
 let staffMap = new Map();
 
-/* ================= DATE FILTER (ROLLING 2 WEEKS) ================= */
-function inRolling2Weeks(d){
-  const dt = new Date(d);
+/* ================= WINDOWS ================= */
+
+function inServiceWindow(dateStr){
+  const dt = new Date(dateStr);
   const now = new Date();
 
   const past = new Date();
-  past.setDate(now.getDate() - 14);
+  past.setDate(now.getDate() - 8);
 
   const future = new Date();
-  future.setDate(now.getDate() + 14);
+  future.setDate(now.getDate() + 8);
 
   return dt >= past && dt <= future;
+}
+
+function inAvailabilityWindow(dateStr){
+  const dt = new Date(dateStr);
+  const now = new Date();
+
+  const future = new Date();
+  future.setDate(now.getDate() + 60);
+
+  return dt >= now && dt <= future;
 }
 
 /* ================= LOAD ================= */
 async function load(){
 
-  const [
-    servicesRes,
-    staffRes,
-    templateRes,
-    availRes
-  ] = await Promise.all([
-    db.from("services").select("*, service_slots(label,time,location)"),
-    db.from("staff").select("*"),
-    db.from("staff_service_templates").select("*"),
-    db.from("staff_availability").select("*")
-  ]);
+  const [servicesRes, staffRes, templateRes, availRes] =
+    await Promise.all([
+      db.from("services").select("*, service_slots(label,time,location)"),
+      db.from("staff").select("*"),
+      db.from("staff_service_templates").select("*"),
+      db.from("staff_availability").select("*")
+    ]);
 
   services = (servicesRes.data || [])
-    .filter(s => inRolling2Weeks(s.service_date));
+    .filter(s => inServiceWindow(s.service_date));
 
   staffList = staffRes.data || [];
   templates = templateRes.data || [];
@@ -146,7 +147,7 @@ async function load(){
 }
 
 /* ================= COLUMN SORT ================= */
-function sortServices(a,b){
+function sortByDate(a,b){
   return new Date(a.service_date) - new Date(b.service_date);
 }
 
@@ -174,7 +175,7 @@ function render(){
     else if(isJurong) cols[3].push(s);
   });
 
-  cols.forEach(col => col.sort(sortServices));
+  cols.forEach(c => c.sort(sortByDate));
 
   cols.forEach(col => {
 
@@ -185,7 +186,7 @@ function render(){
     `;
   });
 
-  renderAvailability();
+  renderAvailabilityPanel();
 }
 
 /* ================= SERVICE CARD ================= */
@@ -201,7 +202,7 @@ function renderService(s){
         ${s.service_slots?.label} (${s.service_date})
       </div>
 
-      ${assigned.map(a=>`
+      ${assigned.map(a => `
         <div class="row">
           <span>${a.role}</span>
           <span>${staffMap.get(String(a.staff_id)) || "-"}</span>
@@ -213,11 +214,13 @@ function renderService(s){
 }
 
 /* ================= 5TH COLUMN ================= */
-function renderAvailability(){
+function renderAvailabilityPanel(){
 
   const grid = document.getElementById("grid");
 
-  const dates = [...new Set(services.map(s=>s.service_date))];
+  const dates = [...new Set(
+    services.map(s => s.service_date)
+  )];
 
   grid.innerHTML += `
     <div class="col">
@@ -226,7 +229,7 @@ function renderAvailability(){
         <div class="title">Staff Availability</div>
 
         <select id="dateSel" onchange="refreshServices()">
-          ${dates.map(d=>`<option value="${d}">${d}</option>`).join("")}
+          ${dates.map(d => `<option value="${d}">${d}</option>`).join("")}
         </select>
 
         <select id="serviceSel" onchange="refreshStaff()"></select>
@@ -242,12 +245,14 @@ function renderAvailability(){
   refreshServices();
 }
 
-/* ================= FILTER ================= */
+/* ================= SERVICE FILTER ================= */
 window.refreshServices = function(){
 
   const date = document.getElementById("dateSel").value;
 
-  const filtered = services.filter(s => s.service_date === date);
+  const filtered = services.filter(s =>
+    s.service_date === date
+  );
 
   document.getElementById("serviceSel").innerHTML =
     filtered.map(s => `
@@ -268,7 +273,9 @@ window.refreshStaff = function(){
   if(!service) return;
 
   const allowed = templates
-    .filter(t => String(t.template_id) === String(service.service_template_id))
+    .filter(t =>
+      String(t.template_id) === String(service.service_template_id)
+    )
     .map(t => String(t.staff_id));
 
   const eligible = staffList.filter(s =>
@@ -276,7 +283,7 @@ window.refreshStaff = function(){
   );
 
   document.getElementById("staffSel").innerHTML =
-    eligible.map(s=>`<option value="${s.id}">${s.name}</option>`).join("");
+    eligible.map(s => `<option value="${s.id}">${s.name}</option>`).join("");
 };
 
 /* ================= MARK UNAVAILABLE ================= */
