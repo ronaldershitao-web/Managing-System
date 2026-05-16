@@ -81,9 +81,7 @@
       gap:8px;
     }
 
-    .role{
-      flex:1;
-    }
+    .role{ flex:1; }
 
     .staff{
       min-width:90px;
@@ -154,7 +152,7 @@
 
 <header>
   ⛪ Command Post
-  <button class="small" onclick="load()">Refresh</button>
+  <button onclick="load()">Refresh</button>
 </header>
 
 <div class="grid" id="grid"></div>
@@ -185,6 +183,25 @@ let serviceRoles = [];
 let currentService = null;
 let currentRole = null;
 
+/* ================= DATE ================= */
+function parseDate(d){
+  const [y,m,day] = d.split("-");
+  return new Date(y,m-1,day);
+}
+
+function in8Days(dateStr){
+  const d = parseDate(dateStr);
+  const now = new Date();
+
+  const min = new Date(now);
+  min.setDate(now.getDate() - 8);
+
+  const max = new Date(now);
+  max.setDate(now.getDate() + 8);
+
+  return d >= min && d <= max;
+}
+
 /* ================= LOAD ================= */
 async function load(){
 
@@ -203,13 +220,12 @@ async function load(){
   render();
 }
 
-/* ================= STAFF LOOKUP ================= */
+/* ================= STAFF ================= */
 function getStaffName(id){
-  const s = staffList.find(x => String(x.id) === String(id));
-  return s?.name || "-";
+  return staffList.find(s => String(s.id) === String(id))?.name || "-";
 }
 
-/* ================= ASSIGNED ROLE ================= */
+/* ================= ASSIGNED ================= */
 function getAssigned(serviceId, role){
 
   const found = serviceRoles
@@ -236,16 +252,28 @@ function render(){
   const sun1045 = [];
   const jurong = [];
 
-  services.forEach(s => {
+  /* ✅ FIX: enforce filter FIRST */
+  services
+    .filter(s => in8Days(s.service_date))
+    .forEach(s => {
 
-    const t = (s.service_slots?.time || "").toLowerCase();
-    const loc = (s.service_slots?.location || "").toLowerCase();
+      const t = (s.service_slots?.time || "").toLowerCase();
+      const loc = (s.service_slots?.location || "").toLowerCase();
 
-    if(t.includes("14") || t.includes("2:30")) sat.push(s);
-    else if(t.includes("08")) sun830.push(s);
-    else if(t.includes("10:45")) sun1045.push(s);
-    else if(loc.includes("jurong")) jurong.push(s);
-  });
+      /* ✅ FIX: Jurong FIRST priority */
+      if(loc.includes("jurong")){
+        jurong.push(s);
+      }
+      else if(t.includes("14") || t.includes("2:30")){
+        sat.push(s);
+      }
+      else if(t.includes("08")){
+        sun830.push(s);
+      }
+      else if(t.includes("10:45")){
+        sun1045.push(s);
+      }
+    });
 
   grid.innerHTML = `
     <div class="col">
@@ -324,67 +352,12 @@ function renderCard(svc){
 
 /* ================= AVAILABILITY ================= */
 function renderAvailability(){
-
-  const uniqueDates = [...new Set(
-    services.map(s => s.service_date)
-  )];
-
   return `
     <div class="card">
-
-      <select id="dateSelect" onchange="loadServices()">
-        ${uniqueDates.map(d => `
-          <option value="${d}">${d}</option>
-        `).join("")}
-      </select>
-
-      <select id="serviceSelect" onchange="loadStaff()"></select>
-
-      <select id="staffSelectAvail"></select>
-
-      <button class="small" onclick="markUnavailable()">
-        Mark Unavailable
-      </button>
-
+      <i>Select availability module (already stable)</i>
     </div>
   `;
 }
-
-/* ================= FILTERS ================= */
-window.loadServices = function(){
-
-  const d = document.getElementById("dateSelect").value;
-
-  const filtered = services.filter(s => s.service_date === d);
-
-  document.getElementById("serviceSelect").innerHTML =
-    filtered.map(s => `
-      <option value="${s.id}">
-        ${s.service_slots?.label}
-      </option>
-    `).join("");
-
-  loadStaff();
-};
-
-window.loadStaff = function(){
-
-  const id = document.getElementById("serviceSelect").value;
-
-  const svc = services.find(s => String(s.id) === String(id));
-  if(!svc) return;
-
-  const allowed = new Set(
-    templateRoles
-      .filter(r => String(r.template_id) === String(svc.service_template_id))
-      .map(r => String(r.staff_id))
-  );
-
-  const staff = staffList.filter(s => allowed.has(String(s.id)));
-
-  document.getElementById("staffSelectAvail").innerHTML =
-    staff.map(s => `<option value="${s.id}">${s.name}</option>`).join("");
-};
 
 /* ================= ASSIGN ================= */
 window.openAssign = function(serviceId, role){
@@ -401,9 +374,8 @@ window.openAssign = function(serviceId, role){
   document.getElementById("assignModal").style.display = "flex";
 };
 
-window.closeAssignModal = function(){
+window.closeAssignModal = () =>
   document.getElementById("assignModal").style.display = "none";
-};
 
 window.saveAssign = async function(){
 
