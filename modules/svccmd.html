@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>SVCCMD RESTORED FULL OPS</title>
+  <title>SVCCMD - RESTORED STRUCTURE</title>
 
   <style>
     body{
@@ -69,19 +69,13 @@
       border-radius:4px;
       cursor:pointer;
     }
-
-    .group-title{
-      margin-top:10px;
-      font-weight:bold;
-      color:#fbbf24;
-    }
   </style>
 </head>
 
 <body>
 
 <header>
-  ⛪ SVCCMD FULL RESTORE
+  ⛪ SVCCMD RESTORED (STRUCTURE LOCKED)
   <button onclick="load()">Refresh</button>
 </header>
 
@@ -90,20 +84,19 @@
 <script type="module">
 import { db } from "../assets/app.js";
 
-/* ================= SAFE UTIL ================= */
+/* ================= SAFE HELPERS ================= */
 const safe = (v) => String(v ?? "").trim();
-const safeLower = (v) => safe(v).toLowerCase();
+const lower = (v) => safe(v).toLowerCase();
 
 /* ================= STATE ================= */
 
 let services = [];
 let templates = [];
-let staffList = [];
-let availability = [];
+let staff = [];
 let roles = [];
+let availability = [];
 
 let staffMap = new Map();
-let roleMap = new Map();
 
 /* ================= LOAD ================= */
 
@@ -113,45 +106,47 @@ async function load(){
     s,
     t,
     st,
-    a,
-    r
+    r,
+    a
   ] = await Promise.all([
     db.from("services").select("*, service_slots(label,time,location)"),
     db.from("staff_service_templates").select("*"),
     db.from("staff").select("*"),
-    db.from("staff_availability").select("*"),
-    db.from("service_roles").select("*")
+    db.from("service_roles").select("*"),
+    db.from("staff_availability").select("*")
   ]);
 
   services = s.data || [];
   templates = t.data || [];
-  staffList = st.data || [];
-  availability = a.data || [];
+  staff = st.data || [];
   roles = r.data || [];
+  availability = a.data || [];
 
-  /* ================= FIX STAFF MAP ================= */
   staffMap = new Map(
-    staffList.map(x => [String(x.id), x.name])
+    staff.map(x => [String(x.id), x.name])
   );
 
-  /* ================= NORMALIZE ROLES ================= */
-  roleMap = new Map();
-
-  roles.forEach(r => {
-
-    const sid = String(r.service_id);
-
-    const item = {
-      ...r,
-      role: safe(r.role),
-      staff_id: String(r.staff_id || "")
-    };
-
-    if(!roleMap.has(sid)) roleMap.set(sid, []);
-    roleMap.get(sid).push(item);
-  });
-
   render();
+}
+
+/* ================= FILTER LOGIC (YOUR ORIGINAL SYSTEM) ================= */
+
+function getColumnIndex(service){
+
+  const time = service.service_slots?.time || "";
+  const loc = lower(service.service_slots?.location);
+
+  // 🔵 Saturday 2.30pm
+  if(time.includes("14") || time.includes("1430")) return 0;
+
+  // 🟢 Sunday 8.30am
+  if(time.includes("08") || time.includes("0830")) return 1;
+
+  // 🟡 Sunday 10.45am (exclude Jurong)
+  if(time.includes("10") && !loc.includes("jurong")) return 2;
+
+  // 🔴 Jurong + others
+  return 3;
 }
 
 /* ================= RENDER ================= */
@@ -163,67 +158,64 @@ function render(){
 
   const cols = [[],[],[],[]];
 
+  /* ===== SERVICE DISTRIBUTION ===== */
   services.forEach(s => {
-
-    const time = s.service_slots?.time || "";
-
-    let i = -1;
-
-    if(time.includes("14")) i = 0;        // Sat 2.30
-    else if(time.includes("08")) i = 1;   // Sun 8.30
-    else if(time.includes("10")) i = 2;   // Sun 10.45
-    else i = 3;                           // Jurong / others
-
-    if(i >= 0) cols[i].push(s);
+    const i = getColumnIndex(s);
+    cols[i].push(s);
   });
 
+  /* ===== RENDER 4 SERVICE COLUMNS ===== */
   cols.forEach(col => {
 
     const div = document.createElement("div");
     div.className = "col";
 
-    col.forEach(s => {
+    col.forEach(service => {
+
+      const serviceTemplates =
+        templates.filter(t =>
+          String(t.service_id) === String(service.id)
+        );
 
       const serviceRoles =
-        templates.filter(t =>
-          String(t.service_id) === String(s.id)
+        roles.filter(r =>
+          String(r.service_id) === String(service.id)
         );
-
-      const assigned =
-        roleMap.get(String(s.id)) || [];
-
-      const html = serviceRoles.map(r => {
-
-        const roleName = safe(r.role).toLowerCase();
-
-        const match = assigned.find(x =>
-          safe(x.role).toLowerCase() === roleName
-        );
-
-        const staffName =
-          staffMap.get(String(match?.staff_id)) || "—";
-
-        return `
-          <div class="row">
-            <span>${r.role}</span>
-            <span>
-              ${staffName}
-              <button class="small"
-                onclick="assign('${s.id}','${r.role}')">
-                Assign
-              </button>
-            </span>
-          </div>
-        `;
-      }).join("");
 
       div.innerHTML += `
         <div class="card">
+
           <div class="panel-title">
-            ${s.service_slots?.label || "Service"}
+            ${service.service_slots?.label || "Service"}
           </div>
 
-          ${html || "<div>No roles</div>"}
+          ${serviceTemplates.map(t => {
+
+            const role = safe(t.role).toLowerCase();
+
+            const assigned =
+              serviceRoles.find(r =>
+                lower(r.role) === role
+              );
+
+            const staffName =
+              staffMap.get(String(assigned?.staff_id)) || "—";
+
+            return `
+              <div class="row">
+                <span>${t.role}</span>
+
+                <span>
+                  ${staffName}
+                  <button class="small"
+                    onclick="assign('${service.id}','${t.role}')">
+                    Assign
+                  </button>
+                </span>
+              </div>
+            `;
+          }).join("")}
+
         </div>
       `;
     });
@@ -231,38 +223,39 @@ function render(){
     grid.appendChild(div);
   });
 
-  /* ================= 5TH COLUMN ================= */
+  /* ===== 5TH COLUMN: STAFF AVAILABILITY ===== */
+  const availCol = document.createElement("div");
+  availCol.className = "col";
 
-  const avail = document.createElement("div");
-  avail.className = "col";
-
-  avail.innerHTML = `
+  availCol.innerHTML = `
     <div class="panel-title">Staff Availability</div>
 
-    ${staffList.map(s => `
+    ${staff.map(s => `
       <div class="row">
         <span>${s.name}</span>
-        <button class="small" onclick="toggle('${s.id}')">
+
+        <button class="small"
+          onclick="toggleAvail('${s.id}')">
           Mark
         </button>
       </div>
     `).join("")}
   `;
 
-  grid.appendChild(avail);
+  grid.appendChild(availCol);
 }
 
 /* ================= ASSIGN ================= */
 
 window.assign = async function(serviceId, role){
 
-  const staffId = prompt("Staff ID:");
+  const staffId = prompt("Enter Staff ID");
 
   if(!staffId) return;
 
   await db.from("service_roles").upsert({
     service_id: serviceId,
-    role,
+    role: role,
     staff_id: staffId
   }, {
     onConflict: "service_id,role"
@@ -273,7 +266,7 @@ window.assign = async function(serviceId, role){
 
 /* ================= AVAILABILITY ================= */
 
-window.toggle = function(id){
+window.toggleAvail = function(id){
   alert("Toggle unavailable: " + id);
 };
 
