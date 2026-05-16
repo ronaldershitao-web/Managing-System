@@ -370,7 +370,12 @@ async function load(){
   availability = availRes.data || [];
   staffList = staffRes.data || [];
 
-  const roles = rolesRes.data || [];
+  const roles = (rolesRes.data || []).map(r => ({
+  ...r,
+  service_id: String(r.service_id || "").trim(),
+  staff_id: String(r.staff_id || "").trim(),
+  role: String(r.role || "").trim()
+}));
   const templateRoles = templateRolesRes.data || [];
 
  staffMap = new Map(
@@ -513,15 +518,24 @@ hospitalityMap = new Map(
        FIND ASSIGNED ROLE
     ========================= */
 
-    const assignedRole =
+  const matchingRoles =
 
-      (roleMap.get(String(s.id)) || [])
+  (roleMap.get(String(s.id)) || [])
 
-        .find(r =>
+    .filter(r =>
 
-          normalize(r.role) ===
-          normalize(role)
-        );
+      normalize(r.role) ===
+      normalize(role)
+    )
+
+    .sort((a,b)=>
+
+      new Date(a.created_at) -
+      new Date(b.created_at)
+    );
+
+const assignedRole =
+  matchingRoles.at(-1);
 
     /* =========================
        FALLBACK TEMPLATE STAFF
@@ -1236,7 +1250,7 @@ window.saveAssign = async function(){
   await db.from("service_roles").upsert({
 
     service_id: currentService.id,
-    role: currentRole,
+    role: String(currentRole || "").trim(),
     staff_id: staffId
 
   },{
