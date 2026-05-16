@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>SVCCMD - Restored Stable</title>
+  <title>SVCCMD - Full Restored Stable</title>
 
   <style>
     body{
@@ -77,8 +77,6 @@
 
     .small{background:#3b82f6;color:white}
     .danger{background:#ef4444;color:white}
-    .good{color:#22c55e}
-    .bad{color:#ef4444}
 
     select{
       width:100%;
@@ -86,13 +84,16 @@
       margin-top:6px;
       border-radius:6px;
     }
+
+    .good{color:#22c55e}
+    .bad{color:#ef4444}
   </style>
 </head>
 
 <body>
 
 <header>
-  ⛪ SVCCMD (Restored Full System)
+  ⛪ SVCCMD Full Restore
   <button onclick="load()">Refresh</button>
 </header>
 
@@ -108,16 +109,6 @@ let templates = [];
 let availability = [];
 let roleMap = new Map();
 let staffMap = new Map();
-
-/* ================= DATE ================= */
-function formatDate(d){
-  const dt = new Date(d);
-  return dt.toLocaleDateString("en-GB", {
-    day:"2-digit",
-    month:"short",
-    year:"numeric"
-  });
-}
 
 /* ================= LOAD ================= */
 async function load(){
@@ -135,7 +126,7 @@ async function load(){
   templates = t.data || [];
   availability = a.data || [];
 
-  staffMap = new Map(staffList.map(x => [String(x.id), x.name]));
+  staffMap = new Map(staffList.map(x=>[String(x.id), x.name]));
 
   roleMap = new Map();
   (r.data || []).forEach(x=>{
@@ -147,15 +138,17 @@ async function load(){
   render();
 }
 
-/* ================= GROUP SLOT ================= */
+/* ================= FIXED GROUPING (IMPORTANT) ================= */
 function groupService(s){
 
-  const t = s.service_slots?.time || "";
+  const label = (s.service_slots?.label || "").toLowerCase();
 
-  if(t.includes("14")) return "SAT_2.30";
-  if(t.includes("08")) return "SUN_8.30";
-  if(t.includes("10")) return "SUN_10.45";
-  return "JURONG";
+  if(label.includes("saturday") && label.includes("2.30")) return "SAT_2.30";
+  if(label.includes("8.30")) return "SUN_8.30";
+  if(label.includes("10.45")) return "SUN_10.45";
+  if(label.includes("jurong")) return "JURONG";
+
+  return "OTHER";
 }
 
 /* ================= RENDER ================= */
@@ -164,18 +157,26 @@ function render(){
   const grid = document.getElementById("grid");
   grid.innerHTML = "";
 
-  const cols = [[],[],[],[]];
+  const cols = {
+    "SAT_2.30": [],
+    "SUN_8.30": [],
+    "SUN_10.45": [],
+    "JURONG": []
+  };
 
   services.forEach(s=>{
     const g = groupService(s);
-
-    if(g==="SAT_2.30") cols[0].push(s);
-    if(g==="SUN_8.30") cols[1].push(s);
-    if(g==="SUN_10.45") cols[2].push(s);
-    if(g==="JURONG") cols[3].push(s);
+    if(cols[g]) cols[g].push(s);
   });
 
-  cols.forEach(col=>{
+  const ordered = [
+    cols["SAT_2.30"],
+    cols["SUN_8.30"],
+    cols["SUN_10.45"],
+    cols["JURONG"]
+  ];
+
+  ordered.forEach(col=>{
 
     grid.innerHTML += `
       <div class="col">
@@ -184,7 +185,7 @@ function render(){
     `;
   });
 
-  renderAvailabilityColumn();
+  renderAvailability();
 }
 
 /* ================= SERVICE CARD ================= */
@@ -196,7 +197,7 @@ function renderCard(s){
     <div class="card">
 
       <b>${s.service_slots?.label}</b><br>
-      ${formatDate(s.service_date)}
+      <small>${s.service_date}</small>
 
       <div class="panel">
         <div class="panel-title">Assignments</div>
@@ -209,8 +210,7 @@ function renderCard(s){
         `).join("")}
       </div>
 
-      <button class="small"
-        onclick="assign('${s.id}')">
+      <button class="small" onclick="assign('${s.id}')">
         Assign
       </button>
 
@@ -219,7 +219,7 @@ function renderCard(s){
 }
 
 /* ================= COLUMN 5 ================= */
-function renderAvailabilityColumn(){
+function renderAvailability(){
 
   const dates = [...new Set(services.map(s=>s.service_date))];
 
@@ -230,9 +230,7 @@ function renderAvailabilityColumn(){
 
       <select id="dateSel" onchange="loadServices()">
         ${dates.map(d=>`
-          <option value="${d}">
-            ${formatDate(d)}
-          </option>
+          <option value="${d}">${d}</option>
         `).join("")}
       </select>
 
@@ -252,7 +250,7 @@ function renderAvailabilityColumn(){
   loadServices();
 }
 
-/* ================= FILTER SERVICES ================= */
+/* ================= SERVICES DROPDOWN ================= */
 window.loadServices = function(){
 
   const date = document.getElementById("dateSel").value;
@@ -269,7 +267,7 @@ window.loadServices = function(){
   loadStaff();
 };
 
-/* ================= FIXED STAFF FILTER (IMPORTANT) ================= */
+/* ================= FIXED STAFF FILTER ================= */
 window.loadStaff = function(){
 
   const id = document.getElementById("serviceSel").value;
