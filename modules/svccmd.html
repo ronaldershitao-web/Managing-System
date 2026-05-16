@@ -44,13 +44,12 @@
       margin-bottom:10px;
       display:flex;
       flex-direction:column;
-      gap:10px;
     }
 
     .title{
       color:#60a5fa;
       font-weight:bold;
-      font-size:14px;
+      margin-bottom:4px;
     }
 
     .tag{
@@ -63,8 +62,15 @@
       justify-content:space-between;
       align-items:center;
       gap:8px;
-      font-size:12px;
       margin:4px 0;
+      font-size:12px;
+    }
+
+    .top-grid{
+      display:grid;
+      grid-template-columns:1fr 1fr 1fr;
+      gap:10px;
+      margin-top:10px;
     }
 
     .panel{
@@ -75,19 +81,14 @@
     }
 
     .panel-title{
+      color:#fbbf24;
       font-size:13px;
       font-weight:bold;
-      color:#fbbf24;
       margin-bottom:8px;
     }
 
-    .top-grid{
-      display:grid;
-      grid-template-columns:1fr 1fr;
-      gap:10px;
-    }
-
     .appointment-panel{
+      margin-top:12px;
       background:#111827;
       border:1px solid #334155;
       border-radius:8px;
@@ -98,7 +99,7 @@
       color:#fbbf24;
       font-weight:bold;
       margin-top:10px;
-      padding-top:6px;
+      padding-top:8px;
       border-top:1px solid #334155;
     }
 
@@ -114,29 +115,38 @@
     }
 
     button.small{
-      font-size:10px;
+      width:auto;
       padding:2px 6px;
       border:none;
       border-radius:4px;
+      font-size:10px;
       background:#3b82f6;
       color:white;
       cursor:pointer;
-      width:auto;
     }
 
-    button.save{
+    .save{
       background:#22c55e;
       color:white;
     }
 
-    button.danger{
+    .danger{
       background:#ef4444;
       color:white;
     }
 
-    button.secondary{
+    .secondary{
       background:#334155;
       color:white;
+    }
+
+    select, button, input{
+      width:100%;
+      padding:8px;
+      border:none;
+      border-radius:6px;
+      margin-top:10px;
+      box-sizing:border-box;
     }
 
     .modal{
@@ -150,22 +160,13 @@
     }
 
     .modal-content{
-      background:#111827;
-      padding:20px;
-      border-radius:10px;
       width:360px;
       max-height:80vh;
       overflow:auto;
+      background:#111827;
       border:1px solid #334155;
-    }
-
-    select,button,input{
-      width:100%;
-      padding:8px;
-      margin-top:10px;
-      border-radius:6px;
-      border:none;
-      box-sizing:border-box;
+      border-radius:10px;
+      padding:20px;
     }
 
     .staff-item{
@@ -225,24 +226,19 @@
 
 import { db } from "../assets/app.js";
 
-/* ================= STATE ================= */
-
 let staffList = [];
 let templates = [];
 let availability = [];
 let availabilityServices = [];
-
-let currentService = null;
-let currentRole = null;
+let people = [];
 
 let hospitalityMap = new Map();
-let people = [];
 let serviceMap = new Map();
 let attendanceMetricsMap = new Map();
 let staffMap = new Map();
-let roleMap = new Map();
 
-/* ================= DATE ================= */
+let currentService = null;
+let currentRole = null;
 
 function parseDate(d){
   const [y,m,day] = d.split("-");
@@ -289,8 +285,6 @@ function in60Days(d){
   return dt >= now && dt <= max;
 }
 
-/* ================= LOAD ================= */
-
 async function load(){
 
   const [
@@ -335,33 +329,22 @@ async function load(){
 
   const allServices = servicesRes.data || [];
 
-  serviceMap = new Map(
-    allServices.map(s => [String(s.id), s])
-  );
-
-  people = peopleRes.data || [];
-
-  attendanceMetricsMap = new Map(
-    (attendanceRes.data || []).map(a => [
-      String(a.service_id),
-      a
-    ])
-  );
-
-  let displayServices =
-    allServices.filter(s => inWindow(s.service_date));
-
-  availabilityServices =
-    allServices.filter(s => in60Days(s.service_date));
-
   templates = templateRes.data || [];
   availability = availRes.data || [];
   staffList = staffRes.data || [];
+  people = peopleRes.data || [];
 
   staffMap = new Map(
     staffList.map(s => [
       String(s.id).trim(),
       s.name
+    ])
+  );
+
+  serviceMap = new Map(
+    allServices.map(s => [
+      String(s.id),
+      s
     ])
   );
 
@@ -372,22 +355,23 @@ async function load(){
     ])
   );
 
-  roleMap.clear();
+  attendanceMetricsMap = new Map(
+    (attendanceRes.data || []).map(a => [
+      String(a.service_id),
+      a
+    ])
+  );
 
-  (rolesRes.data || []).forEach(r => {
-
-    const key = String(r.service_id).trim();
-
-    if(!roleMap.has(key)){
-      roleMap.set(key, []);
-    }
-
-    roleMap.get(key).push({
+  const roles =
+    (rolesRes.data || []).map(r => ({
       ...r,
+      service_id:String(r.service_id || "").trim(),
       role:String(r.role || "").trim(),
       staff_id:String(r.staff_id || "").trim()
-    });
-  });
+    }));
+
+  const templateRoles =
+    templateRolesRes.data || [];
 
   const templateMap = new Map();
 
@@ -402,9 +386,22 @@ async function load(){
     templateMap.get(key).push(t);
   });
 
+  const roleMap = new Map();
+
+  roles.forEach(r => {
+
+    const key = String(r.service_id);
+
+    if(!roleMap.has(key)){
+      roleMap.set(key, []);
+    }
+
+    roleMap.get(key).push(r);
+  });
+
   const templateRoleMap = new Map();
 
-  (templateRolesRes.data || []).forEach(r => {
+  templateRoles.forEach(r => {
 
     const key = String(r.template_id);
 
@@ -415,6 +412,12 @@ async function load(){
     templateRoleMap.get(key).push(r);
   });
 
+  let displayServices =
+    allServices.filter(s => inWindow(s.service_date));
+
+  availabilityServices =
+    allServices.filter(s => in60Days(s.service_date));
+
   displayServices.sort((a,b)=>
     parseDate(a.service_date) -
     parseDate(b.service_date)
@@ -422,7 +425,7 @@ async function load(){
 
   const cols = [[],[],[],[]];
 
-  displayServices.forEach(s=>{
+  displayServices.forEach(s => {
 
     const t =
       (s.service_slots?.time || "")
@@ -442,26 +445,34 @@ async function load(){
     if(i>=0) cols[i].push(s);
   });
 
-  const grid = document.getElementById("grid");
+  const grid =
+    document.getElementById("grid");
+
   grid.innerHTML = "";
 
-  cols.forEach(col=>{
+  cols.forEach(col => {
 
     grid.innerHTML += `
+
       <div class="col">
 
-        ${col.map(s=>{
+        ${col.map(s => {
 
           const templateStaff =
-            templateMap.get(String(s.service_template_id)) || [];
+            templateMap.get(
+              String(s.service_template_id)
+            ) || [];
 
           const assignedIds =
             new Set(
-              templateStaff.map(t => String(t.staff_id))
+              templateStaff.map(t =>
+                String(t.staff_id)
+              )
             );
 
           const unavailableRecords =
             availability.filter(a =>
+
               a.service_date === s.service_date &&
               a.service_slot_id === s.service_slot_id &&
               a.status === "unavailable"
@@ -469,70 +480,128 @@ async function load(){
 
           const unavailableIds =
             new Set(
-              unavailableRecords.map(a => String(a.staff_id))
+              unavailableRecords.map(a =>
+                String(a.staff_id)
+              )
             );
 
           const availableIds =
             [...assignedIds]
-              .filter(id => !unavailableIds.has(id));
+              .filter(id =>
+                !unavailableIds.has(id)
+              );
 
           const templateDefinedRoles =
             templateRoleMap.get(
               String(s.service_template_id)
             ) || [];
 
-          const appointments =
-            templateDefinedRoles.map(roleRow => {
+          const appointments = templateDefinedRoles
+
+            .filter(roleRow => {
+
+              const roleLower =
+                String(roleRow.role || "")
+                  .toLowerCase();
+
+              const isCommunionRole =
+                roleLower.includes("communion");
+
+              if(s.is_communion_service === true){
+                return true;
+              }
+
+              return !isCommunionRole;
+            })
+
+            .map(roleRow => {
 
               const role =
-                String(roleRow.role || "").trim();
+                String(roleRow.role || "")
+                  .trim();
 
-              const serviceRoles =
-                roleMap.get(String(s.id)) || [];
+              const targetRole =
+                role.toLowerCase();
 
-              const matched =
-                serviceRoles.find(r =>
-                  String(r.role).trim().toLowerCase() ===
-                  role.toLowerCase()
+              const serviceKey =
+                String(s.id).trim();
+
+              const rolesForService =
+                roleMap.get(serviceKey) || [];
+
+              const assignedRole =
+                rolesForService.find(r =>
+
+                  String(r.role || "")
+                    .trim()
+                    .toLowerCase()
+
+                  === targetRole
                 );
 
-              const templateAssigned =
+              const templateMatch =
                 templateStaff.find(t =>
-                  String(t.role || "").trim().toLowerCase() ===
-                  role.toLowerCase()
+
+                  String(t.role || "")
+                    .trim()
+                    .toLowerCase()
+
+                  === targetRole
                 );
 
               const staffId =
                 String(
-                  matched?.staff_id ||
-                  templateAssigned?.staff_id ||
+
+                  assignedRole?.staff_id ||
+
+                  templateMatch?.staff_id ||
+
                   ""
-                );
+
+                ).trim();
+
+              const staffName =
+
+                staffMap.get(staffId)
+
+                ||
+
+                staffList.find(x =>
+                  String(x.id).trim() === staffId
+                )?.name
+
+                ||
+
+                "-";
 
               return {
+
                 role,
+
                 group_name:
                   roleRow.group_name || "General",
 
                 staffId,
 
-                name:
-                  staffMap.get(staffId) || "-",
-
                 unavailable:
-                  unavailableIds.has(staffId)
+                  unavailableIds.has(staffId),
+
+                name: staffName
               };
             });
 
-          const grouped = {};
+          const groupedAppointments = {};
 
-          appointments.forEach(a=>{
+          appointments.forEach(a => {
 
-            if(!grouped[a.group_name]){
-              grouped[a.group_name] = [];
+            const group =
+              a.group_name || "General";
+
+            if(!groupedAppointments[group]){
+              groupedAppointments[group] = [];
             }
 
-            grouped[a.group_name].push(a);
+            groupedAppointments[group].push(a);
           });
 
           const hosp =
@@ -553,26 +622,20 @@ async function load(){
           const total =
             onsite + online;
 
-          const participation =
-            onsite > 0
-              ? ((communicants / onsite) * 100).toFixed(1)
-              : 0;
-
           return `
 
             <div class="card">
 
               <div class="title">
-                ${s.service_slots?.label || ""}
+                ${formatDate(s.service_date)}
               </div>
 
               <div class="tag">
-                ${formatDate(s.service_date)}
+                ${s.service_slots?.label || "-"}
               </div>
 
               <div class="top-grid">
 
-                <!-- ATTENDANCE -->
                 <div class="panel">
 
                   <div class="panel-title">
@@ -581,34 +644,12 @@ async function load(){
 
                   <div class="row">
                     <span>On-site</span>
-
-                    <input
-                      type="number"
-                      value="${onsite}"
-                      style="width:80px;"
-                      onchange="
-                        updateAttendance(
-                          '${s.id}',
-                          'onsite_count',
-                          this.value
-                        )
-                      ">
+                    <span class="good">${onsite}</span>
                   </div>
 
                   <div class="row">
                     <span>Online</span>
-
-                    <input
-                      type="number"
-                      value="${online}"
-                      style="width:80px;"
-                      onchange="
-                        updateAttendance(
-                          '${s.id}',
-                          'online_count',
-                          this.value
-                        )
-                      ">
+                    <span class="good">${online}</span>
                   </div>
 
                   ${
@@ -616,23 +657,7 @@ async function load(){
                     ? `
                       <div class="row">
                         <span>Communicants</span>
-
-                        <input
-                          type="number"
-                          value="${communicants}"
-                          style="width:80px;"
-                          onchange="
-                            updateAttendance(
-                              '${s.id}',
-                              'communicants_count',
-                              this.value
-                            )
-                          ">
-                      </div>
-
-                      <div class="row">
-                        <span>Participation</span>
-                        <span class="good">${participation}%</span>
+                        <span class="good">${communicants}</span>
                       </div>
                     `
                     : ""
@@ -645,7 +670,6 @@ async function load(){
 
                 </div>
 
-                <!-- HOSPITALITY -->
                 <div class="panel">
 
                   <div class="panel-title">
@@ -654,70 +678,59 @@ async function load(){
 
                   <div class="row">
                     <span>Leader</span>
-                    <span class="${hosp?.leader ? 'good':'bad'}">
-                      ${hosp?.leader || 'Not Assigned'}
-                    </span>
+                    <span>${hosp?.leader || "-"}</span>
                   </div>
 
                   <div class="row">
                     <span>Pastor</span>
-                    <span class="${hosp?.pastor ? 'good':'bad'}">
-                      ${hosp?.pastor || 'Not Assigned'}
+                    <span>${hosp?.pastor || "-"}</span>
+                  </div>
+
+                </div>
+
+                <div class="panel">
+
+                  <div class="panel-title">
+                    👥 Staff Summary
+                  </div>
+
+                  <div class="row">
+                    <span>Total</span>
+                    <span>${assignedIds.size}</span>
+                  </div>
+
+                  <div class="row">
+                    <span>Unavailable</span>
+
+                    <span
+                      class="bad"
+                      onclick="showUnavailable(
+                        '${s.service_date}',
+                        '${s.service_slot_id}'
+                      )">
+
+                      ${unavailableIds.size}
+
+                    </span>
+
+                  </div>
+
+                  <div class="row">
+                    <span>Available</span>
+                    <span class="good">
+                      ${availableIds.length}
                     </span>
                   </div>
 
-                  <button
-                    class="small save"
-                    style="margin-top:10px;width:100%;"
-                    onclick="notifyHospitality('${s.id}')">
-
-                    Notify Hospitality
-
-                  </button>
-
                 </div>
 
               </div>
 
-              <!-- STAFF SUMMARY -->
-              <div class="panel">
-
-                <div class="panel-title">
-                  👥 Staff Summary
-                </div>
-
-                <div class="row">
-                  <span>Total Assigned</span>
-                  <span>${assignedIds.size}</span>
-                </div>
-
-                <div class="row">
-                  <span>Unavailable</span>
-
-                  <span class="bad"
-                    onclick="showUnavailable(
-                      '${s.service_date}',
-                      '${s.service_slot_id}'
-                    )">
-
-                    ${unavailableIds.size}
-
-                  </span>
-                </div>
-
-                <div class="row">
-                  <span>Available</span>
-                  <span class="good">${availableIds.length}</span>
-                </div>
-
-              </div>
-
-              <!-- APPOINTMENTS -->
               <div class="appointment-panel">
 
                 <b>Appointments</b>
 
-                ${Object.entries(grouped)
+                ${Object.entries(groupedAppointments)
                   .map(([group, items]) => `
 
                     ${
@@ -734,7 +747,9 @@ async function load(){
 
                       <div class="row">
 
-                        <span>${a.role}</span>
+                        <span>
+                          ${a.role}
+                        </span>
 
                         <span style="
                           display:flex;
@@ -742,9 +757,20 @@ async function load(){
                           gap:6px;
                         ">
 
-                          <span class="${a.unavailable ? 'bad':''}">
+                          <span class="${
+                            a.unavailable
+                            ? 'bad'
+                            : ''
+                          }">
+
                             ${a.name}
-                            ${a.unavailable ? ' (Unavailable)' : ''}
+
+                            ${
+                              a.unavailable
+                              ? ' (Unavailable)'
+                              : ''
+                            }
+
                           </span>
 
                           <button class="small"
@@ -774,18 +800,21 @@ async function load(){
             </div>
 
           `;
-
         }).join("")}
 
       </div>
     `;
   });
 
-  /* ================= 5TH COLUMN ================= */
+  // =========================
+  // 5TH COLUMN
+  // =========================
 
   const uniqueDates =
     [...new Set(
-      availabilityServices.map(s => s.service_date)
+      availabilityServices.map(s =>
+        s.service_date
+      )
     )];
 
   grid.innerHTML += `
@@ -796,9 +825,12 @@ async function load(){
 
       <div class="card">
 
-        <div class="tag">Select Date</div>
+        <div class="tag">
+          Select Date
+        </div>
 
-        <select id="manageDate"
+        <select
+          id="manageDate"
           onchange="refreshServiceOptions()">
 
           ${
@@ -811,7 +843,7 @@ async function load(){
 
         </select>
 
-        <div class="tag">
+        <div class="tag" style="margin-top:10px;">
           Select Service
         </div>
 
@@ -820,13 +852,14 @@ async function load(){
           onchange="refreshStaffOptions()">
         </select>
 
-        <div class="tag">
+        <div class="tag" style="margin-top:10px;">
           Select Staff
         </div>
 
         <select id="manageStaff"></select>
 
-        <button class="danger"
+        <button
+          class="danger"
           onclick="markUnavailable()">
 
           Mark Unavailable
@@ -841,8 +874,6 @@ async function load(){
   refreshServiceOptions();
 }
 
-/* ================= FILTERS ================= */
-
 window.refreshServiceOptions = function(){
 
   const selectedDate =
@@ -851,17 +882,21 @@ window.refreshServiceOptions = function(){
   const serviceDropdown =
     document.getElementById("manageService");
 
-  const filtered =
+  const filteredServices =
     availabilityServices.filter(s =>
       s.service_date === selectedDate
     );
 
   serviceDropdown.innerHTML =
-    filtered.map(s => `
+    filteredServices.map(s => `
+
       <option value="${s.id}">
+
         ${s.service_slots?.label}
         (${s.service_slots?.time})
+
       </option>
+
     `).join("");
 
   refreshStaffOptions();
@@ -869,38 +904,42 @@ window.refreshServiceOptions = function(){
 
 window.refreshStaffOptions = function(){
 
-  const serviceId =
+  const selectedServiceId =
     document.getElementById("manageService").value;
 
   const service =
     availabilityServices.find(s =>
-      String(s.id) === String(serviceId)
+      String(s.id) ===
+      String(selectedServiceId)
     );
 
   if(!service) return;
 
-  const eligible =
+  const templateStaff =
     templates.filter(t =>
       String(t.template_id) ===
       String(service.service_template_id)
     );
 
-  const ids =
+  const eligibleIds =
     new Set(
-      eligible.map(t => String(t.staff_id))
+      templateStaff.map(t =>
+        String(t.staff_id)
+      )
+    );
+
+  const eligibleStaff =
+    staffList.filter(s =>
+      eligibleIds.has(String(s.id))
     );
 
   document.getElementById("manageStaff").innerHTML =
-    staffList
-      .filter(s => ids.has(String(s.id)))
-      .map(s => `
-        <option value="${s.id}">
-          ${s.name}
-        </option>
-      `).join("");
+    eligibleStaff.map(s => `
+      <option value="${s.id}">
+        ${s.name}
+      </option>
+    `).join("");
 };
-
-/* ================= ASSIGN ================= */
 
 window.openAssign = function(
   serviceId,
@@ -911,51 +950,62 @@ window.openAssign = function(
 ){
 
   currentService = {
-    id:serviceId,
-    date:serviceDate,
-    slotId:serviceSlotId
+    id: serviceId,
+    date: serviceDate,
+    slotId: serviceSlotId
   };
 
   currentRole = role;
 
   const unavailableIds =
     new Set(
+
       availability
         .filter(a =>
+
           a.service_date === serviceDate &&
           a.service_slot_id === serviceSlotId &&
           a.status === "unavailable"
         )
+
         .map(a => String(a.staff_id))
     );
 
-  const isCommunion =
-    role.toLowerCase().includes("communion");
+  const roleLower =
+    role.toLowerCase();
 
-  const eligible =
+  const isCommunionRole =
+    roleLower.includes("communion");
+
+  const eligibleStaff =
     staffList.filter(s => {
 
-      const id = String(s.id);
+      if(unavailableIds.has(String(s.id))){
+        return false;
+      }
 
-      if(unavailableIds.has(id)) return false;
-
-      if(isCommunion){
+      if(isCommunionRole){
         return s.communion_eligible === true;
       }
 
       return true;
     });
 
-  eligible.sort((a,b)=>
-    (a.name || "").localeCompare(b.name || "")
+  eligibleStaff.sort((a,b)=>
+    (a.name || "")
+      .localeCompare(b.name || "")
   );
 
   document.getElementById("staffSelect").innerHTML =
-    eligible.map(s => `
+    eligibleStaff.map(s => `
+
       <option value="${s.id}">
+
         ${s.name}
-        ${s.communion_eligible ? '🕊️':''}
+        ${s.communion_eligible ? '🕊️' : ''}
+
       </option>
+
     `).join("");
 
   document.getElementById("modalTitle").innerText =
@@ -966,6 +1016,7 @@ window.openAssign = function(
 };
 
 window.closeAssignModal = function(){
+
   document.getElementById("assignModal").style.display =
     "none";
 };
@@ -975,27 +1026,38 @@ window.saveAssign = async function(){
   const staffId =
     document.getElementById("staffSelect").value;
 
-  await db.from("service_roles").upsert({
+  await db.from("service_roles")
+    .upsert({
 
-    service_id:currentService.id,
-    role:currentRole,
-    staff_id:staffId
+      service_id: currentService.id,
+      role: currentRole,
+      staff_id: staffId
 
-  },{
-    onConflict:"service_id,role"
-  });
+    },{
+      onConflict:"service_id,role"
+    });
 
   closeAssignModal();
 
   load();
 };
 
-/* ================= UNAVAILABLE ================= */
+window.showUnavailable = function(
+  date,
+  slotId
+){
 
-window.showUnavailable = function(date, slotId){
+  const localStaffMap =
+    new Map(
+      staffList.map(s => [
+        String(s.id),
+        s.name
+      ])
+    );
 
   const list =
     availability.filter(a =>
+
       a.service_date === date &&
       a.service_slot_id === slotId &&
       a.status === "unavailable"
@@ -1005,34 +1067,43 @@ window.showUnavailable = function(date, slotId){
 
     list.length === 0
 
-    ? `<div>No unavailable staff</div>`
+    ? `
+      <div class="tag">
+        No unavailable staff
+      </div>
+    `
 
     : list.map(a => `
 
-      <div class="staff-item">
+        <div class="staff-item">
 
-        <div class="row">
+          <div class="row">
 
-          <span>
-            ${staffMap.get(String(a.staff_id))}
-          </span>
+            <span>
+              ${
+                localStaffMap.get(
+                  String(a.staff_id)
+                ) || a.staff_id
+              }
+            </span>
 
-          <button class="small save"
-            onclick="returnAvailableDirect(
-              '${a.staff_id}',
-              '${a.service_date}',
-              '${a.service_slot_id}'
-            )">
+            <button
+              class="small save"
+              onclick="returnAvailableDirect(
+                '${a.staff_id}',
+                '${a.service_date}',
+                '${a.service_slot_id}'
+              )">
 
-            Return
+              Return
 
-          </button>
+            </button>
+
+          </div>
 
         </div>
 
-      </div>
-
-    `).join("");
+      `).join("");
 
   document.getElementById("unavailableModal").style.display =
     "flex";
@@ -1052,9 +1123,9 @@ window.returnAvailableDirect = async function(
 
   await db.from("staff_availability")
     .delete()
-    .eq("staff_id",staffId)
-    .eq("service_date",serviceDate)
-    .eq("service_slot_id",slotId);
+    .eq("staff_id", staffId)
+    .eq("service_date", serviceDate)
+    .eq("service_slot_id", slotId);
 
   load();
 };
@@ -1075,89 +1146,20 @@ window.markUnavailable = async function(){
       String(s.id) === String(serviceId)
     );
 
-  await db.from("staff_availability").upsert({
+  await db.from("staff_availability")
+    .upsert({
 
-    staff_id:staffId,
-    service_date:serviceDate,
-    service_slot_id:service.service_slot_id,
-    status:"unavailable"
+      staff_id: staffId,
+      service_date: serviceDate,
+      service_slot_id: service.service_slot_id,
+      status: "unavailable"
 
-  },{
-    onConflict:"staff_id,service_date,service_slot_id"
-  });
-
-  load();
-};
-
-/* ================= ATTENDANCE ================= */
-
-window.updateAttendance = async function(
-  serviceId,
-  field,
-  value
-){
-
-  const existing =
-    attendanceMetricsMap.get(String(serviceId)) || {};
-
-  const payload = {
-
-    service_id:serviceId,
-
-    onsite_count:
-      existing.onsite_count || 0,
-
-    online_count:
-      existing.online_count || 0,
-
-    communicants_count:
-      existing.communicants_count || 0
-  };
-
-  payload[field] = Number(value) || 0;
-
-  await db.from("service_attendance_metrics")
-    .upsert(payload,{
-      onConflict:"service_id"
+    },{
+      onConflict:
+        "staff_id,service_date,service_slot_id"
     });
 
   load();
-};
-
-/* ================= HOSPITALITY ================= */
-
-window.notifyHospitality = async function(serviceId){
-
-  const service =
-    serviceMap.get(String(serviceId));
-
-  const hosp =
-    hospitalityMap.get(String(serviceId));
-
-  if(!hosp){
-    alert("No hospitality found");
-    return;
-  }
-
-  const message = `
-Hi!
-
-Your cell is rostered for ${
-    service?.service_slots?.label || "Service"
-  }.
-
-Please report at ${
-    hosp.report_time || "11:15AM"
-  }.
-
-Thank you for serving!
-  `.trim();
-
-  window.open(
-    "https://wa.me/?text=" +
-    encodeURIComponent(message),
-    "_blank"
-  );
 };
 
 window.load = load;
