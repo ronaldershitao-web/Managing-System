@@ -509,7 +509,7 @@ roles.forEach(r => {
               String(s.service_template_id)
             ) || [];
 
-         ${() => {
+       ${(() => {
 
   const normalize = v =>
     String(v || "").trim().toLowerCase();
@@ -535,15 +535,14 @@ roles.forEach(r => {
       matchingRoles.length
         ? matchingRoles.reduce((a, b) =>
             new Date(a.created_at || 0) >
-            new Date(b.created_at || 0)
-              ? a
-              : b
+            new Date(b.created_at || 0) ? a : b
           )
         : null;
 
-    const templateMatch = templateStaff.find(t =>
-      normalize(t.role) === targetRole
-    );
+    const templateMatch =
+      templateStaff.find(t =>
+        normalize(t.role) === targetRole
+      );
 
     const staffId = String(
       assignedRole?.staff_id ||
@@ -551,75 +550,60 @@ roles.forEach(r => {
       ""
     ).trim();
 
-    const resolvedName =
-      staffMap.get(staffId) || "-";
-
-    const unavailable =
-      unavailableIds.has(staffId);
-
     return {
       role,
       group_name: roleRow.group_name,
       staffId,
-      unavailable,
-      name: resolvedName
+      unavailable: unavailableIds.has(staffId),
+      name: staffMap.get(staffId) || "-"
     };
   });
 
-  const groupedAppointments = {};
+  const grouped = {};
 
   appointments.forEach(a => {
     const group = a.group_name || "General";
-
-    if (!groupedAppointments[group]) {
-      groupedAppointments[group] = [];
-    }
-
-    groupedAppointments[group].push(a);
+    if (!grouped[group]) grouped[group] = [];
+    grouped[group].push(a);
   });
 
   return `
     <div class="appointment-panel">
       <b>Appointments</b>
 
-      ${Object.entries(groupedAppointments)
-        .map(([group, items]) => `
+      ${Object.entries(grouped).map(([group, items]) => `
+        ${group !== "General"
+          ? `<div class="group-title">${group}</div>`
+          : ""}
 
-          ${group !== "General" ? `
-            <div class="group-title">${group}</div>
-          ` : ""}
+        ${items.map(a => `
+          <div class="row">
+            <span>${a.role}</span>
 
-          ${items.map(a => `
-            <div class="row">
-
-              <span>${a.role}</span>
-
-              <span style="display:flex;align-items:center;gap:6px;">
-
-                <span class="${a.unavailable ? 'bad' : ''}">
-                  ${a.name}
-                  ${a.unavailable ? ' (Unavailable)' : ''}
-                </span>
-
-                <button class="small"
-                  onclick="openAssign(
-                    '${s.id}',
-                    '${s.service_template_id}',
-                    '${s.service_date}',
-                    '${s.service_slot_id}',
-                    '${a.role}'
-                  )">
-                  Assign
-                </button>
-
+            <span style="display:flex;align-items:center;gap:6px;">
+              <span class="${a.unavailable ? 'bad' : ''}">
+                ${a.name}
+                ${a.unavailable ? ' (Unavailable)' : ''}
               </span>
-            </div>
-          `).join("")}
 
+              <button class="small"
+                onclick="openAssign(
+                  '${s.id}',
+                  '${s.service_template_id}',
+                  '${s.service_date}',
+                  '${s.service_slot_id}',
+                  '${a.role}'
+                )">
+                Assign
+              </button>
+            </span>
+          </div>
         `).join("")}
+
+      `).join("")}
     </div>
   `;
-})}
+})()}
 
               
 
