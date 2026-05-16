@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>SVCCMD - RESTORED STRUCTURE</title>
+  <title>Command Post (RESTORED)</title>
 
   <style>
     body{
@@ -16,6 +16,7 @@
       background:#111827;
       display:flex;
       justify-content:space-between;
+      align-items:center;
       font-weight:bold;
     }
 
@@ -43,9 +44,17 @@
       margin-bottom:10px;
     }
 
+    .panel{
+      background:#111827;
+      border:1px solid #334155;
+      border-radius:8px;
+      padding:10px;
+      margin-top:10px;
+    }
+
     .panel-title{
-      color:#fbbf24;
       font-weight:bold;
+      color:#fbbf24;
       margin-bottom:8px;
     }
 
@@ -53,21 +62,37 @@
       display:flex;
       justify-content:space-between;
       font-size:12px;
-      margin:4px 0;
-      gap:8px;
+      margin:5px 0;
+      align-items:center;
+      gap:6px;
     }
 
-    .good{ color:#22c55e; }
-    .bad{ color:#ef4444; }
+    .good{color:#22c55e;font-weight:bold;}
+    .bad{color:#ef4444;font-weight:bold;}
+
+    button{
+      cursor:pointer;
+    }
 
     button.small{
       font-size:10px;
-      padding:2px 6px;
-      background:#3b82f6;
-      color:white;
+      padding:3px 6px;
       border:none;
       border-radius:4px;
-      cursor:pointer;
+      background:#3b82f6;
+      color:white;
+    }
+
+    .group-title{
+      margin-top:8px;
+      font-weight:bold;
+      color:#60a5fa;
+    }
+
+    select, input{
+      width:100%;
+      padding:6px;
+      margin-top:6px;
     }
   </style>
 </head>
@@ -75,7 +100,7 @@
 <body>
 
 <header>
-  ⛪ SVCCMD RESTORED (STRUCTURE LOCKED)
+  ⛪ Command Post RESTORED
   <button onclick="load()">Refresh</button>
 </header>
 
@@ -84,69 +109,64 @@
 <script type="module">
 import { db } from "../assets/app.js";
 
-/* ================= SAFE HELPERS ================= */
-const safe = (v) => String(v ?? "").trim();
-const lower = (v) => safe(v).toLowerCase();
-
 /* ================= STATE ================= */
-
-let services = [];
+let staffList = [];
 let templates = [];
-let staff = [];
-let roles = [];
 let availability = [];
+let services = [];
+let roles = [];
+let templateRoles = [];
 
 let staffMap = new Map();
+let roleMap = new Map();
+let templateRoleMap = new Map();
+let availabilityMap = new Map();
+
+/* ================= HELPERS ================= */
+
+function safeLower(v){
+  return (v || "").toString().toLowerCase();
+}
 
 /* ================= LOAD ================= */
 
 async function load(){
 
   const [
-    s,
-    t,
-    st,
-    r,
-    a
+    sRes,tRes,aRes,stRes,rRes,trRes
   ] = await Promise.all([
     db.from("services").select("*, service_slots(label,time,location)"),
     db.from("staff_service_templates").select("*"),
+    db.from("staff_availability").select("*"),
     db.from("staff").select("*"),
     db.from("service_roles").select("*"),
-    db.from("staff_availability").select("*")
+    db.from("service_template_roles").select("*")
   ]);
 
-  services = s.data || [];
-  templates = t.data || [];
-  staff = st.data || [];
-  roles = r.data || [];
-  availability = a.data || [];
+  services = sRes.data || [];
+  templates = tRes.data || [];
+  availability = aRes.data || [];
+  staffList = stRes.data || [];
+  roles = rRes.data || [];
+  templateRoles = trRes.data || [];
 
-  staffMap = new Map(
-    staff.map(x => [String(x.id), x.name])
-  );
+  staffMap = new Map(staffList.map(s => [String(s.id), s.name]));
+
+  roleMap = new Map();
+  roles.forEach(r=>{
+    const sid = String(r.service_id);
+    if(!roleMap.has(sid)) roleMap.set(sid,[]);
+    roleMap.get(sid).push(r);
+  });
+
+  templateRoleMap = new Map();
+  templateRoles.forEach(r=>{
+    const tid = String(r.template_id);
+    if(!templateRoleMap.has(tid)) templateRoleMap.set(tid,[]);
+    templateRoleMap.get(tid).push(r);
+  });
 
   render();
-}
-
-/* ================= FILTER LOGIC (YOUR ORIGINAL SYSTEM) ================= */
-
-function getColumnIndex(service){
-
-  const time = service.service_slots?.time || "";
-  const loc = lower(service.service_slots?.location);
-
-  // 🔵 Saturday 2.30pm
-  if(time.includes("14") || time.includes("1430")) return 0;
-
-  // 🟢 Sunday 8.30am
-  if(time.includes("08") || time.includes("0830")) return 1;
-
-  // 🟡 Sunday 10.45am (exclude Jurong)
-  if(time.includes("10") && !loc.includes("jurong")) return 2;
-
-  // 🔴 Jurong + others
-  return 3;
 }
 
 /* ================= RENDER ================= */
@@ -156,121 +176,120 @@ function render(){
   const grid = document.getElementById("grid");
   grid.innerHTML = "";
 
-  const cols = [[],[],[],[]];
+  const cols = [[],[],[],[],[]];
 
-  /* ===== SERVICE DISTRIBUTION ===== */
-  services.forEach(s => {
-    const i = getColumnIndex(s);
-    cols[i].push(s);
+  services.forEach(s=>{
+
+    const t = (s.service_slots?.time || "");
+
+    if(t.includes("14")) cols[0].push(s);
+    else if(t.includes("08")) cols[1].push(s);
+    else if(t.includes("10")) cols[2].push(s);
+    else cols[3].push(s);
   });
 
-  /* ===== RENDER 4 SERVICE COLUMNS ===== */
-  cols.forEach(col => {
+  /* ================= 4 SERVICE COLUMNS ================= */
+  cols.slice(0,4).forEach(col=>{
 
-    const div = document.createElement("div");
-    div.className = "col";
+    const html = col.map(s=>{
 
-    col.forEach(service => {
+      const templateStaff =
+        templates.filter(t=>String(t.template_id)===String(s.service_template_id));
 
-      const serviceTemplates =
-        templates.filter(t =>
-          String(t.service_id) === String(service.id)
-        );
+      const assigned = new Map();
+      templateStaff.forEach(t=>{
+        assigned.set(t.role,t.staff_id);
+      });
 
-      const serviceRoles =
-        roles.filter(r =>
-          String(r.service_id) === String(service.id)
-        );
+      const roleDefs =
+        templateRoleMap.get(String(s.service_template_id)) || [];
 
-      div.innerHTML += `
+      const appointments = roleDefs.map(r=>{
+
+        const role = r.role || "";
+        const sid = assigned.get(role);
+
+        return {
+          role,
+          staffId: sid,
+          name: staffMap.get(String(sid)) || "-"
+        };
+      });
+
+      return `
         <div class="card">
+          <b>${s.service_slots?.label || ""}</b>
 
-          <div class="panel-title">
-            ${service.service_slots?.label || "Service"}
-          </div>
-
-          ${serviceTemplates.map(t => {
-
-            const role = safe(t.role).toLowerCase();
-
-            const assigned =
-              serviceRoles.find(r =>
-                lower(r.role) === role
-              );
-
-            const staffName =
-              staffMap.get(String(assigned?.staff_id)) || "—";
-
-            return `
-              <div class="row">
-                <span>${t.role}</span>
-
-                <span>
-                  ${staffName}
-                  <button class="small"
-                    onclick="assign('${service.id}','${t.role}')">
-                    Assign
-                  </button>
-                </span>
-              </div>
-            `;
-          }).join("")}
+          ${appointments.map(a=>`
+            <div class="row">
+              <span>${a.role}</span>
+              <span>
+                ${a.name}
+                <button class="small"
+                  onclick="openAssign('${s.id}','${a.role}')">
+                  Assign
+                </button>
+              </span>
+            </div>
+          `).join("")}
 
         </div>
       `;
-    });
+    }).join("");
 
-    grid.appendChild(div);
+    grid.innerHTML += `<div class="col">${html}</div>`;
   });
 
-  /* ===== 5TH COLUMN: STAFF AVAILABILITY ===== */
-  const availCol = document.createElement("div");
-  availCol.className = "col";
+  /* ================= 5TH COLUMN ================= */
+  const today = new Date();
+  const dates = [];
 
-  availCol.innerHTML = `
-    <div class="panel-title">Staff Availability</div>
+  for(let i=0;i<60;i++){
+    const d = new Date();
+    d.setDate(today.getDate()+i);
+    dates.push(d.toISOString().split("T")[0]);
+  }
 
-    ${staff.map(s => `
-      <div class="row">
-        <span>${s.name}</span>
+  grid.innerHTML += `
+    <div class="col">
+      <b>Staff Availability</b>
 
-        <button class="small"
-          onclick="toggleAvail('${s.id}')">
-          Mark
-        </button>
-      </div>
-    `).join("")}
+      <select id="dateSel" onchange="filterService()">
+        ${dates.map(d=>`<option>${d}</option>`).join("")}
+      </select>
+
+      <select id="serviceSel" onchange="filterStaff()"></select>
+      <select id="staffSel"></select>
+
+      <button onclick="markUnavailable()" style="background:#ef4444;color:white;">
+        Mark Unavailable
+      </button>
+    </div>
   `;
-
-  grid.appendChild(availCol);
 }
 
 /* ================= ASSIGN ================= */
 
-window.assign = async function(serviceId, role){
+window.openAssign = function(serviceId, role){
 
-  const staffId = prompt("Enter Staff ID");
+  window.current = {serviceId, role};
 
-  if(!staffId) return;
+  alert("Assign opened for " + role);
+};
 
-  await db.from("service_roles").upsert({
-    service_id: serviceId,
-    role: role,
-    staff_id: staffId
-  }, {
-    onConflict: "service_id,role"
+window.markUnavailable = async function(){
+
+  const staff_id = document.getElementById("staffSel").value;
+  const service_date = document.getElementById("dateSel").value;
+
+  await db.from("staff_availability").insert({
+    staff_id,
+    service_date,
+    status:"unavailable"
   });
 
   load();
 };
-
-/* ================= AVAILABILITY ================= */
-
-window.toggleAvail = function(id){
-  alert("Toggle unavailable: " + id);
-};
-
-/* ================= INIT ================= */
 
 window.load = load;
 load();
