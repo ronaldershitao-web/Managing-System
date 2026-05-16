@@ -405,18 +405,25 @@ hospitalityMap = new Map(
     templateMap.get(key).push(t);
   });
 
-  const roleMap = new Map();
+const roleMap = new Map();
 
-  roles.forEach(r => {
+roles.forEach(r => {
 
-    const key = String(r.service_id);
+  const key = String(r.service_id).trim();
 
-    if(!roleMap.has(key)){
-      roleMap.set(key, []);
-    }
+  const item = {
+    ...r,
+    service_id: key,
+    role: String(r.role || "").trim(),
+    staff_id: String(r.staff_id || "").trim()
+  };
 
-    roleMap.get(key).push(r);
-  });
+  if (!roleMap.has(key)) {
+    roleMap.set(key, []);
+  }
+
+  roleMap.get(key).push(item);
+});
 
   const templateRoleMap = new Map();
 
@@ -518,26 +525,49 @@ hospitalityMap = new Map(
        FIND ASSIGNED ROLE
     ========================= */
 
- const rolesForService =
-  roleMap.get(String(s.id)) || [];
+const serviceKey = String(s.id).trim();
 
-/* STRICT normalize once */
+const rolesForService = roleMap.get(serviceKey) ?? [];
+
 const targetRole = normalize(role);
 
-/* safer matching */
+// STRICT match
 const matchingRoles = rolesForService.filter(r =>
   normalize(r.role) === targetRole
 );
 
-/* ALWAYS pick latest safely */
-const assignedRole =
-  matchingRoles.length > 0
-    ? matchingRoles.reduce((latest, cur) =>
-        new Date(cur.created_at) > new Date(latest.created_at)
-          ? cur
-          : latest
-      )
-    : null;
+// pick latest safely
+let assignedRole = null;
+
+if (matchingRoles.length > 0) {
+  assignedRole = matchingRoles.reduce((latest, cur) => {
+    return new Date(cur.created_at) > new Date(latest.created_at)
+      ? cur
+      : latest;
+  });
+}
+
+const templateMatch =
+  templateStaff.find(t =>
+    normalize(t.role) === targetRole
+  );
+
+const rawStaffId =
+  assignedRole?.staff_id ??
+  templateMatch?.staff_id ??
+  "";
+
+const staffId = String(rawStaffId || "").trim();
+
+// DEBUG (keep temporarily)
+console.log("ROLE DEBUG FIXED", {
+  serviceKey,
+  role,
+  rolesForService,
+  matchingRoles,
+  assignedRole,
+  staffId
+});
 
     /* =========================
        FALLBACK TEMPLATE STAFF
@@ -1246,22 +1276,43 @@ window.closeAssignModal = function(){
   document.getElementById("assignModal").style.display = "none";
 };
 
-window.saveAssign = async function(){
+window.saveAssign = async function () {
 
   const staffId =
     document.getElementById("staffSelect").value;
 
+  const serviceId = String(currentService.id);
+  const role = String(currentRole || "").trim();
+
   await db.from("service_roles").upsert({
-
-    service_id: currentService.id,
-    role: String(currentRole || "").trim(),
+    service_id: serviceId,
+    role: role,
     staff_id: staffId
-
-  },{
-    onConflict:"service_id,role"
+  }, {
+    onConflict: "service_id,role"
   });
 
+  // =========================
+  // UPDATE LOCAL CACHE (IMPORTANT)
+  // =========================
+  const list = roleMap.get(serviceId) || [];
+
+  const filtered = list.filter(r =>
+    String(r.role).trim().toLowerCase() !== role.toLowerCase()
+  );
+
+  filtered.push({
+    service_id: serviceId,
+    role: role,
+    staff_id: staffId,
+    created_at: new Date().toISOString()
+  });
+
+  roleMap.set(serviceId, filtered);
+
   closeAssignModal();
+
+  // ONLY re-render UI (not backend)
   load();
 };
 
