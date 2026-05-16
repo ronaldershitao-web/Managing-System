@@ -36,16 +36,8 @@
       overflow:auto;
     }
 
-    .card{
-      background:#0f172a;
-      border:1px solid #334155;
-      border-radius:8px;
-      padding:10px;
-      margin-bottom:10px;
-    }
-
     .panel{
-      background:#111827;
+      background:#0f172a;
       border:1px solid #334155;
       border-radius:8px;
       padding:10px;
@@ -59,42 +51,42 @@
       margin-bottom:8px;
     }
 
-    .appointment-panel{
-      background:#111827;
-      border:1px solid #334155;
-      border-radius:8px;
-      padding:10px;
-      margin-top:10px;
-    }
-
     .row{
       display:flex;
       justify-content:space-between;
       font-size:12px;
       margin:4px 0;
       align-items:center;
-      gap:8px;
     }
 
     .good{color:#22c55e;font-weight:bold;}
     .bad{color:#ef4444;font-weight:bold;}
 
-    button.small{
-      font-size:10px;
-      padding:2px 6px;
-      border:none;
-      border-radius:4px;
-      background:#3b82f6;
-      color:white;
-      cursor:pointer;
+    .appointment-panel{
+      margin-top:10px;
+      background:#111827;
+      border:1px solid #334155;
+      border-radius:8px;
+      padding:10px;
     }
 
     .group-title{
       color:#fbbf24;
       font-weight:bold;
       margin-top:10px;
-      padding-top:6px;
       border-top:1px solid #334155;
+      padding-top:6px;
+    }
+
+    button.small{
+      font-size:10px;
+      padding:2px 6px;
+      margin-left:6px;
+      border-radius:4px;
+      border:none;
+      background:#3b82f6;
+      color:white;
+      cursor:pointer;
     }
 
     .modal{
@@ -115,17 +107,13 @@
       border:1px solid #334155;
     }
 
-    select, button{
+    select,button,input{
       width:100%;
       padding:8px;
       margin-top:10px;
       border-radius:6px;
       border:none;
     }
-
-    .save{background:#22c55e;color:white;}
-    .danger{background:#ef4444;color:white;}
-    .secondary{background:#334155;color:white;}
   </style>
 </head>
 
@@ -138,199 +126,174 @@
 
 <div class="grid" id="grid"></div>
 
-<!-- ASSIGN MODAL -->
+<!-- MODAL -->
 <div class="modal" id="assignModal">
   <div class="modal-content">
-    <div id="modalTitle">Assign</div>
+    <div id="modalTitle"></div>
     <select id="staffSelect"></select>
-    <button class="save" onclick="saveAssign()">Assign</button>
-    <button class="secondary" onclick="closeAssignModal()">Close</button>
+    <button onclick="saveAssign()">Save</button>
+    <button onclick="closeAssignModal()">Close</button>
   </div>
 </div>
 
 <script type="module">
 import { db } from "../assets/app.js";
 
-let staffList=[], availability=[], templates=[];
-let serviceMap=new Map(), staffMap=new Map();
-let roleMap=new Map(), hospitalityMap=new Map();
-let attendanceMap=new Map();
+/* ================= STATE ================= */
+let staffList = [];
+let templates = [];
+let availability = [];
+let people = [];
+let serviceMap = new Map();
+let staffMap = new Map();
+let roleMap = new Map();
+let hospitalityMap = new Map();
+let attendanceMap = new Map();
 
-let currentService=null, currentRole=null;
+let currentService = null;
+let currentRole = null;
 
 /* ================= LOAD ================= */
-
 async function load(){
 
-  const [servicesRes, staffRes, rolesRes, hospRes, attRes] =
-  await Promise.all([
+  const [
+    servicesRes,
+    templateRes,
+    availRes,
+    staffRes,
+    rolesRes,
+    templateRolesRes,
+    hospRes,
+    peopleRes,
+    attendanceRes
+  ] = await Promise.all([
     db.from("services").select("*, service_slots(label,time,location)"),
+    db.from("staff_service_templates").select("*"),
+    db.from("staff_availability").select("*"),
     db.from("staff").select("*"),
     db.from("service_roles").select("*"),
+    db.from("service_template_roles").select("*"),
     db.from("hospitality_duty").select("*"),
+    db.from("people").select("*"),
     db.from("service_attendance_metrics").select("*")
   ]);
 
   const services = servicesRes.data || [];
   staffList = staffRes.data || [];
+  templates = templateRes.data || [];
+  availability = availRes.data || [];
+  people = peopleRes.data || [];
 
-  serviceMap = new Map(services.map(s=>[String(s.id),s]));
-  staffMap = new Map(staffList.map(s=>[String(s.id),s.name]));
+  serviceMap = new Map(services.map(s => [String(s.id), s]));
+  staffMap = new Map(staffList.map(s => [String(s.id), s.name]));
+  hospitalityMap = new Map((hospRes.data || []).map(h => [String(h.service_id), h]));
+  attendanceMap = new Map((attendanceRes.data || []).map(a => [String(a.service_id), a]));
 
-  hospitalityMap = new Map((hospRes.data||[]).map(h=>[String(h.service_id),h]));
-  attendanceMap = new Map((attRes.data||[]).map(a=>[String(a.service_id),a]));
-
+  /* roles */
   roleMap.clear();
-  (rolesRes.data||[]).forEach(r=>{
-    if(!roleMap.has(String(r.service_id))) roleMap.set(String(r.service_id),[]);
-    roleMap.get(String(r.service_id)).push(r);
+  (rolesRes.data || []).forEach(r=>{
+    const key = String(r.service_id);
+    if(!roleMap.has(key)) roleMap.set(key, []);
+    roleMap.get(key).push(r);
   });
 
-  render(services);
-}
+  /* filter services */
+  const display = services;
 
-/* ================= RENDER ================= */
+  const cols = [[],[],[],[]];
 
-function render(services){
+  display.forEach(s=>{
+    const time = s.service_slots?.time || "";
+    const loc = (s.service_slots?.location || "").toLowerCase();
+
+    if(time.includes("1430")) cols[0].push(s);
+    else if(time.includes("0830")) cols[1].push(s);
+    else if(time.includes("1045") && !loc.includes("jurong")) cols[2].push(s);
+    else cols[3].push(s);
+  });
 
   const grid = document.getElementById("grid");
   grid.innerHTML = "";
 
-  const cols = [[],[],[],[],[]];
-
-  services.forEach(s=>{
-    const time=(s.service_slots?.time||"").replace(":","");
-    let idx = time.includes("0830")?0:
-              time.includes("0930")?1:
-              time.includes("1045")?2:
-              time.includes("1230")?3:4;
-
-    cols[idx].push(s);
+  cols.forEach(col=>{
+    grid.innerHTML += `<div class="col">
+      ${col.map(renderService).join("")}
+    </div>`;
   });
 
-  // ================= 4 SERVICE COLUMNS =================
-  cols.slice(0,4).forEach(col=>{
-    grid.innerHTML += `
-      <div class="col">
-        ${col.map(s=>{
-
-          const roles = roleMap.get(String(s.id))||[];
-
-          const appointments = roles.map(r=>({
-            role:r.role,
-            staffId:r.staff_id,
-            name:staffMap.get(String(r.staff_id))||"-"
-          }));
-
-          const hosp = hospitalityMap.get(String(s.id));
-          const att = attendanceMap.get(String(s.id))||{};
-
-          const unavailable = availability.filter(a =>
-            a.service_id === s.id && a.status === "unavailable"
-          );
-
-          const unavailableIds = new Set(unavailable.map(a=>String(a.staff_id)));
-
-          return `
-            <div class="card">
-
-              <div class="panel">
-                <div class="panel-title">${s.service_slots?.label||""}</div>
-                <div>${s.service_slots?.time||""}</div>
-              </div>
-
-              <div class="panel">
-                <div class="panel-title">Attendance</div>
-                <div class="row">Onsite <span>${att.onsite_count||0}</span></div>
-                <div class="row">Online <span>${att.online_count||0}</span></div>
-              </div>
-
-              <div class="panel">
-                <div class="panel-title">Hospitality</div>
-                <div>${hosp?.leader||"Not Assigned"}</div>
-              </div>
-
-              <div class="panel">
-                <div class="panel-title">Staff</div>
-                <div>Unavailable: <span class="bad">${unavailableIds.size}</span></div>
-              </div>
-
-              <div class="appointment-panel">
-                <b>Appointments</b>
-
-                ${appointments.map(a=>`
-                  <div class="row">
-                    <span>${a.role}</span>
-                    <span>
-                      ${a.name}
-                      <button class="small"
-                        onclick="openAssign('${s.id}','${a.role}')">
-                        Assign
-                      </button>
-                    </span>
-                  </div>
-                `).join("")}
-
-              </div>
-
-            </div>
-          `;
-        }).join("")}
-      </div>
-    `;
-  });
-
-  // ================= 5TH COLUMN =================
+  /* 5th column */
   grid.innerHTML += `
     <div class="col">
-      <div class="card">
+      <h3>Staff Availability</h3>
+      <p>Select service + mark unavailable</p>
+    </div>
+  `;
+}
 
-        <div class="panel">
-          <div class="panel-title">Mark Unavailable</div>
+function renderService(s){
 
-          <select id="staffSelect"></select>
-          <select id="serviceSelect"></select>
+  const roles = roleMap.get(String(s.id)) || [];
+  const hosp = hospitalityMap.get(String(s.id));
 
-          <button class="danger" onclick="markUnavailable()">
-            Mark Unavailable
-          </button>
-        </div>
+  const appointments = roles.map(r=>`
+    <div class="row">
+      <span>${r.role}</span>
+      <span>
+        ${staffMap.get(r.staff_id) || "-"}
+        <button class="small"
+          onclick="openAssign('${s.id}','${r.role}')">Assign</button>
+      </span>
+    </div>
+  `).join("");
 
+  return `
+    <div class="panel">
+      <div class="panel-title">
+        ${s.service_slots?.label || "Service"}
+      </div>
+
+      <div class="panel">
+        <b>Hospitality</b><br/>
+        ${hosp?.leader || "Not Assigned"}
+      </div>
+
+      <div class="panel">
+        <b>Appointments</b>
+        ${appointments}
       </div>
     </div>
   `;
 }
 
 /* ================= ASSIGN ================= */
+window.openAssign = function(serviceId, role){
+  currentService = serviceId;
+  currentRole = role;
 
-window.openAssign=function(serviceId,role){
-  currentService=serviceId;
-  currentRole=role;
+  document.getElementById("modalTitle").innerText = "Assign " + role;
 
-  document.getElementById("staffSelect").innerHTML=
+  document.getElementById("staffSelect").innerHTML =
     staffList.map(s=>`<option value="${s.id}">${s.name}</option>`).join("");
 
   document.getElementById("assignModal").style.display="flex";
 };
 
-window.saveAssign=async function(){
-  const staffId=document.getElementById("staffSelect").value;
+window.saveAssign = async function(){
 
   await db.from("service_roles").upsert({
-    service_id:currentService,
-    role:currentRole,
-    staff_id:staffId
+    service_id: currentService,
+    role: currentRole,
+    staff_id: document.getElementById("staffSelect").value
   },{onConflict:"service_id,role"});
 
-  closeAssignModal();
   load();
 };
 
-window.closeAssignModal=function(){
+window.closeAssignModal = ()=> {
   document.getElementById("assignModal").style.display="none";
 };
 
-window.load=load;
+window.load = load;
 load();
 
 </script>
