@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Command Post (Full Restore)</title>
+  <title>Command Post (Restored Stable Version)</title>
 
   <style>
     body{
@@ -16,8 +16,9 @@
       background:#111827;
       display:flex;
       justify-content:space-between;
-      font-weight:bold;
+      align-items:center;
       border-bottom:1px solid #1f2937;
+      font-weight:bold;
     }
 
     .grid{
@@ -62,7 +63,7 @@
     .role{ flex:1; }
 
     .staff{
-      min-width:90px;
+      min-width:100px;
       text-align:right;
       font-weight:bold;
       color:#22c55e;
@@ -123,18 +124,18 @@
 <body>
 
 <header>
-  Command Post Full Ops
+  Command Post
   <button onclick="load()">Refresh</button>
 </header>
 
 <div class="grid" id="grid"></div>
 
-<!-- ASSIGN -->
+<!-- ASSIGN MODAL -->
 <div class="modal" id="assignModal">
   <div class="modal-content">
-    <div id="modalTitle"></div>
+    <h3 id="modalTitle"></h3>
     <select id="staffSelect"></select>
-    <button onclick="saveAssign()">Save</button>
+    <button onclick="saveAssign()">Assign</button>
   </div>
 </div>
 
@@ -142,12 +143,15 @@
 
 import { db } from "../assets/app.js";
 
-/* ================= DATA ================= */
+/* ================= STATE ================= */
 let services = [];
-let staff = [];
+let staffList = [];
 let templateRoles = [];
 let serviceRoles = [];
 let availability = [];
+
+let staffMap = {};
+let roleMap = {};
 
 let currentService = null;
 let currentRole = null;
@@ -155,7 +159,13 @@ let currentRole = null;
 /* ================= LOAD ================= */
 async function load(){
 
-  const [s, st, tr, sr, av] = await Promise.all([
+  const [
+    s,
+    st,
+    tr,
+    sr,
+    av
+  ] = await Promise.all([
     db.from("services").select("*, service_slots(label,time,location)"),
     db.from("staff").select("*"),
     db.from("service_template_roles").select("*"),
@@ -164,55 +174,73 @@ async function load(){
   ]);
 
   services = s.data || [];
-  staff = st.data || [];
+  staffList = st.data || [];
   templateRoles = tr.data || [];
   serviceRoles = sr.data || [];
   availability = av.data || [];
 
+  /* STAFF MAP */
+  staffMap = Object.fromEntries(
+    staffList.map(s => [String(s.id), s.name])
+  );
+
+  /* LATEST ROLE MAP */
+  roleMap = {};
+
+  serviceRoles.forEach(r => {
+
+    const key =
+      `${r.service_id}_${String(r.role || "").trim().toLowerCase()}`;
+
+    const existing = roleMap[key];
+
+    if(!existing ||
+      new Date(r.created_at || 0) > new Date(existing.created_at || 0)
+    ){
+      roleMap[key] = r;
+    }
+  });
+
   render();
 }
 
-/* ================= DATE ================= */
-function parseDate(d){
-  const [y,m,day] = d.split("-");
-  return new Date(y,m-1,day);
-}
-
+/* ================= DATE FILTER ================= */
 function in8Days(d){
-  const dt = parseDate(d);
+
+  const dt = new Date(d);
   const now = new Date();
+
   const min = new Date(now);
   min.setDate(now.getDate()-8);
+
   const max = new Date(now);
   max.setDate(now.getDate()+8);
+
   return dt >= min && dt <= max;
 }
 
 function in60Days(d){
-  const dt = parseDate(d);
+
+  const dt = new Date(d);
   const now = new Date();
+
   const max = new Date(now);
   max.setDate(now.getDate()+60);
+
   return dt >= now && dt <= max;
 }
 
-/* ================= STAFF JOIN FIX ================= */
-function getStaffName(serviceId, role){
+/* ================= STAFF NAME (FIXED) ================= */
+function getAssignedName(serviceId, role){
 
-  const latest = serviceRoles
-    .filter(r =>
-      String(r.service_id) === String(serviceId) &&
-      (r.role || "").toLowerCase() === (role || "").toLowerCase()
-    )
-    .sort((a,b)=>
-      new Date(b.created_at || 0) - new Date(a.created_at || 0)
-    )[0];
+  const key =
+    `${serviceId}_${String(role || "").trim().toLowerCase()}`;
 
-  if(!latest) return "-";
+  const match = roleMap[key];
 
-  return staff.find(s =>
-    String(s.id) === String(latest.staff_id)
-  )?.name || "-";
+  if(!match) return "-";
+
+  return staffMap[match.staff_id] || "-";
 }
 
 /* ================= RENDER ================= */
@@ -227,22 +255,14 @@ function render(){
       const t = (s.service_slots?.time || "").toLowerCase();
       const loc = (s.service_slots?.location || "").toLowerCase();
 
-      // FIXED PRIORITY ORDER (important)
-      if(loc.includes("jurong")){
-        jurong.push(s);
-      }
-      else if(t.includes("14") || t.includes("2:30")){
-        sat.push(s);
-      }
-      else if(t.includes("08")){
-        s830.push(s);
-      }
-      else if(t.includes("10:45")){
-        s1045.push(s);
-      }
+      if(loc.includes("jurong")) jurong.push(s);
+      else if(t.includes("14") || t.includes("2:30")) sat.push(s);
+      else if(t.includes("08")) s830.push(s);
+      else if(t.includes("10:45")) s1045.push(s);
     });
 
   document.getElementById("grid").innerHTML = `
+
     <div class="col">
       <div class="title">Saturday 2.30pm</div>
       ${sat.map(card).join("")}
@@ -276,9 +296,7 @@ function card(s){
     String(r.template_id) === String(s.service_template_id)
   );
 
-  const isComm = s.is_communion_service === true;
-
-  const filtered = isComm
+  const filtered = s.is_communion_service
     ? roles
     : roles.filter(r =>
         !(r.role || "").toLowerCase().includes("communion")
@@ -288,7 +306,9 @@ function card(s){
     <div class="card">
 
       <b>${s.service_slots?.label}</b>
-      <div style="font-size:11px;color:#94a3b8">${s.service_date}</div>
+      <div style="font-size:11px;color:#94a3b8">
+        ${s.service_date}
+      </div>
 
       ${filtered.map(r => `
         <div class="row">
@@ -296,7 +316,7 @@ function card(s){
           <div class="role">${r.role}</div>
 
           <div class="staff">
-            ${getStaffName(s.id, r.role)}
+            ${getAssignedName(s.id, r.role)}
           </div>
 
           <button onclick="openAssign('${s.id}','${r.role}')">
@@ -310,7 +330,7 @@ function card(s){
   `;
 }
 
-/* ================= 5TH COLUMN (FIXED PROPER FLOW) ================= */
+/* ================= AVAILABILITY PANEL ================= */
 function availabilityPanel(){
 
   const dates = [...new Set(
@@ -325,11 +345,7 @@ function availabilityPanel(){
       <div class="title">Availability (60 Days)</div>
 
       <select id="dateSel" onchange="onDateChange()">
-        ${dates.map(d => `
-          <option value="${d}">
-            ${d}
-          </option>
-        `).join("")}
+        ${dates.map(d => `<option value="${d}">${d}</option>`).join("")}
       </select>
 
       <select id="serviceSel" onchange="onServiceChange()"></select>
@@ -376,8 +392,7 @@ window.onServiceChange = function(){
   const allowed = new Set(
     templateRoles
       .filter(t =>
-        String(t.template_id) ===
-        String(service.service_template_id)
+        String(t.template_id) === String(service.service_template_id)
       )
       .map(t => String(t.staff_id))
   );
@@ -392,7 +407,7 @@ window.onServiceChange = function(){
       .map(a => String(a.staff_id))
   );
 
-  const eligible = staff.filter(s =>
+  const eligible = staffList.filter(s =>
     allowed.has(String(s.id)) &&
     !unavailable.has(String(s.id))
   );
@@ -412,11 +427,9 @@ window.openAssign = function(serviceId, role){
   currentRole = role;
 
   document.getElementById("staffSelect").innerHTML =
-    staff.map(s => `
-      <option value="${s.id}">
-        ${s.name}
-      </option>
-    `).join("");
+    staffList.map(s =>
+      `<option value="${s.id}">${s.name}</option>`
+    ).join("");
 
   document.getElementById("assignModal").style.display = "flex";
 };
