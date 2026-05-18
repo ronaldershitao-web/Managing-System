@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Service Command Center (Assignment Visual State)</title>
+  <title>Service Command Center (Assignment Fixed)</title>
 
   <style>
     body{
@@ -62,61 +62,58 @@
     .role{ flex:1; }
     .staff{ color:#22c55e; font-weight:bold; }
 
-    select{
-      width:100%;
-      padding:6px;
-      margin-bottom:8px;
-      background:#0f172a;
-      color:white;
-      border:1px solid #334155;
-      border-radius:6px;
-    }
-
     button{
       font-size:11px;
-      padding:6px 8px;
+      padding:5px 8px;
       background:#3b82f6;
       border:none;
       color:white;
       border-radius:6px;
       cursor:pointer;
+    }
+
+    .assignBtn{
+      background:#2563eb;
+      margin-top:6px;
       width:100%;
-      margin-top:10px;
+    }
+
+    /* MODAL */
+    .modal{
+      position:fixed;
+      top:0; left:0;
+      width:100%; height:100%;
+      background:rgba(0,0,0,0.6);
+      display:none;
+      justify-content:center;
+      align-items:center;
+    }
+
+    .modalBox{
+      width:420px;
+      background:#111827;
+      border:1px solid #334155;
+      border-radius:10px;
+      padding:15px;
+    }
+
+    .chip{
+      padding:6px;
+      border:1px solid #334155;
+      border-radius:6px;
+      margin:5px 0;
+      cursor:pointer;
+    }
+
+    .selected{
+      background:#1d4ed8;
+      border-color:#60a5fa;
     }
 
     .danger{
       background:#ef4444;
-    }
-
-    .chip{
-      padding:6px 8px;
-      border-radius:8px;
-      font-size:12px;
-      cursor:pointer;
-      border:1px solid #334155;
-      margin:4px 0;
-      display:block;
-    }
-
-    .avail { color:#22c55e; }
-    .unavail { color:#ef4444; }
-
-    /* ⭐ NEW: SELECTED STATE */
-    .selected {
-      background:#1d4ed8;
-      border:1px solid #60a5fa;
-      color:white;
-      font-weight:bold;
-    }
-
-    .assignBanner{
-      padding:6px;
-      font-size:12px;
-      background:#0b1220;
-      border:1px solid #1f2937;
-      border-radius:6px;
-      margin-bottom:8px;
-      color:#93c5fd;
+      width:100%;
+      margin-top:10px;
     }
 
   </style>
@@ -131,6 +128,30 @@
 
 <div class="grid" id="grid"></div>
 
+<!-- ================= MODAL ================= -->
+<div class="modal" id="modal">
+  <div class="modalBox">
+
+    <div style="font-weight:bold;margin-bottom:10px">
+      Assign Role
+    </div>
+
+    <div id="modalRole"></div>
+
+    <div style="margin-top:10px">
+      <div id="staffList"></div>
+    </div>
+
+    <button onclick="saveAssignment()" class="assignBtn">
+      Save Assignment
+    </button>
+
+    <button onclick="closeModal()" class="danger">
+      Close
+    </button>
+  </div>
+</div>
+
 <script type="module">
 
 import { db } from "../assets/app.js";
@@ -141,26 +162,27 @@ let staffList = [];
 let templateRoles = [];
 let serviceRoles = [];
 let staffTemplates = [];
-let availability = [];
 
 let staffMap = {};
 let roleMap = {};
 let poolMap = {};
 
-let selectedStaffId = null;
-let selectedService = null;
+let selected = {
+  serviceId: null,
+  role: null,
+  staffId: null
+};
 
 /* ================= LOAD ================= */
 async function load(){
 
-  const [s, st, tr, sr, tpl, av] = await Promise.all([
+  const [s, st, tr, sr, tpl] = await Promise.all([
     db.from("services").select("* , service_slots(label,time,location)")
       .order("service_date",{ascending:true}),
     db.from("staff").select("*"),
     db.from("service_template_roles").select("*"),
     db.from("service_roles").select("*"),
-    db.from("staff_service_templates").select("*"),
-    db.from("staff_availability").select("*")
+    db.from("staff_service_templates").select("*")
   ]);
 
   services = s.data || [];
@@ -168,83 +190,68 @@ async function load(){
   templateRoles = tr.data || [];
   serviceRoles = sr.data || [];
   staffTemplates = tpl.data || [];
-  availability = av.data || [];
 
   staffMap = Object.fromEntries(
     staffList.map(s => [String(s.id), s.name])
   );
 
+  rebuildRoleMap();
+  rebuildPoolMap();
+
+  render();
+}
+
+/* ================= ROLE MAP ================= */
+function rebuildRoleMap(){
+
   roleMap = {};
+
   serviceRoles.forEach(r => {
     const key = `${r.service_id}_${r.role?.toLowerCase()}`;
-    if(!roleMap[key] || new Date(r.created_at) > new Date(roleMap[key].created_at)){
+
+    if(!roleMap[key] ||
+      new Date(r.created_at) > new Date(roleMap[key].created_at)
+    ){
       roleMap[key] = r;
     }
   });
+}
+
+/* ================= POOL ================= */
+function rebuildPoolMap(){
 
   poolMap = {};
+
   staffTemplates.forEach(t => {
+
     if(!poolMap[t.template_id]) poolMap[t.template_id] = [];
+
     poolMap[t.template_id].push({
       id: t.staff_id,
       name: staffMap[t.staff_id] || "Unknown"
     });
   });
-
-  render();
 }
 
-/* ================= HELPERS ================= */
-function getRoles(service){
-  let roles = templateRoles.filter(r =>
-    String(r.template_id) === String(service.service_template_id)
-  );
-
-  if(service.is_communion_service === false){
-    roles = roles.filter(r => r.is_communion_role !== true);
-  }
-
-  return roles;
-}
-
+/* ================= GET ASSIGNED ================= */
 function getAssigned(serviceId, role){
+
   const key = `${serviceId}_${role?.toLowerCase()}`;
   const match = roleMap[key];
+
   return match ? staffMap[match.staff_id] : "-";
 }
-
-function getAvailable(service){
-
-  const pool = poolMap[service.service_template_id] || [];
-
-  const unavailable = new Set(
-    availability
-      .filter(a =>
-        a.service_date === service.service_date &&
-        a.service_slot_id === service.service_slot_id &&
-        a.status === "unavailable"
-      )
-      .map(a => String(a.staff_id))
-  );
-
-  const available = pool.filter(p => !unavailable.has(String(p.id)));
-
-  return { pool, unavailable, available };
-}
-
-/* ================= SELECT STAFF ================= */
-window.selectStaff = function(id){
-  selectedStaffId = id;
-  renderInspector(selectedService); // refresh UI state
-};
 
 /* ================= CARD ================= */
 function card(service){
 
-  const roles = getRoles(service);
+  const roles = templateRoles.filter(r =>
+    String(r.template_id) === String(service.service_template_id)
+  );
 
   return `
     <div class="card">
+
       <b>${service.service_slots?.label}</b>
       <div style="font-size:11px;color:#94a3b8">
         ${service.service_date}
@@ -253,121 +260,73 @@ function card(service){
       ${roles.map(r => `
         <div class="row">
           <div class="role">${r.role}</div>
-          <div class="staff">${getAssigned(service.id, r.role)}</div>
+
+          <div class="staff">
+            ${getAssigned(service.id, r.role)}
+          </div>
+
+          <button onclick="openModal('${service.id}','${r.role}')">
+            Assign
+          </button>
         </div>
       `).join("")}
+
     </div>
   `;
 }
 
-/* ================= INSPECTOR ================= */
-function inspector(){
+/* ================= MODAL ================= */
+window.openModal = function(serviceId, role){
 
-  const dates = [...new Set(services.map(s => s.service_date))];
+  selected.serviceId = serviceId;
+  selected.role = role;
+  selected.staffId = null;
 
-  return `
-    <div class="title">Service Inspector</div>
+  const service = services.find(s => s.id === serviceId);
 
-    <select id="dateSel" onchange="onDate()">
-      <option value="">Select Date</option>
-      ${dates.map(d => `<option value="${d}">${d}</option>`).join("")}
-    </select>
+  document.getElementById("modalRole").innerHTML =
+    `<b>${role}</b>`;
 
-    <select id="serviceSel" onchange="onServiceSelect()"></select>
+  const pool = poolMap[service.service_template_id] || [];
 
-    <div id="poolView" class="card">
-      Select service
-    </div>
+  document.getElementById("staffList").innerHTML =
+    pool.map(p => `
+      <div class="chip ${selected.staffId === p.id ? "selected" : ""}"
+        onclick="selectStaff('${p.id}')">
+        ${p.name}
+      </div>
+    `).join("");
 
-    <button class="danger" onclick="markUnavailable()" ${!selectedStaffId ? "disabled" : ""}>
-      Mark Unavailable
-    </button>
-  `;
-}
-
-/* ================= RENDER INSPECTOR ================= */
-function renderInspector(service){
-
-  if(!service) return;
-
-  const { available, unavailable } = getAvailable(service);
-
-  document.getElementById("poolView").innerHTML = `
-    <div class="assignBanner">
-      ${selectedStaffId
-        ? `Assigning: <b>${staffMap[selectedStaffId]}</b>`
-        : "No staff selected"}
-    </div>
-
-    <b>${service.service_slots?.label}</b>
-    <div style="font-size:11px;color:#94a3b8">
-      ${service.service_date}
-    </div>
-
-    <div style="margin-top:10px">
-      <b>Available Staff</b>
-      ${available.map(p => `
-        <div class="chip avail ${selectedStaffId === p.id ? "selected" : ""}"
-          onclick="selectStaff('${p.id}')">
-          ${p.name}
-        </div>
-      `).join("")}
-    </div>
-
-    <div style="margin-top:10px">
-      <b>Unavailable</b>
-      ${[...unavailable].map(id => `
-        <div class="chip unavail">
-          ${staffMap[id] || "Unknown"}
-        </div>
-      `).join("")}
-    </div>
-  `;
-}
-
-/* ================= SERVICE SELECT ================= */
-window.onDate = function(){
-
-  const date = dateSel.value;
-
-  const filtered = services.filter(s => s.service_date === date);
-
-  serviceSel.innerHTML = `
-    <option value="">Select</option>
-    ${filtered.map(s => `
-      <option value="${s.id}">
-        ${s.service_slots?.label}
-      </option>
-    `).join("")}
-  `;
+  document.getElementById("modal").style.display = "flex";
 };
 
-window.onServiceSelect = function(){
-
-  const id = serviceSel.value;
-
-  const service = services.find(s => String(s.id) === String(id));
-  if(!service) return;
-
-  selectedService = service;
-  renderInspector(service);
+window.selectStaff = function(id){
+  selected.staffId = id;
+  openModal(selected.serviceId, selected.role);
 };
 
-/* ================= MARK UNAVAILABLE ================= */
-window.markUnavailable = async function(){
+window.closeModal = function(){
+  document.getElementById("modal").style.display = "none";
+};
 
-  if(!selectedService || !selectedStaffId) return;
+/* ================= SAVE ================= */
+window.saveAssignment = async function(){
 
-  await db.from("staff_availability").insert({
-    staff_id: selectedStaffId,
-    service_date: selectedService.service_date,
-    service_slot_id: selectedService.service_slot_id,
-    status: "unavailable"
+  if(!selected.serviceId || !selected.role || !selected.staffId) return;
+
+  const service = services.find(s => s.id === selected.serviceId);
+
+  // insert or update (simple overwrite strategy)
+  await db.from("service_roles").upsert({
+    service_id: selected.serviceId,
+    role: selected.role,
+    staff_id: selected.staffId,
+    service_date: service.service_date,
+    created_at: new Date()
   });
 
-  selectedStaffId = null;
   await load();
-  renderInspector(selectedService);
+  closeModal();
 };
 
 /* ================= RENDER ================= */
@@ -387,29 +346,11 @@ function render(){
   });
 
   grid.innerHTML = `
-    <div class="col">
-      <div class="title">Sat</div>
-      ${cols.sat.map(card).join("")}
-    </div>
-
-    <div class="col">
-      <div class="title">8.30</div>
-      ${cols.s1.map(card).join("")}
-    </div>
-
-    <div class="col">
-      <div class="title">10.45</div>
-      ${cols.s2.map(card).join("")}
-    </div>
-
-    <div class="col">
-      <div class="title">Jurong</div>
-      ${cols.jurong.map(card).join("")}
-    </div>
-
-    <div class="col">
-      ${inspector()}
-    </div>
+    <div class="col"><div class="title">Sat</div>${cols.sat.map(card).join("")}</div>
+    <div class="col"><div class="title">8.30</div>${cols.s1.map(card).join("")}</div>
+    <div class="col"><div class="title">10.45</div>${cols.s2.map(card).join("")}</div>
+    <div class="col"><div class="title">Jurong</div>${cols.jurong.map(card).join("")}</div>
+    <div class="col"><div class="title">Inspector (Availability only)</div></div>
   `;
 }
 
