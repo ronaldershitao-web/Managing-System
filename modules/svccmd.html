@@ -74,7 +74,7 @@
 
     button{
       font-size:11px;
-      padding:5px 8px;
+      padding:6px 10px;
       background:#3b82f6;
       border:none;
       color:white;
@@ -87,11 +87,12 @@
     }
 
     .chip{
-      padding:3px 6px;
+      padding:6px;
       border-radius:6px;
-      font-size:11px;
+      font-size:12px;
       cursor:pointer;
       border:1px solid #334155;
+      margin-bottom:6px;
     }
 
     .avail { color:#22c55e; }
@@ -131,8 +132,10 @@ let selectedService = null;
 async function load(){
 
   const [s, st, tr, sr, tpl, av] = await Promise.all([
-    db.from("services").select("* , service_slots(label,time,location)")
+    db.from("services")
+      .select("* , service_slots(label,time,location)")
       .order("service_date",{ascending:true}),
+
     db.from("staff").select("*"),
     db.from("service_template_roles").select("*"),
     db.from("service_roles").select("*"),
@@ -213,7 +216,9 @@ function getAvailable(service){
       .map(a => String(a.staff_id))
   );
 
-  const available = pool.filter(p => !unavailable.has(String(p.id)));
+  const available = pool.filter(p =>
+    !unavailable.has(String(p.id))
+  );
 
   return { pool, unavailable, available };
 }
@@ -231,11 +236,9 @@ window.markUnavailable = async function(){
   });
 
   selectedStaffId = null;
-  await load();
 
-  if(selectedService){
-    onServiceSelect(selectedService.id);
-  }
+  await load();
+  onServiceSelect(selectedService.id);
 };
 
 /* ================= CARD ================= */
@@ -285,7 +288,7 @@ function inspector(){
   `;
 }
 
-/* ================= UI EVENTS ================= */
+/* ================= EVENTS ================= */
 window.onDate = function(){
 
   const date = document.getElementById("dateSel").value;
@@ -310,8 +313,9 @@ window.onServiceSelect = function(serviceId){
   if(!service) return;
 
   selectedService = service;
+  selectedStaffId = null;
 
-  const { pool, unavailable, available } = getAvailable(service);
+  const { unavailable, available } = getAvailable(service);
 
   document.getElementById("poolView").innerHTML = `
     <b>${service.service_slots?.label}</b>
@@ -320,28 +324,33 @@ window.onServiceSelect = function(serviceId){
     </div>
 
     <div style="margin-top:10px">
-      <b>Click staff to select</b>
+      <b>Available Staff</b>
       ${available.map(p => `
         <div class="chip avail"
-          onclick="selectStaff('${p.id}')">
+          onclick="selectStaff('${p.id}')"
+          style="
+            background:${selectedStaffId === p.id ? '#1d4ed8' : '#0f172a'};
+          ">
           ${p.name}
+          ${selectedStaffId === p.id ? ' ✓' : ''}
         </div>
-      `).join(" ")}
+      `).join("")}
     </div>
 
     <div style="margin-top:10px">
-      <b>Unavailable</b>
+      <b>Unavailable Staff</b>
       ${[...unavailable].map(id => `
         <div class="chip unavail">
           ${staffMap[id] || "Unknown"}
         </div>
-      `).join(" ")}
+      `).join("")}
     </div>
   `;
 };
 
 window.selectStaff = function(id){
   selectedStaffId = id;
+  onServiceSelect(selectedService.id);
 };
 
 /* ================= RENDER ================= */
