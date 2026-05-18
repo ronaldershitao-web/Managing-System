@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Service 4-Column Board</title>
+  <title>Service Ops Board</title>
 
   <style>
     body{
@@ -16,6 +16,9 @@
       background:#111827;
       font-size:18px;
       font-weight:bold;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
     }
 
     .grid{
@@ -30,20 +33,20 @@
       border:1px solid #1f2937;
       border-radius:10px;
       padding:10px;
-      min-height:90vh;
+      min-height:85vh;
+      overflow:auto;
     }
 
     .title{
       font-weight:bold;
       color:#fbbf24;
       margin-bottom:10px;
-      font-size:14px;
     }
 
     .card{
       background:#0f172a;
       border:1px solid #334155;
-      border-radius:8px;
+      border-radius:10px;
       padding:10px;
       margin-bottom:10px;
     }
@@ -51,7 +54,34 @@
     .date{
       font-size:11px;
       color:#94a3b8;
-      margin-top:4px;
+      margin-bottom:8px;
+    }
+
+    .row{
+      display:flex;
+      justify-content:space-between;
+      font-size:11px;
+      padding:4px 0;
+      border-bottom:1px solid #1f2937;
+      gap:10px;
+    }
+
+    .role{
+      flex:1;
+    }
+
+    .staff{
+      font-weight:bold;
+      min-width:90px;
+      text-align:right;
+    }
+
+    .assigned{
+      color:#22c55e;
+    }
+
+    .missing{
+      color:#ef4444;
     }
   </style>
 </head>
@@ -59,7 +89,8 @@
 <body>
 
 <header>
-  Service Board (4 Columns View)
+  Service Ops Board
+  <button onclick="load()">Refresh</button>
 </header>
 
 <div class="grid" id="grid"></div>
@@ -67,44 +98,89 @@
 <script type="module">
 import { db } from "../assets/app.js";
 
+let services = [];
+let templateRoles = [];
+let serviceRoles = [];
+let staffMap = {};
+
+/* ================= LOAD ================= */
 async function load(){
 
-  const { data: services } = await db
-    .from("services")
-    .select(`
-      id,
-      service_date,
-      service_slots(label,time,location)
-    `)
-    .order("service_date", { ascending: true });
+  const [
+    s,
+    tr,
+    sr,
+    st
+  ] = await Promise.all([
+
+    db.from("services")
+      .select("* , service_slots(label,time,location)")
+      .order("service_date", { ascending: true }),
+
+    db.from("service_template_roles").select("*"),
+
+    db.from("service_roles").select("*"),
+
+    db.from("staff").select("*")
+  ]);
+
+  services = s.data || [];
+  templateRoles = tr.data || [];
+  serviceRoles = sr.data || [];
+
+  staffMap = Object.fromEntries(
+    (st.data || []).map(s => [s.id, s.name])
+  );
+
+  render();
+}
+
+/* ================= CORE ENGINE ================= */
+function buildRoles(service){
+
+  let roles = templateRoles.filter(r =>
+    String(r.template_id) === String(service.service_template_id)
+  );
+
+  // communion rule
+  if(!service.is_communion_service){
+    roles = roles.filter(r =>
+      !(r.role || "").toLowerCase().includes("communion")
+    );
+  }
+
+  return roles.map(r => {
+
+    const match = serviceRoles.find(a =>
+      a.service_id === service.id &&
+      (a.role || "").trim().toLowerCase() === (r.role || "").trim().toLowerCase()
+    );
+
+    return {
+      role: r.role,
+      staff: match ? (staffMap[match.staff_id] || "Unknown") : null
+    };
+  });
+}
+
+/* ================= GROUPING ================= */
+function render(){
 
   const sat = [];
   const s830 = [];
   const s1045 = [];
   const jurong = [];
 
-  (services || []).forEach(s => {
+  services.forEach(s => {
 
     const label = (s.service_slots?.label || "").toLowerCase();
+    const loc = (s.service_slots?.location || "").toLowerCase();
 
-    if(label.includes("saturday")){
-      sat.push(s);
-    }
-    else if(label.includes("8.30")){
-      s830.push(s);
-    }
-    else if(label.includes("10.45")){
-      s1045.push(s);
-    }
-    else if(label.includes("jurong")){
-      jurong.push(s);
-    }
+    if(loc.includes("jurong")) jurong.push(s);
+    else if(label.includes("saturday")) sat.push(s);
+    else if(label.includes("8.30")) s830.push(s);
+    else if(label.includes("10.45")) s1045.push(s);
   });
-
-  render(sat, s830, s1045, jurong);
-}
-
-function render(sat, s830, s1045, jurong){
 
   document.getElementById("grid").innerHTML = `
 
@@ -131,22 +207,36 @@ function render(sat, s830, s1045, jurong){
   `;
 }
 
-function card(s){
+/* ================= CARD ================= */
+function card(service){
+
+  const roles = buildRoles(service);
 
   return `
     <div class="card">
-      <div>
-        ${s.service_slots?.label || "Service"}
-      </div>
 
-      <div class="date">
-        ${s.service_date}
-      </div>
+      <div><b>${service.service_slots?.label}</b></div>
+
+      <div class="date">${service.service_date}</div>
+
+      ${roles.map(r => `
+        <div class="row">
+
+          <div class="role">${r.role}</div>
+
+          <div class="staff ${r.staff ? 'assigned' : 'missing'}">
+            ${r.staff || "Unassigned"}
+          </div>
+
+        </div>
+      `).join("")}
+
     </div>
   `;
 }
 
 load();
+window.load = load;
 
 </script>
 
