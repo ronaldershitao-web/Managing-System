@@ -287,11 +287,16 @@ window.openModal = function(serviceId, role){
 
   const pool = poolMap[selectedService.service_template_id] || [];
 
-  document.getElementById("modalStaffList").innerHTML = pool.map(p => `
-    <div class="chip avail" onclick="assignRole('${p.id}')">
-      ${p.name}
-    </div>
-  `).join("");
+  const dropdown = document.getElementById("staffDropdown");
+
+  dropdown.innerHTML = `
+    <option value="">Select staff</option>
+    ${pool.map(p => `
+      <option value="${p.id}">
+        ${p.name}
+      </option>
+    `).join("")}
+  `;
 
   document.getElementById("assignModal").style.display = "flex";
 };
@@ -427,22 +432,24 @@ window.markUnavailable = async function(){
   renderInspector(selectedService);
 };
 
-  window.assignRole = async function(){
+  window.assignRoleFromModal = async function(){
 
-  if(!selectedService || !selectedRole || !selectedStaffId) return;
+  const staffId = document.getElementById("staffDropdown").value;
+
+  if(!selectedService || !selectedRole || !staffId) return;
 
   await db.from("service_roles").insert({
     service_id: selectedService.id,
     role: selectedRole,
-    staff_id: selectedStaffId
+    staff_id: staffId
   });
 
   selectedStaffId = null;
   selectedRole = null;
 
   await load();
-closeModal();
-render();
+  closeModal();
+  render();
 };
 
 /* ================= GRID ================= */
@@ -514,7 +521,23 @@ load();
   ">
     <h3 style="margin-top:0;">Assign Staff</h3>
 
-    <div id="modalStaffList"></div>
+    <select id="staffDropdown" style="
+  width:100%;
+  padding:8px;
+  margin:10px 0;
+  border-radius:6px;
+  background:#0f172a;
+  color:white;
+  border:1px solid #334155;
+"></select>
+
+<button onclick="assignRoleFromModal()" style="
+  width:100%;
+  margin-top:10px;
+  background:#22c55e;
+">
+  Assign Selected Staff
+</button>
 
     <button onclick="closeModal()" style="margin-top:10px;background:#ef4444;">
       Close
