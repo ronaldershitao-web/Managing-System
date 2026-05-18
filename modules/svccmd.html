@@ -56,6 +56,7 @@
       justify-content:space-between;
       font-size:12px;
       margin:6px 0;
+      align-items:center;
     }
 
     .role{ flex:1; }
@@ -71,9 +72,30 @@
       border-radius:6px;
     }
 
-    .poolBox{
-      font-size:12px;
+    button{
+      font-size:11px;
+      padding:5px 8px;
+      background:#3b82f6;
+      border:none;
+      color:white;
+      border-radius:6px;
+      cursor:pointer;
     }
+
+    .danger{
+      background:#ef4444;
+    }
+
+    .chip{
+      padding:3px 6px;
+      border-radius:6px;
+      font-size:11px;
+      cursor:pointer;
+      border:1px solid #334155;
+    }
+
+    .avail { color:#22c55e; }
+    .unavail { color:#ef4444; }
   </style>
 </head>
 
@@ -96,31 +118,34 @@ let staffList = [];
 let templateRoles = [];
 let serviceRoles = [];
 let staffTemplates = [];
-  let availability = [];
+let availability = [];
 
 let staffMap = {};
 let roleMap = {};
 let poolMap = {};
 
+let selectedStaffId = null;
+let selectedService = null;
+
 /* ================= LOAD ================= */
 async function load(){
 
- const [s, st, tr, sr, tpl, av] = await Promise.all([
-  db.from("services").select("* , service_slots(label,time,location)")
-    .order("service_date",{ascending:true}),
-  db.from("staff").select("*"),
-  db.from("service_template_roles").select("*"),
-  db.from("service_roles").select("*"),
-  db.from("staff_service_templates").select("*"),
-  db.from("staff_availability").select("*")   // ✅ ADD THIS
-]);
+  const [s, st, tr, sr, tpl, av] = await Promise.all([
+    db.from("services").select("* , service_slots(label,time,location)")
+      .order("service_date",{ascending:true}),
+    db.from("staff").select("*"),
+    db.from("service_template_roles").select("*"),
+    db.from("service_roles").select("*"),
+    db.from("staff_service_templates").select("*"),
+    db.from("staff_availability").select("*")
+  ]);
 
-availability = av.data || [];
   services = s.data || [];
   staffList = st.data || [];
   templateRoles = tr.data || [];
   serviceRoles = sr.data || [];
   staffTemplates = tpl.data || [];
+  availability = av.data || [];
 
   staffMap = Object.fromEntries(
     staffList.map(s => [String(s.id), s.name])
@@ -141,7 +166,6 @@ availability = av.data || [];
 
   /* template pool */
   poolMap = {};
-
   staffTemplates.forEach(t => {
     if(!poolMap[t.template_id]) poolMap[t.template_id] = [];
     poolMap[t.template_id].push({
@@ -153,25 +177,20 @@ availability = av.data || [];
   render();
 }
 
-/* ================= ROLE RULE ENGINE ================= */
+/* ================= HELPERS ================= */
 function getRoles(service){
 
   let roles = templateRoles.filter(r =>
     String(r.template_id) === String(service.service_template_id)
   );
 
-  /* CLEAN RULE: ONLY REMOVE IF FLAGGED IN DB (NOT STRING MATCH) */
   if(service.is_communion_service === false){
-
-    roles = roles.filter(r =>
-      r.is_communion_role !== true
-    );
+    roles = roles.filter(r => r.is_communion_role !== true);
   }
 
   return roles;
 }
 
-/* ================= ASSIGNMENT ================= */
 function getAssigned(serviceId, role){
 
   const key = `${serviceId}_${role?.toLowerCase()}`;
@@ -180,29 +199,45 @@ function getAssigned(serviceId, role){
   return match ? staffMap[match.staff_id] : "-";
 }
 
-function getAvailableStaff(service){
+function getAvailable(service){
 
-  const templateId = String(service.service_template_id);
-
-  const pool = poolMap[templateId] || [];
+  const pool = poolMap[service.service_template_id] || [];
 
   const unavailable = new Set(
     availability
       .filter(a =>
-        String(a.service_date) === String(service.service_date) &&
-        String(a.service_slot_id) === String(service.service_slot_id) &&
+        a.service_date === service.service_date &&
+        a.service_slot_id === service.service_slot_id &&
         a.status === "unavailable"
       )
       .map(a => String(a.staff_id))
   );
 
-  const available = pool.filter(p =>
-    !unavailable.has(String(p.id))
-  );
+  const available = pool.filter(p => !unavailable.has(String(p.id)));
 
   return { pool, unavailable, available };
 }
-  
+
+/* ================= MARK UNAVAILABLE ================= */
+window.markUnavailable = async function(){
+
+  if(!selectedService || !selectedStaffId) return;
+
+  await db.from("staff_availability").insert({
+    staff_id: selectedStaffId,
+    service_date: selectedService.service_date,
+    service_slot_id: selectedService.service_slot_id,
+    status: "unavailable"
+  });
+
+  selectedStaffId = null;
+  await load();
+
+  if(selectedService){
+    onServiceSelect(selectedService.id);
+  }
+};
+
 /* ================= CARD ================= */
 function card(service){
 
@@ -210,7 +245,6 @@ function card(service){
 
   return `
     <div class="card">
-
       <b>${service.service_slots?.label}</b>
       <div style="font-size:11px;color:#94a3b8">
         ${service.service_date}
@@ -222,12 +256,11 @@ function card(service){
           <div class="staff">${getAssigned(service.id, r.role)}</div>
         </div>
       `).join("")}
-
     </div>
   `;
 }
 
-/* ================= INSPECTOR (5TH COLUMN) ================= */
+/* ================= INSPECTOR ================= */
 function inspector(){
 
   const dates = [...new Set(services.map(s => s.service_date))];
@@ -240,21 +273,26 @@ function inspector(){
       ${dates.map(d => `<option value="${d}">${d}</option>`).join("")}
     </select>
 
-    <select id="serviceSel" onchange="onService()"></select>
+    <select id="serviceSel" onchange="onServiceSelect()"></select>
 
-    <div id="poolView" class="card poolBox">
+    <div id="poolView" class="card">
       Select service
     </div>
+
+    <button class="danger" onclick="markUnavailable()">
+      Mark Unavailable
+    </button>
   `;
 }
 
+/* ================= UI EVENTS ================= */
 window.onDate = function(){
 
-  const date = dateSel.value;
+  const date = document.getElementById("dateSel").value;
 
   const filtered = services.filter(s => s.service_date === date);
 
-  serviceSel.innerHTML = `
+  document.getElementById("serviceSel").innerHTML = `
     <option value="">Select</option>
     ${filtered.map(s => `
       <option value="${s.id}">
@@ -264,51 +302,48 @@ window.onDate = function(){
   `;
 };
 
-window.onService = function(){
+window.onServiceSelect = function(serviceId){
 
-  const id = serviceSel.value;
+  const id = serviceId || document.getElementById("serviceSel").value;
 
   const service = services.find(s => String(s.id) === String(id));
   if(!service) return;
 
-  const roles = getRoles(service);
+  selectedService = service;
 
-  const { pool, unavailable, available } = getAvailableStaff(service);
+  const { pool, unavailable, available } = getAvailable(service);
 
-  poolView.innerHTML = `
+  document.getElementById("poolView").innerHTML = `
     <b>${service.service_slots?.label}</b>
     <div style="font-size:11px;color:#94a3b8">
-      ${service.service_date} • ${service.start_time || ""}
+      ${service.service_date}
     </div>
 
     <div style="margin-top:10px">
-      <b>Roles Required</b>
-      ${roles.map(r => `<div>${r.role}</div>`).join("")}
+      <b>Click staff to select</b>
+      ${available.map(p => `
+        <div class="chip avail"
+          onclick="selectStaff('${p.id}')">
+          ${p.name}
+        </div>
+      `).join(" ")}
     </div>
 
     <div style="margin-top:10px">
-      <b>Available Staff</b>
-      ${
-        available.length === 0
-          ? `<div style="color:#ef4444">No available staff</div>`
-          : available.map(s => `
-              <div style="color:#22c55e">${s.name}</div>
-            `).join("")
-      }
-    </div>
-
-    <div style="margin-top:10px">
-      <b>Unavailable Staff</b>
-      ${
-        unavailable.size === 0
-          ? `<div style="color:#94a3b8">None</div>`
-          : [...unavailable].map(id => `
-              <div style="color:#ef4444">${staffMap[id] || "Unknown"}</div>
-            `).join("")
-      }
+      <b>Unavailable</b>
+      ${[...unavailable].map(id => `
+        <div class="chip unavail">
+          ${staffMap[id] || "Unknown"}
+        </div>
+      `).join(" ")}
     </div>
   `;
 };
+
+window.selectStaff = function(id){
+  selectedStaffId = id;
+};
+
 /* ================= RENDER ================= */
 function render(){
 
