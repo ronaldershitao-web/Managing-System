@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Service Command Center (Stable UX Fix)</title>
+  <title>Service Command Center (Restored Inspector + Fix Selection)</title>
 
   <style>
     body{
@@ -72,60 +72,64 @@
       border-radius:6px;
     }
 
+    /* ===== STAFF CHIPS ===== */
+    .chip{
+      padding:8px;
+      border-radius:8px;
+      font-size:12px;
+      cursor:pointer;
+      border:1px solid #334155;
+      margin:4px 0;
+      display:block;
+      transition:0.15s;
+      user-select:none;
+    }
+
+    .chip:hover{
+      background:#1e293b;
+    }
+
+    .avail{ color:#22c55e; }
+    .unavail{ color:#ef4444; }
+
+    /* IMPORTANT: FIX SELECTION CLARITY */
+    .selected{
+      background:#1d4ed8 !important;
+      border:1px solid #60a5fa !important;
+      color:white !important;
+      font-weight:bold;
+    }
+
+    /* inspector highlight */
+    .context{
+      padding:6px;
+      background:#0b1220;
+      border:1px solid #1f2937;
+      border-radius:6px;
+      font-size:12px;
+      margin-bottom:8px;
+      color:#93c5fd;
+    }
+
     button{
       font-size:11px;
-      padding:6px 8px;
+      padding:8px;
       background:#3b82f6;
       border:none;
       color:white;
       border-radius:6px;
       cursor:pointer;
       width:100%;
-      margin-top:10px;
+      margin-top:8px;
     }
 
     button:disabled{
-      background:#374151;
+      background:#334155;
       cursor:not-allowed;
-      opacity:0.6;
     }
 
     .danger{
       background:#ef4444;
-    }
-
-    /* ===== STAFF CHIPS (FIXED UX) ===== */
-    .chip{
-      padding:6px 8px;
-      border-radius:8px;
-      font-size:12px;
-      border:1px solid #334155;
-      margin:4px 0;
-      cursor:pointer;
-      transition:0.15s;
-      user-select:none;
-    }
-
-    .chip:hover{
-      background:#1f2937;
-      transform: translateX(2px);
-    }
-
-    .avail{
-      color:#22c55e;
-      border-left:3px solid #22c55e;
-    }
-
-    .unavail{
-      color:#ef4444;
-      border-left:3px solid #ef4444;
-    }
-
-    /* selection highlight */
-    .selected{
-      background:#1d4ed8 !important;
-      border:1px solid #60a5fa !important;
-      color:white !important;
     }
   </style>
 </head>
@@ -140,6 +144,7 @@
 <div class="grid" id="grid"></div>
 
 <script type="module">
+
 import { db } from "../assets/app.js";
 
 /* ================= STATE ================= */
@@ -155,13 +160,13 @@ let roleMap = {};
 let poolMap = {};
 
 let selectedStaffId = null;
+let selectedService = null;
 
 /* ================= LOAD ================= */
 async function load(){
 
   const [s, st, tr, sr, tpl, av] = await Promise.all([
-    db.from("services")
-      .select("* , service_slots(label,time,location)")
+    db.from("services").select("* , service_slots(label,time,location)")
       .order("service_date",{ascending:true}),
     db.from("staff").select("*"),
     db.from("service_template_roles").select("*"),
@@ -201,7 +206,7 @@ async function load(){
   render();
 }
 
-/* ================= HELPERS ================= */
+/* ================= ROLES ================= */
 function getRoles(service){
 
   let roles = templateRoles.filter(r =>
@@ -215,69 +220,24 @@ function getRoles(service){
   return roles;
 }
 
+/* ================= ASSIGNED ================= */
 function getAssigned(serviceId, role){
+
   const key = `${serviceId}_${role?.toLowerCase()}`;
   const match = roleMap[key];
   return match ? staffMap[match.staff_id] : "-";
 }
 
-/* ================= INSPECTOR ================= */
-function inspector(){
+/* ================= AVAILABLE STAFF ================= */
+function getAvailable(service){
 
-  const dates = [...new Set(services.map(s => s.service_date))];
-
-  return `
-    <div class="title">Service Inspector</div>
-
-    <select id="dateSel" onchange="onDate()">
-      <option value="">Select Date</option>
-      ${dates.map(d => `<option value="${d}">${d}</option>`).join("")}
-    </select>
-
-    <select id="serviceSel" onchange="onServiceSelect()"></select>
-
-    <div id="poolView" class="card">
-      Select service
-    </div>
-  `;
-}
-
-/* ================= DATE FILTER (FIXED) ================= */
-window.onDate = function(){
-
-  const date = document.getElementById("dateSel").value;
-
-  const filtered = services.filter(s =>
-    String(s.service_date) === String(date)
-  );
-
-  document.getElementById("serviceSel").innerHTML = `
-    <option value="">Select Service</option>
-    ${filtered.map(s => `
-      <option value="${s.id}">
-        ${s.service_slots?.label || "Service"} ${s.start_time ? "(" + s.start_time + ")" : ""}
-      </option>
-    `).join("")}
-  `;
-};
-
-/* ================= SERVICE SELECT ================= */
-window.onServiceSelect = function(){
-
-  const id = document.getElementById("serviceSel").value;
-
-  const service = services.find(s => String(s.id) === String(id));
-  if(!service) return;
-
-  const templateId = String(service.service_template_id);
-
-  const pool = poolMap[templateId] || [];
+  const pool = poolMap[service.service_template_id] || [];
 
   const unavailable = new Set(
     availability
       .filter(a =>
-        String(a.service_date) === String(service.service_date) &&
-        String(a.service_slot_id) === String(service.service_slot_id) &&
+        a.service_date === service.service_date &&
+        a.service_slot_id === service.service_slot_id &&
         a.status === "unavailable"
       )
       .map(a => String(a.staff_id))
@@ -285,38 +245,13 @@ window.onServiceSelect = function(){
 
   const available = pool.filter(p => !unavailable.has(String(p.id)));
 
-  document.getElementById("poolView").innerHTML = `
-    <b>${service.service_slots?.label}</b>
+  return { pool, unavailable, available };
+}
 
-    <div style="font-size:11px;color:#94a3b8">
-      ${service.service_date}
-    </div>
-
-    <div style="margin-top:10px">
-      <b>Available Staff (clickable)</b>
-      ${available.map(p => `
-        <div class="chip avail ${selectedStaffId === p.id ? 'selected' : ''}"
-          onclick="selectStaff('${p.id}')">
-          ${p.name}
-        </div>
-      `).join("")}
-    </div>
-
-    <div style="margin-top:10px">
-      <b>Unavailable</b>
-      ${[...unavailable].map(id => `
-        <div class="chip unavail">
-          ${staffMap[id] || "Unknown"}
-        </div>
-      `).join("")}
-    </div>
-  `;
-};
-
-/* ================= STAFF SELECT ================= */
+/* ================= SELECTION ================= */
 window.selectStaff = function(id){
   selectedStaffId = id;
-  onServiceSelect(); // refresh UI only
+  renderInspector(selectedService);
 };
 
 /* ================= CARD ================= */
@@ -344,6 +279,109 @@ function card(service){
   `;
 }
 
+/* ================= INSPECTOR ================= */
+function inspector(){
+
+  const dates = [...new Set(services.map(s => s.service_date))];
+
+  return `
+    <div class="title">Service Inspector</div>
+
+    <select id="dateSel" onchange="onDate()">
+      <option value="">Select Date</option>
+      ${dates.map(d => `<option value="${d}">${d}</option>`).join("")}
+    </select>
+
+    <select id="serviceSel" onchange="onServiceSelect()"></select>
+
+    <div id="poolView" class="card">
+      Select service
+    </div>
+
+    <button class="danger" onclick="markUnavailable()" ${!selectedStaffId || !selectedService ? "disabled" : ""}>
+      Mark Unavailable
+    </button>
+  `;
+}
+
+/* ================= INSPECTOR RENDER ================= */
+function renderInspector(service){
+
+  if(!service) return;
+
+  const { available, unavailable } = getAvailable(service);
+
+  document.getElementById("poolView").innerHTML = `
+    
+    <div class="context">
+      ${service.service_slots?.label} • ${service.service_date}
+    </div>
+
+    <div><b>Available Staff</b></div>
+
+    ${available.map(p => `
+      <div class="chip avail ${selectedStaffId === p.id ? "selected" : ""}"
+        onclick="selectStaff('${p.id}')">
+        ${p.name}
+      </div>
+    `).join("")}
+
+    <div style="margin-top:10px"><b>Unavailable</b></div>
+
+    ${[...unavailable].map(id => `
+      <div class="chip unavail">
+        ${staffMap[id] || "Unknown"}
+      </div>
+    `).join("")}
+  `;
+}
+
+/* ================= DATE FILTER ================= */
+window.onDate = function(){
+
+  const date = document.getElementById("dateSel").value;
+
+  const filtered = services.filter(s => s.service_date === date);
+
+  document.getElementById("serviceSel").innerHTML = `
+    <option value="">Select</option>
+    ${filtered.map(s => `
+      <option value="${s.id}">
+        ${s.service_slots?.label}
+      </option>
+    `).join("")}
+  `;
+};
+
+/* ================= SERVICE SELECT ================= */
+window.onServiceSelect = function(){
+
+  const id = document.getElementById("serviceSel").value;
+
+  const service = services.find(s => String(s.id) === String(id));
+  if(!service) return;
+
+  selectedService = service;
+  renderInspector(service);
+};
+
+/* ================= MARK UNAVAILABLE ================= */
+window.markUnavailable = async function(){
+
+  if(!selectedService || !selectedStaffId) return;
+
+  await db.from("staff_availability").insert({
+    staff_id: selectedStaffId,
+    service_date: selectedService.service_date,
+    service_slot_id: selectedService.service_slot_id,
+    status: "unavailable"
+  });
+
+  selectedStaffId = null;
+  await load();
+  renderInspector(selectedService);
+};
+
 /* ================= RENDER ================= */
 function render(){
 
@@ -360,7 +398,7 @@ function render(){
     else cols.s2.push(s);
   });
 
-  document.getElementById("grid").innerHTML = `
+  grid.innerHTML = `
     <div class="col">
       <div class="title">Sat</div>
       ${cols.sat.map(card).join("")}
