@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Service Command Center</title>
+  <title>Service Command Center (Timeline)</title>
 
   <style>
     body{
@@ -38,7 +38,7 @@
 
     .main{
       display:grid;
-      grid-template-columns:2fr 1fr;
+      grid-template-columns:2.2fr 1fr;
       gap:10px;
       padding:10px;
     }
@@ -52,18 +52,18 @@
       overflow:auto;
     }
 
-    .service-card{
+    .service{
       border:1px solid #334155;
       border-radius:10px;
       padding:10px;
       margin-bottom:10px;
     }
 
-    .red{ border-left:4px solid #ef4444; }
-    .yellow{ border-left:4px solid #fbbf24; }
     .green{ border-left:4px solid #22c55e; }
+    .yellow{ border-left:4px solid #fbbf24; }
+    .red{ border-left:4px solid #ef4444; }
 
-    .role-row{
+    .role{
       display:flex;
       justify-content:space-between;
       font-size:12px;
@@ -75,44 +75,44 @@
       font-weight:bold;
     }
 
-    .staff-panel{
+    .staffItem{
+      display:flex;
+      justify-content:space-between;
       font-size:12px;
-    }
-
-    .tag{
-      padding:3px 6px;
+      margin:6px 0;
+      padding:6px;
+      border:1px solid #1f2937;
       border-radius:6px;
-      font-size:11px;
     }
 
-    .avail{ background:#16a34a; }
-    .unavail{ background:#ef4444; }
+    .avail{ color:#22c55e; }
+    .unavail{ color:#ef4444; }
+
   </style>
 </head>
 
 <body>
 
 <header>
-  📟 Service Command Center
+  📟 Service Command Center (Timeline View)
   <button onclick="load()">Refresh</button>
 </header>
 
 <!-- KPI -->
 <div class="kpi">
   <div class="kpi-card" id="kpiServices">Services: 0</div>
-  <div class="kpi-card" id="kpiCritical">Critical: 0</div>
   <div class="kpi-card" id="kpiMissing">Missing Roles: 0</div>
-  <div class="kpi-card" id="kpiAvail">Available Staff: 0</div>
+  <div class="kpi-card" id="kpiCritical">Critical Services: 0</div>
+  <div class="kpi-card" id="kpiStaff">Staff: 0</div>
 </div>
 
-<!-- MAIN -->
 <div class="main">
 
-  <!-- SERVICE OPS -->
+  <!-- SERVICE TIMELINE -->
   <div class="panel" id="servicePanel"></div>
 
   <!-- STAFF PANEL -->
-  <div class="panel staff-panel" id="staffPanel"></div>
+  <div class="panel" id="staffPanel"></div>
 
 </div>
 
@@ -130,7 +130,7 @@ async function load(){
 
   const res = await Promise.all([
     db.from("services").select("*, service_slots(label,time,location)"),
-    db.from("service_roles").select("role, service_id, staff_id"),
+    db.from("service_roles").select("service_id, role, staff_id"),
     db.from("staff").select("*"),
     db.from("staff_availability").select("*")
   ]);
@@ -147,75 +147,70 @@ async function load(){
   render();
 }
 
-/* =======================
-   BUILD ROLE MAP
-======================= */
-function buildRoleMap(){
-
-  const map = {};
-
-  roles.forEach(r => {
-
-    const key =
-      `${r.service_id}_${(r.role||"").toLowerCase()}`;
-
-    map[key] = r;
-  });
-
-  return map;
+/* =========================
+   SORT SERVICES (IMPORTANT FIX)
+========================= */
+function getSortedServices(){
+  return [...services].sort(
+    (a,b) => new Date(a.service_date) - new Date(b.service_date)
+  );
 }
 
-/* =======================
-   SERVICE HEALTH SCORE
-======================= */
-function getHealth(missingCount){
+/* =========================
+   ROLE MAP
+========================= */
+function getRoles(serviceId){
+  return roles.filter(r => r.service_id === serviceId);
+}
 
-  if(missingCount >= 2) return "red";
-  if(missingCount === 1) return "yellow";
+/* =========================
+   HEALTH SCORE
+========================= */
+function getHealth(missing){
+  if(missing >= 2) return "red";
+  if(missing === 1) return "yellow";
   return "green";
 }
 
-/* =======================
+/* =========================
    RENDER
-======================= */
+========================= */
 function render(){
 
-  const roleMap = buildRoleMap();
+  const sorted = getSortedServices();
 
   let totalMissing = 0;
-  let totalCritical = 0;
+  let critical = 0;
 
-  const serviceHtml = services.map(s => {
+  const serviceHtml = sorted.map(s => {
 
-    const serviceRoles = roles.filter(r => r.service_id === s.id);
+    const serviceRoles = getRoles(s.id);
 
     const expectedRoles = 6; // adjust if needed
-
     const missing = Math.max(0, expectedRoles - serviceRoles.length);
 
     totalMissing += missing;
 
-    if(missing >= 2) totalCritical++;
+    if(missing >= 2) critical++;
 
     const health = getHealth(missing);
 
     const roleHtml = serviceRoles.map(r => {
-
-      const staffName =
-        staffMap[r.staff_id] || "Unknown";
-
+      const name = staffMap[r.staff_id] || "Unknown";
       return `
-        <div class="role-row">
+        <div class="role">
           <div>${r.role}</div>
-          <div>${staffName}</div>
+          <div>${name}</div>
         </div>
       `;
     }).join("");
 
     return `
-      <div class="service-card ${health}">
-        <b>${s.service_slots?.label}</b><br>
-        <small>${s.service_date}</small>
+      <div class="service ${health}">
+        <b>${s.service_slots?.label}</b>
+        <div style="font-size:11px;color:#94a3b8">
+          ${s.service_date}
+        </div>
 
         <div style="margin-top:8px">
           ${roleHtml}
@@ -225,16 +220,18 @@ function render(){
           <div class="missing">
             ⚠ Missing Roles: ${missing}
           </div>
-        ` : `<div style="color:#22c55e">✔ Fully Staffed</div>`}
+        ` : `
+          <div style="color:#22c55e">✔ Fully Staffed</div>
+        `}
       </div>
     `;
   }).join("");
 
   document.getElementById("servicePanel").innerHTML = serviceHtml;
 
-  /* =======================
-     STAFF PANEL
-  ======================= */
+  /* =========================
+     STAFF INTELLIGENCE (GLOBAL)
+========================= */
 
   const availabilityMap = {};
 
@@ -244,17 +241,13 @@ function render(){
 
   const staffHtml = staff.map(s => {
 
-    const status =
-      availabilityMap[s.id] || "available";
+    const status = availabilityMap[s.id] || "available";
 
     return `
-      <div class="service-card">
-        <div style="display:flex;justify-content:space-between">
-          <b>${s.name}</b>
-
-          <span class="tag ${status === "available" ? "avail" : "unavail"}">
-            ${status}
-          </span>
+      <div class="staffItem">
+        <div>${s.name}</div>
+        <div class="${status === "available" ? "avail" : "unavail"}">
+          ${status}
         </div>
       </div>
     `;
@@ -262,20 +255,20 @@ function render(){
 
   document.getElementById("staffPanel").innerHTML = staffHtml;
 
-  /* =======================
+  /* =========================
      KPI
-  ======================= */
+========================= */
 
   document.getElementById("kpiServices").innerText =
     `Services: ${services.length}`;
 
-  document.getElementById("kpiCritical").innerText =
-    `Critical: ${totalCritical}`;
-
   document.getElementById("kpiMissing").innerText =
     `Missing Roles: ${totalMissing}`;
 
-  document.getElementById("kpiAvail").innerText =
+  document.getElementById("kpiCritical").innerText =
+    `Critical: ${critical}`;
+
+  document.getElementById("kpiStaff").innerText =
     `Staff: ${staff.length}`;
 }
 
