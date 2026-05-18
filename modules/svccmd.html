@@ -164,13 +164,9 @@ async function load(){
     staffList.map(s => [String(s.id), s.name])
   );
 
-  roleMap = {};
-  serviceRoles.forEach(r => {
-    const key = `${r.service_id}_${r.role?.toLowerCase()}`;
-    if(!roleMap[key] || new Date(r.created_at) > new Date(roleMap[key].created_at)){
-      roleMap[key] = r;
-    }
-  });
+function norm(v){
+  return (v || "").trim().toLowerCase();
+}
 
   poolMap = {};
   staffTemplates.forEach(t => {
@@ -211,9 +207,15 @@ function resolveServiceRoles(service){
 
 /* ================= ASSIGNED ================= */
 function getAssigned(serviceId, role){
-  const key = `${serviceId}_${role?.toLowerCase()}`;
-  const match = roleMap[key];
-  return match ? staffMap[match.staff_id] : "-";
+
+  const match = serviceRoles.find(r =>
+    String(r.service_id) === String(serviceId) &&
+    norm(r.role) === norm(role)
+  );
+
+  return match
+    ? (staffMap[match.staff_id] || "-")
+    : "-";
 }
 
 /* ================= CARD ================= */
