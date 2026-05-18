@@ -213,11 +213,17 @@ function getAssigned(serviceId, role){
     norm(r.role) === norm(role)
   );
 
-  if(!match || !match.staff_id) return "-";
+  console.log("ROLE MATCH:", match);
+
+  if(!match || !match.staff_id){
+    return "-";
+  }
 
   const staff = staffList.find(s =>
     String(s.id).trim() === String(match.staff_id).trim()
   );
+
+  console.log("STAFF MATCH:", staff);
 
   return staff ? staff.name : "-";
 }
