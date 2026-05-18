@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Service Command Center (Clean)</title>
+  <title>Service Command Center (Upgraded)</title>
 
   <style>
     body{
@@ -23,7 +23,7 @@
 
     .grid{
       display:grid;
-      grid-template-columns:repeat(4,1fr);
+      grid-template-columns:repeat(5,1fr);
       gap:10px;
       padding:10px;
     }
@@ -63,10 +63,18 @@
     .role{ flex:1; }
     .staff{ color:#22c55e; font-weight:bold; }
 
-    .pool{
-      margin-top:10px;
-      padding-top:8px;
-      border-top:1px solid #1f2937;
+    select{
+      width:100%;
+      padding:6px;
+      margin-bottom:10px;
+      border-radius:6px;
+      background:#0f172a;
+      color:white;
+      border:1px solid #334155;
+    }
+
+    .poolBox{
+      font-size:12px;
     }
 
     button{
@@ -128,12 +136,12 @@ async function load(){
   serviceRoles = sr.data || [];
   staffTemplates = tpl.data || [];
 
-  /* ================= STAFF MAP ================= */
+  /* STAFF MAP */
   staffMap = Object.fromEntries(
     staffList.map(s => [String(s.id), s.name])
   );
 
-  /* ================= ROLE MAP (latest assignment only) ================= */
+  /* ROLE MAP */
   roleMap = {};
 
   serviceRoles.forEach(r => {
@@ -151,28 +159,27 @@ async function load(){
     }
   });
 
-  /* ================= TEMPLATE POOL MAP (FIXED CORE) ================= */
+  /* TEMPLATE POOL MAP (GLOBAL) */
   templatePoolMap = {};
 
   staffTemplates.forEach(t => {
 
-    const templateId = String(t.template_id);
-    const staffId = String(t.staff_id);
+    const tid = String(t.template_id);
 
-    if (!templatePoolMap[templateId]) {
-      templatePoolMap[templateId] = [];
+    if(!templatePoolMap[tid]){
+      templatePoolMap[tid] = [];
     }
 
-    templatePoolMap[templateId].push({
-      id: staffId,
-      name: staffMap[staffId] || "Unknown"
+    templatePoolMap[tid].push({
+      id: t.staff_id,
+      name: staffMap[t.staff_id] || "Unknown"
     });
   });
 
   render();
 }
 
-/* ================= GET ASSIGNED STAFF ================= */
+/* ================= ASSIGNMENT ================= */
 function getAssigned(serviceId, role){
 
   const key =
@@ -194,9 +201,9 @@ function card(service){
 
   const filteredRoles = service.is_communion_service
     ? roles
-    : roles.filter(r => !(r.role || "").toLowerCase().includes("communion"));
-
-  const pool = templatePoolMap[String(service.service_template_id)] || [];
+    : roles.filter(r =>
+        !(r.role || "").toLowerCase().includes("communion")
+      );
 
   return `
     <div class="card">
@@ -216,21 +223,46 @@ function card(service){
         `).join("")}
       </div>
 
-      <div class="pool">
-        <b style="font-size:12px;color:#fbbf24">Staff Pool (Template)</b>
-
-        ${pool.length === 0 ? `
-          <div style="font-size:11px;color:#94a3b8">No pool assigned</div>
-        ` : pool.map(p => `
-          <div class="row">
-            <div class="role">${p.name}</div>
-          </div>
-        `).join("")}
-      </div>
-
     </div>
   `;
 }
+
+/* ================= COLUMN 5 ================= */
+function poolColumn(){
+
+  const templateIds = Object.keys(templatePoolMap);
+
+  return `
+    <div class="title">Staff Pool (Template Viewer)</div>
+
+    <select onchange="showPool(this.value)">
+      <option value="">Select Template</option>
+      ${templateIds.map(tid => `
+        <option value="${tid}">
+          Template ${tid}
+        </option>
+      `).join("")}
+    </select>
+
+    <div id="poolView" class="card poolBox">
+      Select a template to view staff
+    </div>
+  `;
+}
+
+window.showPool = function(tid){
+
+  const pool = templatePoolMap[tid] || [];
+
+  document.getElementById("poolView").innerHTML =
+    pool.length === 0
+      ? "No staff assigned"
+      : pool.map(p => `
+          <div class="row">
+            <div>${p.name}</div>
+          </div>
+        `).join("");
+};
 
 /* ================= RENDER ================= */
 function render(){
@@ -267,6 +299,10 @@ function render(){
     <div class="col">
       <div class="title">Sunday Jurong</div>
       ${jurong.map(card).join("")}
+    </div>
+
+    <div class="col">
+      ${poolColumn()}
     </div>
   `;
 }
