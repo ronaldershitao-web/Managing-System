@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Service Board + Staff Pool</title>
+  <title>Service Command Center</title>
 
   <style>
     body{
@@ -12,16 +12,15 @@
     }
 
     header{
-      padding:14px;
+      padding:12px;
       background:#111827;
       font-weight:bold;
-      display:flex;
-      justify-content:space-between;
+      border-bottom:1px solid #1f2937;
     }
 
     .grid{
       display:grid;
-      grid-template-columns:repeat(5, 1fr);
+      grid-template-columns:repeat(5,1fr);
       gap:10px;
       padding:10px;
     }
@@ -31,30 +30,48 @@
       border:1px solid #1f2937;
       border-radius:10px;
       padding:10px;
-      min-height:90vh;
+      height:85vh;
       overflow:auto;
     }
 
     .title{
-      font-weight:bold;
       color:#fbbf24;
+      font-weight:bold;
       margin-bottom:10px;
-      font-size:13px;
     }
 
     .card{
       background:#0f172a;
       border:1px solid #334155;
-      border-radius:8px;
+      border-radius:10px;
       padding:10px;
       margin-bottom:10px;
-      font-size:12px;
     }
 
-    .staff{
-      color:#22c55e;
+    .service-date{
       font-size:11px;
-      margin-top:4px;
+      color:#94a3b8;
+    }
+
+    .row{
+      display:flex;
+      justify-content:space-between;
+      margin:6px 0;
+      font-size:12px;
+      gap:8px;
+    }
+
+    .role{flex:1}
+    .staff{
+      font-weight:bold;
+      color:#22c55e;
+      min-width:110px;
+      text-align:right;
+    }
+
+    .unassigned{
+      color:#ef4444;
+      font-weight:bold;
     }
   </style>
 </head>
@@ -62,7 +79,8 @@
 <body>
 
 <header>
-  Service Ops Board (5 Columns)
+  Service Command Center
+  <button onclick="load()">Refresh</button>
 </header>
 
 <div class="grid" id="grid"></div>
@@ -70,130 +88,189 @@
 <script type="module">
 import { db } from "../assets/app.js";
 
+/* ================= STATE ================= */
 let services = [];
+let templateRoles = [];
+let serviceRoles = [];
+let staffList = [];
+
 let staffMap = {};
-let templateStaff = [];
+let roleMap = {};
 
 /* ================= LOAD ================= */
 async function load(){
 
   const [
-    s,
-    st,
-    ts
+    sRes,
+    trRes,
+    srRes,
+    stRes
   ] = await Promise.all([
 
     db.from("services")
-      .select("* , service_slots(label,time,location)")
+      .select("*, service_slots(label,time,location)")
       .order("service_date",{ascending:true}),
 
-    db.from("staff").select("*"),
+    db.from("service_template_roles").select("*"),
 
-    db.from("staff_service_templates").select("*")
+    db.from("service_roles").select(`
+      service_id,
+      role,
+      staff_id,
+      staff:staff_id (
+        id,
+        name
+      )
+    `),
+
+    db.from("staff").select("*")
   ]);
 
-  services = s.data || [];
+  services = sRes.data || [];
+  templateRoles = trRes.data || [];
+  serviceRoles = srRes.data || [];
+  staffList = stRes.data || [];
 
+  /* staff map */
   staffMap = Object.fromEntries(
-    (st.data || []).map(s => [s.id, s.name])
+    staffList.map(s => [String(s.id), s.name])
   );
 
-  templateStaff = ts.data || [];
+  /* latest assignment per service-role */
+  roleMap = {};
+
+  serviceRoles.forEach(r => {
+
+    const key =
+      `${r.service_id}_${String(r.role || "").toLowerCase()}`;
+
+    roleMap[key] = r;
+  });
 
   render();
 }
 
-/* ================= GET STAFF POOL ================= */
-function getStaffPool(service){
+/* ================= ROLE BUILDER ================= */
+function buildRoles(service){
 
-  return templateStaff
-    .filter(t =>
-      String(t.template_id) === String(service.service_template_id)
-    )
-    .map(t => staffMap[t.staff_id])
-    .filter(Boolean);
+  const template = templateRoles.filter(t =>
+    String(t.template_id) === String(service.service_template_id)
+  );
+
+  const isComm = service.is_communion_service;
+
+  const filtered = isComm
+    ? template
+    : template.filter(t =>
+        !t.role.toLowerCase().includes("communion")
+      );
+
+  return filtered.map(r => {
+
+    const key =
+      `${service.id}_${r.role.toLowerCase()}`;
+
+    const assigned = roleMap[key];
+
+    const name =
+      assigned?.staff?.name ||
+      staffMap[assigned?.staff_id] ||
+      null;
+
+    return {
+      role: r.role,
+      staff: name
+    };
+  });
+}
+
+/* ================= CARD ================= */
+function card(service){
+
+  const roles = buildRoles(service);
+
+  return `
+    <div class="card">
+
+      <div style="font-weight:bold">
+        ${service.service_slots?.label}
+      </div>
+
+      <div class="service-date">
+        ${service.service_date}
+      </div>
+
+      ${roles.map(r => `
+        <div class="row">
+          <div class="role">${r.role}</div>
+          <div class="staff ${
+            !r.staff ? "unassigned" : ""
+          }">
+            ${r.staff || "UNASSIGNED"}
+          </div>
+        </div>
+      `).join("")}
+
+    </div>
+  `;
 }
 
 /* ================= RENDER ================= */
 function render(){
 
-  const sat=[], s830=[], s1045=[], jurong=[], pool=[];
+  const sat = [];
+  const s830 = [];
+  const s1045 = [];
+  const jurong = [];
 
-  services.forEach(s => {
+  services
+    .forEach(s => {
 
-    const label = (s.service_slots?.label || "").toLowerCase();
-    const loc = (s.service_slots?.location || "").toLowerCase();
+      const label = (s.service_slots?.label || "").toLowerCase();
+      const loc = (s.service_slots?.location || "").toLowerCase();
 
-    if(loc.includes("jurong")) jurong.push(s);
-    else if(label.includes("saturday")) sat.push(s);
-    else if(label.includes("8.30")) s830.push(s);
-    else if(label.includes("10.45")) s1045.push(s);
-
-    pool.push(s);
-  });
+      if(loc.includes("jurong")) jurong.push(s);
+      else if(label.includes("sat")) sat.push(s);
+      else if(label.includes("8.30")) s830.push(s);
+      else if(label.includes("10.45")) s1045.push(s);
+    });
 
   document.getElementById("grid").innerHTML = `
-
     <div class="col">
-      <div class="title">Saturday</div>
+      <div class="title">Saturday Service</div>
       ${sat.map(card).join("")}
     </div>
 
     <div class="col">
-      <div class="title">8.30am</div>
+      <div class="title">Sunday 8.30am</div>
       ${s830.map(card).join("")}
     </div>
 
     <div class="col">
-      <div class="title">10.45am</div>
+      <div class="title">Sunday 10.45am</div>
       ${s1045.map(card).join("")}
     </div>
 
     <div class="col">
-      <div class="title">Jurong</div>
+      <div class="title">Sunday Jurong</div>
       ${jurong.map(card).join("")}
     </div>
 
     <div class="col">
-      <div class="title">Staff Pool (Template)</div>
-      ${poolCard(pool)}
-    </div>
-
-  `;
-}
-
-/* ================= SERVICE CARD ================= */
-function card(s){
-
-  return `
-    <div class="card">
-      <div><b>${s.service_slots?.label}</b></div>
-      <div>${s.service_date}</div>
-    </div>
-  `;
-}
-
-/* ================= STAFF POOL ================= */
-function poolCard(services){
-
-  return services.map(s => {
-
-    const staff = getStaffPool(s);
-
-    return `
-      <div class="card">
-        <div><b>${s.service_slots?.label}</b></div>
-
-        <div class="staff">
-          ${staff.length ? staff.join("<br>") : "No staff mapped"}
+      <div class="title">Staff Pool (Template View)</div>
+      ${templateRoles.slice(0,50).map(t => `
+        <div class="row">
+          <div class="role">${t.role}</div>
+          <div class="staff">TEMPLATE</div>
         </div>
-      </div>
-    `;
-  }).join("");
+      `).join("")}
+    </div>
+  `;
 }
 
-load();
+/* ================= INIT ================= */
 window.load = load;
+load();
 
 </script>
 
