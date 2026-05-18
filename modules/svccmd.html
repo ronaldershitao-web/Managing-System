@@ -237,7 +237,7 @@ function card(service){
           <div style="display:flex; gap:6px; align-items:center;">
             <div class="staff">${getAssigned(service.id, r.role)}</div>
             <button class="assignBtn"
-              onclick="openAssign('${service.id}','${r.role}')">
+              onclick="openModal('${service.id}','${r.role}')"
               Assign
             </button>
           </div>
@@ -264,7 +264,7 @@ function card(service){
                 <div style="display:flex; gap:6px; align-items:center;">
                   <div class="staff">${getAssigned(service.id, r.role)}</div>
                   <button class="assignBtn"
-                    onclick="openAssign('${service.id}','${r.role}')">
+                    onclick="openModal('${service.id}','${r.role}')">
                     Assign
                   </button>
                 </div>
@@ -280,27 +280,26 @@ function card(service){
 }
 
 /* ================= OPEN ASSIGN ================= */
-window.openAssign = function(serviceId, role){
+window.openModal = function(serviceId, role){
 
   selectedService = services.find(s => String(s.id) === String(serviceId));
   selectedRole = role;
 
-  selectedStaffId = null;
+  const pool = poolMap[selectedService.service_template_id] || [];
 
-  render();
+  document.getElementById("modalStaffList").innerHTML = pool.map(p => `
+    <div class="chip avail" onclick="assignRole('${p.id}')">
+      ${p.name}
+    </div>
+  `).join("");
 
-  setTimeout(() => {
-    const sel = document.getElementById("serviceSel");
-    if(sel && selectedService){
-      sel.innerHTML = `
-        <option value="${selectedService.id}" selected>
-          ${selectedService.service_slots?.label} (${role})
-        </option>
-      `;
-    }
+  document.getElementById("assignModal").style.display = "flex";
+};
 
-    renderInspector(selectedService);
-  }, 50);
+  window.closeModal = function(){
+  document.getElementById("assignModal").style.display = "none";
+  selectedService = null;
+  selectedRole = null;
 };
 
 /* ================= INSPECTOR ================= */
@@ -428,6 +427,24 @@ window.markUnavailable = async function(){
   renderInspector(selectedService);
 };
 
+  window.assignRole = async function(){
+
+  if(!selectedService || !selectedRole || !selectedStaffId) return;
+
+  await db.from("service_roles").insert({
+    service_id: selectedService.id,
+    role: selectedRole,
+    staff_id: selectedStaffId
+  });
+
+  selectedStaffId = null;
+  selectedRole = null;
+
+  await load();
+closeModal();
+render();
+};
+
 /* ================= GRID ================= */
 function render(){
 
@@ -474,7 +491,36 @@ function render(){
 window.load = load;
 load();
 
+  
+
 </script>
 
+<div id="assignModal" style="
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,0.7);
+  display:none;
+  align-items:center;
+  justify-content:center;
+  z-index:999;
+">
+  <div style="
+    background:#111827;
+    width:320px;
+    padding:15px;
+    border-radius:10px;
+    max-height:80vh;
+    overflow:auto;
+  ">
+    <h3 style="margin-top:0;">Assign Staff</h3>
+
+    <div id="modalStaffList"></div>
+
+    <button onclick="closeModal()" style="margin-top:10px;background:#ef4444;">
+      Close
+    </button>
+  </div>
+</div>
+  
 </body>
 </html>
