@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Service Command Center (Timeline)</title>
+  <title>Service Command Center</title>
 
   <style>
     body{
@@ -12,264 +12,184 @@
     }
 
     header{
-      padding:12px;
+      padding:14px;
       background:#111827;
+      font-size:18px;
+      font-weight:bold;
       display:flex;
       justify-content:space-between;
-      align-items:center;
+    }
+
+    .container{
+      padding:14px;
+    }
+
+    .service-card{
+      background:#111827;
+      border:1px solid #334155;
+      border-radius:10px;
+      margin-bottom:12px;
+      padding:12px;
+    }
+
+    .service-title{
       font-weight:bold;
-      border-bottom:1px solid #1f2937;
+      color:#fbbf24;
+      margin-bottom:6px;
     }
 
-    .kpi{
-      display:grid;
-      grid-template-columns:repeat(4,1fr);
-      gap:10px;
-      padding:10px;
-    }
-
-    .kpi-card{
-      background:#111827;
-      border:1px solid #334155;
-      border-radius:10px;
-      padding:10px;
+    .meta{
       font-size:12px;
-    }
-
-    .main{
-      display:grid;
-      grid-template-columns:2.2fr 1fr;
-      gap:10px;
-      padding:10px;
-    }
-
-    .panel{
-      background:#111827;
-      border:1px solid #334155;
-      border-radius:10px;
-      padding:10px;
-      height:85vh;
-      overflow:auto;
-    }
-
-    .service{
-      border:1px solid #334155;
-      border-radius:10px;
-      padding:10px;
+      color:#94a3b8;
       margin-bottom:10px;
     }
 
-    .green{ border-left:4px solid #22c55e; }
-    .yellow{ border-left:4px solid #fbbf24; }
-    .red{ border-left:4px solid #ef4444; }
-
-    .role{
+    .role-row{
       display:flex;
       justify-content:space-between;
       font-size:12px;
-      margin:5px 0;
+      padding:4px 0;
+      border-bottom:1px solid #1f2937;
+    }
+
+    .role{
+      flex:1;
+    }
+
+    .staff{
+      font-weight:bold;
+      color:#22c55e;
     }
 
     .missing{
       color:#ef4444;
-      font-weight:bold;
     }
 
-    .staffItem{
-      display:flex;
-      justify-content:space-between;
-      font-size:12px;
-      margin:6px 0;
-      padding:6px;
-      border:1px solid #1f2937;
-      border-radius:6px;
+    .badge{
+      font-size:10px;
+      padding:2px 6px;
+      border-radius:4px;
+      margin-left:6px;
     }
 
-    .avail{ color:#22c55e; }
-    .unavail{ color:#ef4444; }
+    .ok{ background:#16a34a; }
+    .warn{ background:#f59e0b; }
+    .bad{ background:#ef4444; }
 
+    .grid{
+      display:grid;
+      grid-template-columns:1fr;
+      gap:10px;
+    }
   </style>
 </head>
 
 <body>
 
 <header>
-  📟 Service Command Center (Timeline View)
+  Service Command Center
   <button onclick="load()">Refresh</button>
 </header>
 
-<!-- KPI -->
-<div class="kpi">
-  <div class="kpi-card" id="kpiServices">Services: 0</div>
-  <div class="kpi-card" id="kpiMissing">Missing Roles: 0</div>
-  <div class="kpi-card" id="kpiCritical">Critical Services: 0</div>
-  <div class="kpi-card" id="kpiStaff">Staff: 0</div>
-</div>
-
-<div class="main">
-
-  <!-- SERVICE TIMELINE -->
-  <div class="panel" id="servicePanel"></div>
-
-  <!-- STAFF PANEL -->
-  <div class="panel" id="staffPanel"></div>
-
-</div>
+<div class="container" id="container"></div>
 
 <script type="module">
 import { db } from "../assets/app.js";
 
 let services = [];
 let roles = [];
-let staff = [];
-let availability = [];
-
 let staffMap = {};
+let availability = [];
 
 async function load(){
 
-  const res = await Promise.all([
-    db.from("services").select("*, service_slots(label,time,location)"),
-    db.from("service_roles").select("service_id, role, staff_id"),
+  const [
+    s,
+    r,
+    st,
+    av
+  ] = await Promise.all([
+    db.from("services").select(`
+      *,
+      service_slots(label,time,location)
+    `).order("service_date",{ascending:true}),
+
+    db.from("service_roles").select(`
+      id,
+      service_id,
+      role,
+      staff_id,
+      created_at,
+      staff:staff_id(id,name)
+    `),
+
     db.from("staff").select("*"),
+
     db.from("staff_availability").select("*")
   ]);
 
-  services = res[0].data || [];
-  roles = res[1].data || [];
-  staff = res[2].data || [];
-  availability = res[3].data || [];
+  services = s.data || [];
+  roles = r.data || [];
+  availability = av.data || [];
 
   staffMap = Object.fromEntries(
-    staff.map(s => [String(s.id), s.name])
+    (st.data || []).map(s => [s.id, s.name])
   );
 
   render();
 }
 
-/* =========================
-   SORT SERVICES (IMPORTANT FIX)
-========================= */
-function getSortedServices(){
-  return [...services].sort(
-    (a,b) => new Date(a.service_date) - new Date(b.service_date)
+function getStaffName(r){
+  return r.staff?.name || staffMap[r.staff_id] || "Unassigned";
+}
+
+function getServiceRoles(serviceId){
+
+  return roles.filter(r =>
+    r.service_id === serviceId
   );
 }
 
-/* =========================
-   ROLE MAP
-========================= */
-function getRoles(serviceId){
-  return roles.filter(r => r.service_id === serviceId);
-}
-
-/* =========================
-   HEALTH SCORE
-========================= */
-function getHealth(missing){
-  if(missing >= 2) return "red";
-  if(missing === 1) return "yellow";
-  return "green";
-}
-
-/* =========================
-   RENDER
-========================= */
 function render(){
 
-  const sorted = getSortedServices();
+  const container = document.getElementById("container");
+  container.innerHTML = "";
 
-  let totalMissing = 0;
-  let critical = 0;
+  services.forEach(service => {
 
-  const serviceHtml = sorted.map(s => {
+    const serviceRoles = getServiceRoles(service.id);
 
-    const serviceRoles = getRoles(s.id);
+    const htmlRoles = serviceRoles.map(r => {
 
-    const expectedRoles = 6; // adjust if needed
-    const missing = Math.max(0, expectedRoles - serviceRoles.length);
+      const name = getStaffName(r);
 
-    totalMissing += missing;
-
-    if(missing >= 2) critical++;
-
-    const health = getHealth(missing);
-
-    const roleHtml = serviceRoles.map(r => {
-      const name = staffMap[r.staff_id] || "Unknown";
       return `
-        <div class="role">
-          <div>${r.role}</div>
-          <div>${name}</div>
+        <div class="role-row">
+          <div class="role">${r.role}</div>
+
+          <div class="staff">
+            ${name}
+          </div>
         </div>
       `;
     }).join("");
 
-    return `
-      <div class="service ${health}">
-        <b>${s.service_slots?.label}</b>
-        <div style="font-size:11px;color:#94a3b8">
-          ${s.service_date}
+    container.innerHTML += `
+      <div class="service-card">
+
+        <div class="service-title">
+          ${service.service_slots?.label || "Service"}
         </div>
 
-        <div style="margin-top:8px">
-          ${roleHtml}
+        <div class="meta">
+          ${service.service_date}
         </div>
 
-        ${missing > 0 ? `
-          <div class="missing">
-            ⚠ Missing Roles: ${missing}
-          </div>
-        ` : `
-          <div style="color:#22c55e">✔ Fully Staffed</div>
-        `}
+        ${htmlRoles || `<div class="missing">No roles assigned</div>`}
+
       </div>
     `;
-  }).join("");
-
-  document.getElementById("servicePanel").innerHTML = serviceHtml;
-
-  /* =========================
-     STAFF INTELLIGENCE (GLOBAL)
-========================= */
-
-  const availabilityMap = {};
-
-  availability.forEach(a => {
-    availabilityMap[a.staff_id] = a.status;
   });
-
-  const staffHtml = staff.map(s => {
-
-    const status = availabilityMap[s.id] || "available";
-
-    return `
-      <div class="staffItem">
-        <div>${s.name}</div>
-        <div class="${status === "available" ? "avail" : "unavail"}">
-          ${status}
-        </div>
-      </div>
-    `;
-  }).join("");
-
-  document.getElementById("staffPanel").innerHTML = staffHtml;
-
-  /* =========================
-     KPI
-========================= */
-
-  document.getElementById("kpiServices").innerText =
-    `Services: ${services.length}`;
-
-  document.getElementById("kpiMissing").innerText =
-    `Missing Roles: ${totalMissing}`;
-
-  document.getElementById("kpiCritical").innerText =
-    `Critical: ${critical}`;
-
-  document.getElementById("kpiStaff").innerText =
-    `Staff: ${staff.length}`;
 }
 
 window.load = load;
