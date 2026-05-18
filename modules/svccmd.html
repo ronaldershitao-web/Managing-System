@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Service Command Center (Stable + Inspector UX Upgrade)</title>
+  <title>Service Command Center (Stable UX Fix)</title>
 
   <style>
     body{
@@ -94,24 +94,39 @@
       background:#ef4444;
     }
 
+    /* ===== STAFF CHIPS (FIXED UX) ===== */
     .chip{
       padding:6px 8px;
       border-radius:8px;
       font-size:12px;
       border:1px solid #334155;
       margin:4px 0;
+      cursor:pointer;
+      transition:0.15s;
+      user-select:none;
     }
 
-    .avail { color:#22c55e; }
-    .unavail { color:#ef4444; }
-
-    /* ===== selection highlight ===== */
-    .selected-service {
-      border: 1px solid #60a5fa;
-      background: #1e3a8a;
-      box-shadow: 0 0 0 1px #3b82f6;
+    .chip:hover{
+      background:#1f2937;
+      transform: translateX(2px);
     }
 
+    .avail{
+      color:#22c55e;
+      border-left:3px solid #22c55e;
+    }
+
+    .unavail{
+      color:#ef4444;
+      border-left:3px solid #ef4444;
+    }
+
+    /* selection highlight */
+    .selected{
+      background:#1d4ed8 !important;
+      border:1px solid #60a5fa !important;
+      color:white !important;
+    }
   </style>
 </head>
 
@@ -139,13 +154,14 @@ let staffMap = {};
 let roleMap = {};
 let poolMap = {};
 
-let selectedServiceId = null;
+let selectedStaffId = null;
 
 /* ================= LOAD ================= */
 async function load(){
 
   const [s, st, tr, sr, tpl, av] = await Promise.all([
-    db.from("services").select("* , service_slots(label,time,location)")
+    db.from("services")
+      .select("* , service_slots(label,time,location)")
       .order("service_date",{ascending:true}),
     db.from("staff").select("*"),
     db.from("service_template_roles").select("*"),
@@ -223,35 +239,32 @@ function inspector(){
     <div id="poolView" class="card">
       Select service
     </div>
-
-    <button id="unavailBtn" class="danger" onclick="markUnavailable()" disabled>
-      Mark Unavailable
-    </button>
   `;
 }
 
-/* ================= INSPECTOR LOGIC ================= */
+/* ================= DATE FILTER (FIXED) ================= */
 window.onDate = function(){
 
   const date = document.getElementById("dateSel").value;
 
-  const filtered = services.filter(s => s.service_date === date);
+  const filtered = services.filter(s =>
+    String(s.service_date) === String(date)
+  );
 
   document.getElementById("serviceSel").innerHTML = `
-    <option value="">Select</option>
+    <option value="">Select Service</option>
     ${filtered.map(s => `
       <option value="${s.id}">
-        ${s.service_slots?.label}
+        ${s.service_slots?.label || "Service"} ${s.start_time ? "(" + s.start_time + ")" : ""}
       </option>
     `).join("")}
   `;
 };
 
+/* ================= SERVICE SELECT ================= */
 window.onServiceSelect = function(){
 
   const id = document.getElementById("serviceSel").value;
-
-  selectedServiceId = id;
 
   const service = services.find(s => String(s.id) === String(id));
   if(!service) return;
@@ -273,53 +286,37 @@ window.onServiceSelect = function(){
   const available = pool.filter(p => !unavailable.has(String(p.id)));
 
   document.getElementById("poolView").innerHTML = `
-    <div class="${selectedServiceId === id ? 'selected-service' : ''}">
-    
-      <b>${service.service_slots?.label}</b>
+    <b>${service.service_slots?.label}</b>
 
-      <div style="font-size:11px;color:#94a3b8">
-        ${service.service_date}
-      </div>
+    <div style="font-size:11px;color:#94a3b8">
+      ${service.service_date}
+    </div>
 
-      <div style="margin-top:10px">
-        <b>Available Staff</b>
-        ${available.map(p => `
-          <div class="chip avail">
-            ${p.name}
-          </div>
-        `).join("")}
-      </div>
+    <div style="margin-top:10px">
+      <b>Available Staff (clickable)</b>
+      ${available.map(p => `
+        <div class="chip avail ${selectedStaffId === p.id ? 'selected' : ''}"
+          onclick="selectStaff('${p.id}')">
+          ${p.name}
+        </div>
+      `).join("")}
+    </div>
 
-      <div style="margin-top:10px">
-        <b>Unavailable</b>
-        ${[...unavailable].map(id => `
-          <div class="chip unavail">
-            ${staffMap[id] || "Unknown"}
-          </div>
-        `).join("")}
-      </div>
-
+    <div style="margin-top:10px">
+      <b>Unavailable</b>
+      ${[...unavailable].map(id => `
+        <div class="chip unavail">
+          ${staffMap[id] || "Unknown"}
+        </div>
+      `).join("")}
     </div>
   `;
-
-  document.getElementById("unavailBtn").disabled = !selectedServiceId;
 };
 
-/* ================= MARK UNAVAILABLE ================= */
-window.markUnavailable = async function(){
-
-  if(!selectedServiceId) return;
-
-  const service = services.find(s => String(s.id) === String(selectedServiceId));
-  if(!service) return;
-
-  await db.from("staff_availability").insert({
-    service_date: service.service_date,
-    service_slot_id: service.service_slot_id,
-    status: "unavailable"
-  });
-
-  await load();
+/* ================= STAFF SELECT ================= */
+window.selectStaff = function(id){
+  selectedStaffId = id;
+  onServiceSelect(); // refresh UI only
 };
 
 /* ================= CARD ================= */
