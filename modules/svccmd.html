@@ -57,20 +57,28 @@
       font-size:12px;
       margin:6px 0;
       align-items:center;
+      gap:8px;
     }
 
     .role{ flex:1; }
     .staff{ color:#22c55e; font-weight:bold; }
 
-    select{
-      width:100%;
-      padding:6px;
-      margin-bottom:8px;
-      background:#0f172a;
+    button{
+      font-size:11px;
+      padding:6px 8px;
+      background:#3b82f6;
+      border:none;
       color:white;
-      border:1px solid #334155;
       border-radius:6px;
+      cursor:pointer;
     }
+
+    .assignBtn{
+      background:#2563eb;
+      white-space:nowrap;
+    }
+
+    .danger{ background:#ef4444; }
 
     .chip{
       padding:6px 8px;
@@ -90,25 +98,6 @@
       border:1px solid #60a5fa;
       color:white;
       font-weight:bold;
-    }
-
-    button{
-      font-size:11px;
-      padding:6px 8px;
-      background:#3b82f6;
-      border:none;
-      color:white;
-      border-radius:6px;
-      cursor:pointer;
-      width:100%;
-      margin-top:10px;
-    }
-
-    .danger{ background:#ef4444; }
-
-    .assignBtn{
-      margin-top:8px;
-      background:#2563eb;
     }
 
     .assignBanner{
@@ -149,6 +138,7 @@ let poolMap = {};
 
 let selectedStaffId = null;
 let selectedService = null;
+let selectedRole = null;   // ✅ NEW
 
 /* ================= LOAD ================= */
 async function load(){
@@ -239,13 +229,23 @@ function card(service){
         ${service.service_date}
       </div>
 
+      <!-- NON HC -->
       ${nonHC.map(r => `
         <div class="row">
           <div class="role">${r.role}</div>
-          <div class="staff">${getAssigned(service.id, r.role)}</div>
+
+          <div style="display:flex; gap:6px; align-items:center;">
+            <div class="staff">${getAssigned(service.id, r.role)}</div>
+            <button class="assignBtn"
+              onclick="openAssign('${service.id}','${r.role}')">
+              Assign
+            </button>
+          </div>
+
         </div>
       `).join("")}
 
+      <!-- HC -->
       ${service.is_communion_service ? `
         <div style="margin-top:10px;color:#fbbf24;font-weight:bold;">
           Holy Communion
@@ -260,21 +260,48 @@ function card(service){
             ${hcGrouped[group].map(r => `
               <div class="row">
                 <div class="role">${r.role}</div>
-                <div class="staff">${getAssigned(service.id, r.role)}</div>
+
+                <div style="display:flex; gap:6px; align-items:center;">
+                  <div class="staff">${getAssigned(service.id, r.role)}</div>
+                  <button class="assignBtn"
+                    onclick="openAssign('${service.id}','${r.role}')">
+                    Assign
+                  </button>
+                </div>
+
               </div>
             `).join("")}
           </div>
         `).join("")}
       ` : ""}
 
-      <!-- ✅ NEW: ASSIGN BUTTON -->
-      <button class="assignBtn" onclick="openInspector('${service.id}')">
-        Open Inspector
-      </button>
-
     </div>
   `;
 }
+
+/* ================= OPEN ASSIGN ================= */
+window.openAssign = function(serviceId, role){
+
+  selectedService = services.find(s => String(s.id) === String(serviceId));
+  selectedRole = role;
+
+  selectedStaffId = null;
+
+  render();
+
+  setTimeout(() => {
+    const sel = document.getElementById("serviceSel");
+    if(sel && selectedService){
+      sel.innerHTML = `
+        <option value="${selectedService.id}" selected>
+          ${selectedService.service_slots?.label} (${role})
+        </option>
+      `;
+    }
+
+    renderInspector(selectedService);
+  }, 50);
+};
 
 /* ================= INSPECTOR ================= */
 function inspector(){
@@ -299,30 +326,6 @@ function inspector(){
   `;
 }
 
-/* ================= OPEN INSPECTOR FROM CARD ================= */
-window.openInspector = function(serviceId){
-
-  const service = services.find(s => String(s.id) === String(serviceId));
-  if(!service) return;
-
-  selectedService = service;
-  selectedStaffId = null;
-
-  render();
-
-  setTimeout(() => {
-    const sel = document.getElementById("serviceSel");
-    if(sel){
-      sel.innerHTML = `
-        <option value="${service.id}" selected>
-          ${service.service_slots?.label}
-        </option>
-      `;
-    }
-    renderInspector(service);
-  }, 50);
-};
-
 /* ================= INSPECTOR RENDER ================= */
 function renderInspector(service){
 
@@ -344,6 +347,9 @@ function renderInspector(service){
 
   document.getElementById("poolView").innerHTML = `
     <div class="assignBanner">
+      ${selectedRole
+        ? `Assigning Role: <b>${selectedRole}</b><br>`
+        : ""}
       ${selectedStaffId
         ? `Selected: <b>${staffMap[selectedStaffId]}</b>`
         : "No staff selected"}
@@ -416,6 +422,8 @@ window.markUnavailable = async function(){
   });
 
   selectedStaffId = null;
+  selectedRole = null;
+
   await load();
   renderInspector(selectedService);
 };
