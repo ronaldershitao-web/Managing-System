@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Service Command Center</title>
+  <title>Service Command Center (Clean)</title>
 
   <style>
     body{
@@ -16,11 +16,14 @@
       background:#111827;
       font-weight:bold;
       border-bottom:1px solid #1f2937;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
     }
 
     .grid{
       display:grid;
-      grid-template-columns:repeat(5,1fr);
+      grid-template-columns:repeat(4,1fr);
       gap:10px;
       padding:10px;
     }
@@ -30,13 +33,13 @@
       border:1px solid #1f2937;
       border-radius:10px;
       padding:10px;
-      height:85vh;
+      min-height:85vh;
       overflow:auto;
     }
 
     .title{
-      color:#fbbf24;
       font-weight:bold;
+      color:#fbbf24;
       margin-bottom:10px;
     }
 
@@ -48,42 +51,32 @@
       margin-bottom:10px;
     }
 
-    .date{
-      font-size:11px;
-      color:#94a3b8;
-    }
-
     .row{
       display:flex;
       justify-content:space-between;
+      align-items:center;
       font-size:12px;
       margin:6px 0;
-      gap:8px;
+      gap:10px;
     }
 
-    .role{flex:1}
-
-    .staff{
-      min-width:110px;
-      text-align:right;
-      font-weight:bold;
-      color:#22c55e;
-    }
-
-    .unassigned{
-      color:#ef4444;
-    }
+    .role{ flex:1; }
+    .staff{ color:#22c55e; font-weight:bold; }
 
     .pool{
-      margin-top:8px;
+      margin-top:10px;
+      padding-top:8px;
       border-top:1px solid #1f2937;
-      padding-top:6px;
     }
 
-    .pool-title{
-      font-size:11px;
-      color:#94a3b8;
-      margin-bottom:4px;
+    button{
+      font-size:10px;
+      padding:3px 6px;
+      background:#3b82f6;
+      border:none;
+      color:white;
+      border-radius:5px;
+      cursor:pointer;
     }
   </style>
 </head>
@@ -98,155 +91,141 @@
 <div class="grid" id="grid"></div>
 
 <script type="module">
+
 import { db } from "../assets/app.js";
 
 /* ================= STATE ================= */
 let services = [];
-let staff = [];
+let staffList = [];
 let templateRoles = [];
 let serviceRoles = [];
-let templateStaff = [];
+let staffTemplates = [];
 
 let staffMap = {};
 let roleMap = {};
-let poolMap = {};
+let templatePoolMap = {};
 
 /* ================= LOAD ================= */
 async function load(){
 
   const [
-    sRes,
-    stRes,
-    trRes,
-    srRes,
-    tsRes
+    s,
+    st,
+    tr,
+    sr,
+    tpl
   ] = await Promise.all([
-
-    db.from("services")
-      .select("*, service_slots(label,time,location)")
-      .order("service_date",{ascending:true}),
-
+    db.from("services").select("*, service_slots(label,time,location)").order("service_date",{ascending:true}),
     db.from("staff").select("*"),
-
     db.from("service_template_roles").select("*"),
-
     db.from("service_roles").select("*"),
-
-    db.from("service_template_staff").select("*")
+    db.from("staff_service_templates").select("*")
   ]);
 
-  services = sRes.data || [];
-  staff = stRes.data || [];
-  templateRoles = trRes.data || [];
-  serviceRoles = srRes.data || [];
-  templateStaff = tsRes.data || [];
+  services = s.data || [];
+  staffList = st.data || [];
+  templateRoles = tr.data || [];
+  serviceRoles = sr.data || [];
+  staffTemplates = tpl.data || [];
 
   /* ================= STAFF MAP ================= */
   staffMap = Object.fromEntries(
-    staff.map(s => [String(s.id), s.name])
+    staffList.map(s => [String(s.id), s.name])
   );
 
-  /* ================= ROLE MAP ================= */
+  /* ================= ROLE MAP (latest assignment only) ================= */
   roleMap = {};
 
   serviceRoles.forEach(r => {
 
     const key =
-      `${r.service_id}_${String(r.role || "").toLowerCase()}`;
+      `${r.service_id}_${String(r.role || "").trim().toLowerCase()}`;
 
-    roleMap[key] = r;
+    const existing = roleMap[key];
+
+    if(
+      !existing ||
+      new Date(r.created_at || 0) > new Date(existing.created_at || 0)
+    ){
+      roleMap[key] = r;
+    }
   });
 
-  /* ================= TEMPLATE STAFF POOL ================= */
-  poolMap = {};
+  /* ================= TEMPLATE POOL MAP (FIXED CORE) ================= */
+  templatePoolMap = {};
 
-  templateStaff.forEach(t => {
+  staffTemplates.forEach(t => {
 
-    const tid = String(t.template_id);
+    const templateId = String(t.template_id);
+    const staffId = String(t.staff_id);
 
-    if(!poolMap[tid]) poolMap[tid] = [];
+    if (!templatePoolMap[templateId]) {
+      templatePoolMap[templateId] = [];
+    }
 
-    poolMap[tid].push({
-      staff_id: t.staff_id,
-      name: staffMap[t.staff_id] || "UNKNOWN"
+    templatePoolMap[templateId].push({
+      id: staffId,
+      name: staffMap[staffId] || "Unknown"
     });
   });
 
   render();
 }
 
-/* ================= BUILD ROLES ================= */
-function buildRoles(service){
+/* ================= GET ASSIGNED STAFF ================= */
+function getAssigned(serviceId, role){
+
+  const key =
+    `${serviceId}_${String(role || "").trim().toLowerCase()}`;
+
+  const match = roleMap[key];
+
+  if(!match) return "-";
+
+  return staffMap[match.staff_id] || "-";
+}
+
+/* ================= SERVICE CARD ================= */
+function card(service){
 
   const roles = templateRoles.filter(r =>
     String(r.template_id) === String(service.service_template_id)
   );
 
-  const filtered = service.is_communion_service
+  const filteredRoles = service.is_communion_service
     ? roles
-    : roles.filter(r =>
-        !r.role.toLowerCase().includes("communion")
-      );
+    : roles.filter(r => !(r.role || "").toLowerCase().includes("communion"));
 
-  return filtered.map(r => {
-
-    const key =
-      `${service.id}_${r.role.toLowerCase()}`;
-
-    const assigned = roleMap[key];
-
-    return {
-      role: r.role,
-      staff: assigned ? staffMap[assigned.staff_id] : null
-    };
-  });
-}
-
-/* ================= STAFF POOL ================= */
-function buildPool(service){
-
-  const pool = poolMap[String(service.service_template_id)] || [];
-
-  if(pool.length === 0){
-    return `<div style="color:#ef4444;font-size:12px">No Pool Assigned</div>`;
-  }
-
-  return pool.map(p => `
-    <div class="row">
-      <div class="role">Pool</div>
-      <div class="staff">${p.name}</div>
-    </div>
-  `).join("");
-}
-
-/* ================= CARD ================= */
-function card(service){
-
-  const roles = buildRoles(service);
+  const pool = templatePoolMap[String(service.service_template_id)] || [];
 
   return `
     <div class="card">
 
-      <div style="font-weight:bold">
-        ${service.service_slots?.label}
-      </div>
-
-      <div class="date">
+      <b>${service.service_slots?.label}</b>
+      <div style="font-size:11px;color:#94a3b8">
         ${service.service_date}
       </div>
 
-      ${roles.map(r => `
-        <div class="row">
-          <div class="role">${r.role}</div>
-          <div class="staff ${!r.staff ? "unassigned" : ""}">
-            ${r.staff || "UNASSIGNED"}
+      <div style="margin-top:8px">
+        <b>Roles</b>
+        ${filteredRoles.map(r => `
+          <div class="row">
+            <div class="role">${r.role}</div>
+            <div class="staff">${getAssigned(service.id, r.role)}</div>
           </div>
-        </div>
-      `).join("")}
+        `).join("")}
+      </div>
 
       <div class="pool">
-        <div class="pool-title">Staff Pool (Template Level)</div>
-        ${buildPool(service)}
+        <b style="font-size:12px;color:#fbbf24">Staff Pool (Template)</b>
+
+        ${pool.length === 0 ? `
+          <div style="font-size:11px;color:#94a3b8">No pool assigned</div>
+        ` : pool.map(p => `
+          <div class="row">
+            <div class="role">${p.name}</div>
+          </div>
+        `).join("")}
       </div>
 
     </div>
@@ -260,18 +239,18 @@ function render(){
 
   services.forEach(s => {
 
-    const label = (s.service_slots?.label || "").toLowerCase();
+    const t = (s.service_slots?.time || "").toLowerCase();
     const loc = (s.service_slots?.location || "").toLowerCase();
 
     if(loc.includes("jurong")) jurong.push(s);
-    else if(label.includes("sat")) sat.push(s);
-    else if(label.includes("8.30")) s830.push(s);
-    else if(label.includes("10.45")) s1045.push(s);
+    else if(t.includes("14") || t.includes("2:30")) sat.push(s);
+    else if(t.includes("08")) s830.push(s);
+    else if(t.includes("10:45")) s1045.push(s);
   });
 
   document.getElementById("grid").innerHTML = `
     <div class="col">
-      <div class="title">Saturday Service</div>
+      <div class="title">Saturday 2.30pm</div>
       ${sat.map(card).join("")}
     </div>
 
@@ -289,17 +268,9 @@ function render(){
       <div class="title">Sunday Jurong</div>
       ${jurong.map(card).join("")}
     </div>
-
-    <div class="col">
-      <div class="title">System View</div>
-      <div style="font-size:11px;color:#94a3b8">
-        Stable architecture (no relational dependency)
-      </div>
-    </div>
   `;
 }
 
-/* ================= INIT ================= */
 window.load = load;
 load();
 
