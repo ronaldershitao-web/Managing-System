@@ -438,13 +438,14 @@ window.markUnavailable = async function(){
 
   if(!selectedService || !selectedRole || !staffId) return;
 
-  await db.from("service_roles").insert({
+  await db.from("service_roles").upsert({
     service_id: selectedService.id,
     role: selectedRole,
     staff_id: staffId
+  }, {
+    onConflict: "service_id,role"
   });
 
-  selectedStaffId = null;
   selectedRole = null;
 
   await load();
