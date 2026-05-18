@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Service Command Center (Clean Architecture)</title>
+  <title>Service Command Center (Assignment Visual State)</title>
 
   <style>
     body{
@@ -74,12 +74,14 @@
 
     button{
       font-size:11px;
-      padding:6px 10px;
+      padding:6px 8px;
       background:#3b82f6;
       border:none;
       color:white;
       border-radius:6px;
       cursor:pointer;
+      width:100%;
+      margin-top:10px;
     }
 
     .danger{
@@ -87,16 +89,36 @@
     }
 
     .chip{
-      padding:6px;
-      border-radius:6px;
+      padding:6px 8px;
+      border-radius:8px;
       font-size:12px;
       cursor:pointer;
       border:1px solid #334155;
-      margin-bottom:6px;
+      margin:4px 0;
+      display:block;
     }
 
     .avail { color:#22c55e; }
     .unavail { color:#ef4444; }
+
+    /* ⭐ NEW: SELECTED STATE */
+    .selected {
+      background:#1d4ed8;
+      border:1px solid #60a5fa;
+      color:white;
+      font-weight:bold;
+    }
+
+    .assignBanner{
+      padding:6px;
+      font-size:12px;
+      background:#0b1220;
+      border:1px solid #1f2937;
+      border-radius:6px;
+      margin-bottom:8px;
+      color:#93c5fd;
+    }
+
   </style>
 </head>
 
@@ -132,10 +154,8 @@ let selectedService = null;
 async function load(){
 
   const [s, st, tr, sr, tpl, av] = await Promise.all([
-    db.from("services")
-      .select("* , service_slots(label,time,location)")
+    db.from("services").select("* , service_slots(label,time,location)")
       .order("service_date",{ascending:true}),
-
     db.from("staff").select("*"),
     db.from("service_template_roles").select("*"),
     db.from("service_roles").select("*"),
@@ -154,20 +174,14 @@ async function load(){
     staffList.map(s => [String(s.id), s.name])
   );
 
-  /* latest assignment only */
   roleMap = {};
   serviceRoles.forEach(r => {
-
     const key = `${r.service_id}_${r.role?.toLowerCase()}`;
-
-    if(!roleMap[key] ||
-      new Date(r.created_at) > new Date(roleMap[key].created_at)
-    ){
+    if(!roleMap[key] || new Date(r.created_at) > new Date(roleMap[key].created_at)){
       roleMap[key] = r;
     }
   });
 
-  /* template pool */
   poolMap = {};
   staffTemplates.forEach(t => {
     if(!poolMap[t.template_id]) poolMap[t.template_id] = [];
@@ -182,7 +196,6 @@ async function load(){
 
 /* ================= HELPERS ================= */
 function getRoles(service){
-
   let roles = templateRoles.filter(r =>
     String(r.template_id) === String(service.service_template_id)
   );
@@ -195,10 +208,8 @@ function getRoles(service){
 }
 
 function getAssigned(serviceId, role){
-
   const key = `${serviceId}_${role?.toLowerCase()}`;
   const match = roleMap[key];
-
   return match ? staffMap[match.staff_id] : "-";
 }
 
@@ -216,29 +227,15 @@ function getAvailable(service){
       .map(a => String(a.staff_id))
   );
 
-  const available = pool.filter(p =>
-    !unavailable.has(String(p.id))
-  );
+  const available = pool.filter(p => !unavailable.has(String(p.id)));
 
   return { pool, unavailable, available };
 }
 
-/* ================= MARK UNAVAILABLE ================= */
-window.markUnavailable = async function(){
-
-  if(!selectedService || !selectedStaffId) return;
-
-  await db.from("staff_availability").insert({
-    staff_id: selectedStaffId,
-    service_date: selectedService.service_date,
-    service_slot_id: selectedService.service_slot_id,
-    status: "unavailable"
-  });
-
-  selectedStaffId = null;
-
-  await load();
-  onServiceSelect(selectedService.id);
+/* ================= SELECT STAFF ================= */
+window.selectStaff = function(id){
+  selectedStaffId = id;
+  renderInspector(selectedService); // refresh UI state
 };
 
 /* ================= CARD ================= */
@@ -282,20 +279,60 @@ function inspector(){
       Select service
     </div>
 
-    <button class="danger" onclick="markUnavailable()">
+    <button class="danger" onclick="markUnavailable()" ${!selectedStaffId ? "disabled" : ""}>
       Mark Unavailable
     </button>
   `;
 }
 
-/* ================= EVENTS ================= */
+/* ================= RENDER INSPECTOR ================= */
+function renderInspector(service){
+
+  if(!service) return;
+
+  const { available, unavailable } = getAvailable(service);
+
+  document.getElementById("poolView").innerHTML = `
+    <div class="assignBanner">
+      ${selectedStaffId
+        ? `Assigning: <b>${staffMap[selectedStaffId]}</b>`
+        : "No staff selected"}
+    </div>
+
+    <b>${service.service_slots?.label}</b>
+    <div style="font-size:11px;color:#94a3b8">
+      ${service.service_date}
+    </div>
+
+    <div style="margin-top:10px">
+      <b>Available Staff</b>
+      ${available.map(p => `
+        <div class="chip avail ${selectedStaffId === p.id ? "selected" : ""}"
+          onclick="selectStaff('${p.id}')">
+          ${p.name}
+        </div>
+      `).join("")}
+    </div>
+
+    <div style="margin-top:10px">
+      <b>Unavailable</b>
+      ${[...unavailable].map(id => `
+        <div class="chip unavail">
+          ${staffMap[id] || "Unknown"}
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+/* ================= SERVICE SELECT ================= */
 window.onDate = function(){
 
-  const date = document.getElementById("dateSel").value;
+  const date = dateSel.value;
 
   const filtered = services.filter(s => s.service_date === date);
 
-  document.getElementById("serviceSel").innerHTML = `
+  serviceSel.innerHTML = `
     <option value="">Select</option>
     ${filtered.map(s => `
       <option value="${s.id}">
@@ -305,52 +342,32 @@ window.onDate = function(){
   `;
 };
 
-window.onServiceSelect = function(serviceId){
+window.onServiceSelect = function(){
 
-  const id = serviceId || document.getElementById("serviceSel").value;
+  const id = serviceSel.value;
 
   const service = services.find(s => String(s.id) === String(id));
   if(!service) return;
 
   selectedService = service;
-  selectedStaffId = null;
-
-  const { unavailable, available } = getAvailable(service);
-
-  document.getElementById("poolView").innerHTML = `
-    <b>${service.service_slots?.label}</b>
-    <div style="font-size:11px;color:#94a3b8">
-      ${service.service_date}
-    </div>
-
-    <div style="margin-top:10px">
-      <b>Available Staff</b>
-      ${available.map(p => `
-        <div class="chip avail"
-          onclick="selectStaff('${p.id}')"
-          style="
-            background:${selectedStaffId === p.id ? '#1d4ed8' : '#0f172a'};
-          ">
-          ${p.name}
-          ${selectedStaffId === p.id ? ' ✓' : ''}
-        </div>
-      `).join("")}
-    </div>
-
-    <div style="margin-top:10px">
-      <b>Unavailable Staff</b>
-      ${[...unavailable].map(id => `
-        <div class="chip unavail">
-          ${staffMap[id] || "Unknown"}
-        </div>
-      `).join("")}
-    </div>
-  `;
+  renderInspector(service);
 };
 
-window.selectStaff = function(id){
-  selectedStaffId = id;
-  onServiceSelect(selectedService.id);
+/* ================= MARK UNAVAILABLE ================= */
+window.markUnavailable = async function(){
+
+  if(!selectedService || !selectedStaffId) return;
+
+  await db.from("staff_availability").insert({
+    staff_id: selectedStaffId,
+    service_date: selectedService.service_date,
+    service_slot_id: selectedService.service_slot_id,
+    status: "unavailable"
+  });
+
+  selectedStaffId = null;
+  await load();
+  renderInspector(selectedService);
 };
 
 /* ================= RENDER ================= */
