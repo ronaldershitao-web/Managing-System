@@ -123,10 +123,16 @@ async function load(){
     sr,
     tpl
   ] = await Promise.all([
-    db.from("services").select("*, service_slots(label,time,location)").order("service_date",{ascending:true}),
+    db.from("services")
+      .select("*, service_slots(label,time,location)")
+      .order("service_date",{ascending:true}),
+
     db.from("staff").select("*"),
+
     db.from("service_template_roles").select("*"),
+
     db.from("service_roles").select("*"),
+
     db.from("staff_service_templates").select("*")
   ]);
 
@@ -159,7 +165,7 @@ async function load(){
     }
   });
 
-  /* TEMPLATE POOL MAP (GLOBAL) */
+  /* TEMPLATE POOL MAP */
   templatePoolMap = {};
 
   staffTemplates.forEach(t => {
@@ -192,6 +198,14 @@ function getAssigned(serviceId, role){
   return staffMap[match.staff_id] || "-";
 }
 
+/* ================= SERVICE POOL (NEW CORE FIX) ================= */
+function getServicePool(service){
+
+  const templateId = String(service.service_template_id);
+
+  return templatePoolMap[templateId] || [];
+}
+
 /* ================= SERVICE CARD ================= */
 function card(service){
 
@@ -208,13 +222,17 @@ function card(service){
   return `
     <div class="card">
 
-      <b>${service.service_slots?.label}</b>
+      <b>${service.service_slots?.label || "Service"}</b>
+
       <div style="font-size:11px;color:#94a3b8">
         ${service.service_date}
+        ${service.start_time ? `• ${service.start_time}` : ""}
+        ${service.end_time ? `- ${service.end_time}` : ""}
       </div>
 
       <div style="margin-top:8px">
         <b>Roles</b>
+
         ${filteredRoles.map(r => `
           <div class="row">
             <div class="role">${r.role}</div>
@@ -227,41 +245,81 @@ function card(service){
   `;
 }
 
-/* ================= COLUMN 5 ================= */
+/* ================= COLUMN 5 (FIXED: SERVICE CONTEXT VIEW) ================= */
 function poolColumn(){
 
-  const templateIds = Object.keys(templatePoolMap);
+  const serviceOptions = services.map(s => ({
+    id: s.id,
+    label: `${s.service_slots?.label || "Service"} (${s.service_date})`
+  }));
 
   return `
-    <div class="title">Staff Pool (Template Viewer)</div>
+    <div class="title">Service Pool Inspector</div>
 
-    <select onchange="showPool(this.value)">
-      <option value="">Select Template</option>
-      ${templateIds.map(tid => `
-        <option value="${tid}">
-          Template ${tid}
+    <select onchange="showServicePool(this.value)">
+      <option value="">Select Service</option>
+
+      ${serviceOptions.map(s => `
+        <option value="${s.id}">
+          ${s.label}
         </option>
       `).join("")}
     </select>
 
     <div id="poolView" class="card poolBox">
-      Select a template to view staff
+      Select a service to view staff pool
     </div>
   `;
 }
 
-window.showPool = function(tid){
+/* ================= SERVICE POOL VIEW ================= */
+window.showServicePool = function(serviceId){
 
-  const pool = templatePoolMap[tid] || [];
+  const service = services.find(s =>
+    String(s.id) === String(serviceId)
+  );
 
-  document.getElementById("poolView").innerHTML =
-    pool.length === 0
-      ? "No staff assigned"
-      : pool.map(p => `
-          <div class="row">
-            <div>${p.name}</div>
-          </div>
-        `).join("");
+  if(!service){
+    document.getElementById("poolView").innerHTML = "Service not found";
+    return;
+  }
+
+  const pool = getServicePool(service);
+
+  const roles = templateRoles.filter(r =>
+    String(r.template_id) === String(service.service_template_id)
+  );
+
+  document.getElementById("poolView").innerHTML = `
+    <div style="margin-bottom:8px">
+      <b>${service.service_slots?.label}</b><br>
+      <span style="font-size:11px;color:#94a3b8">
+        ${service.service_date}
+      </span>
+    </div>
+
+    <div style="margin-top:10px">
+      <b>Allowed Roles</b>
+      ${roles.map(r => `
+        <div class="row">
+          <div>${r.role}</div>
+        </div>
+      `).join("")}
+    </div>
+
+    <div style="margin-top:10px">
+      <b>Staff Pool (Template)</b>
+
+      ${pool.length === 0
+        ? `<div style="color:#94a3b8">No staff assigned</div>`
+        : pool.map(p => `
+            <div class="row">
+              <div>${p.name}</div>
+            </div>
+          `).join("")
+      }
+    </div>
+  `;
 };
 
 /* ================= RENDER ================= */
