@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Service Command Center</title>
+  <title>Service 4-Column Board</title>
 
   <style>
     body{
@@ -16,70 +16,42 @@
       background:#111827;
       font-size:18px;
       font-weight:bold;
-      display:flex;
-      justify-content:space-between;
     }
-
-    .container{
-      padding:14px;
-    }
-
-    .service-card{
-      background:#111827;
-      border:1px solid #334155;
-      border-radius:10px;
-      margin-bottom:12px;
-      padding:12px;
-    }
-
-    .service-title{
-      font-weight:bold;
-      color:#fbbf24;
-      margin-bottom:6px;
-    }
-
-    .meta{
-      font-size:12px;
-      color:#94a3b8;
-      margin-bottom:10px;
-    }
-
-    .role-row{
-      display:flex;
-      justify-content:space-between;
-      font-size:12px;
-      padding:4px 0;
-      border-bottom:1px solid #1f2937;
-    }
-
-    .role{
-      flex:1;
-    }
-
-    .staff{
-      font-weight:bold;
-      color:#22c55e;
-    }
-
-    .missing{
-      color:#ef4444;
-    }
-
-    .badge{
-      font-size:10px;
-      padding:2px 6px;
-      border-radius:4px;
-      margin-left:6px;
-    }
-
-    .ok{ background:#16a34a; }
-    .warn{ background:#f59e0b; }
-    .bad{ background:#ef4444; }
 
     .grid{
       display:grid;
-      grid-template-columns:1fr;
+      grid-template-columns:repeat(4, 1fr);
       gap:10px;
+      padding:10px;
+    }
+
+    .col{
+      background:#111827;
+      border:1px solid #1f2937;
+      border-radius:10px;
+      padding:10px;
+      min-height:90vh;
+    }
+
+    .title{
+      font-weight:bold;
+      color:#fbbf24;
+      margin-bottom:10px;
+      font-size:14px;
+    }
+
+    .card{
+      background:#0f172a;
+      border:1px solid #334155;
+      border-radius:8px;
+      padding:10px;
+      margin-bottom:10px;
+    }
+
+    .date{
+      font-size:11px;
+      color:#94a3b8;
+      margin-top:4px;
     }
   </style>
 </head>
@@ -87,112 +59,93 @@
 <body>
 
 <header>
-  Service Command Center
-  <button onclick="load()">Refresh</button>
+  Service Board (4 Columns View)
 </header>
 
-<div class="container" id="container"></div>
+<div class="grid" id="grid"></div>
 
 <script type="module">
 import { db } from "../assets/app.js";
 
-let services = [];
-let roles = [];
-let staffMap = {};
-let availability = [];
-
 async function load(){
 
-  const [
-    s,
-    r,
-    st,
-    av
-  ] = await Promise.all([
-    db.from("services").select(`
-      *,
-      service_slots(label,time,location)
-    `).order("service_date",{ascending:true}),
-
-    db.from("service_roles").select(`
+  const { data: services } = await db
+    .from("services")
+    .select(`
       id,
-      service_id,
-      role,
-      staff_id,
-      created_at,
-      staff:staff_id(id,name)
-    `),
+      service_date,
+      service_slots(label,time,location)
+    `)
+    .order("service_date", { ascending: true });
 
-    db.from("staff").select("*"),
+  const sat = [];
+  const s830 = [];
+  const s1045 = [];
+  const jurong = [];
 
-    db.from("staff_availability").select("*")
-  ]);
+  (services || []).forEach(s => {
 
-  services = s.data || [];
-  roles = r.data || [];
-  availability = av.data || [];
+    const label = (s.service_slots?.label || "").toLowerCase();
 
-  staffMap = Object.fromEntries(
-    (st.data || []).map(s => [s.id, s.name])
-  );
-
-  render();
-}
-
-function getStaffName(r){
-  return r.staff?.name || staffMap[r.staff_id] || "Unassigned";
-}
-
-function getServiceRoles(serviceId){
-
-  return roles.filter(r =>
-    r.service_id === serviceId
-  );
-}
-
-function render(){
-
-  const container = document.getElementById("container");
-  container.innerHTML = "";
-
-  services.forEach(service => {
-
-    const serviceRoles = getServiceRoles(service.id);
-
-    const htmlRoles = serviceRoles.map(r => {
-
-      const name = getStaffName(r);
-
-      return `
-        <div class="role-row">
-          <div class="role">${r.role}</div>
-
-          <div class="staff">
-            ${name}
-          </div>
-        </div>
-      `;
-    }).join("");
-
-    container.innerHTML += `
-      <div class="service-card">
-
-        <div class="service-title">
-          ${service.service_slots?.label || "Service"}
-        </div>
-
-        <div class="meta">
-          ${service.service_date}
-        </div>
-
-        ${htmlRoles || `<div class="missing">No roles assigned</div>`}
-
-      </div>
-    `;
+    if(label.includes("saturday")){
+      sat.push(s);
+    }
+    else if(label.includes("8.30")){
+      s830.push(s);
+    }
+    else if(label.includes("10.45")){
+      s1045.push(s);
+    }
+    else if(label.includes("jurong")){
+      jurong.push(s);
+    }
   });
+
+  render(sat, s830, s1045, jurong);
 }
 
-window.load = load;
+function render(sat, s830, s1045, jurong){
+
+  document.getElementById("grid").innerHTML = `
+
+    <div class="col">
+      <div class="title">Saturday Service</div>
+      ${sat.map(card).join("")}
+    </div>
+
+    <div class="col">
+      <div class="title">Sunday 8.30am</div>
+      ${s830.map(card).join("")}
+    </div>
+
+    <div class="col">
+      <div class="title">Sunday 10.45am</div>
+      ${s1045.map(card).join("")}
+    </div>
+
+    <div class="col">
+      <div class="title">Sunday Jurong</div>
+      ${jurong.map(card).join("")}
+    </div>
+
+  `;
+}
+
+function card(s){
+
+  return `
+    <div class="card">
+      <div>
+        ${s.service_slots?.label || "Service"}
+      </div>
+
+      <div class="date">
+        ${s.service_date}
+      </div>
+    </div>
+  `;
+}
+
 load();
 
 </script>
