@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Service Command Center (Restored Inspector + Fix Selection)</title>
+  <title>Service Command Center (Fixed Unavailable Button)</title>
 
   <style>
     body{
@@ -72,65 +72,57 @@
       border-radius:6px;
     }
 
-    /* ===== STAFF CHIPS ===== */
     .chip{
-      padding:8px;
+      padding:6px 8px;
       border-radius:8px;
       font-size:12px;
       cursor:pointer;
       border:1px solid #334155;
       margin:4px 0;
       display:block;
-      transition:0.15s;
-      user-select:none;
     }
 
-    .chip:hover{
-      background:#1e293b;
-    }
+    .avail { color:#22c55e; }
+    .unavail { color:#ef4444; }
 
-    .avail{ color:#22c55e; }
-    .unavail{ color:#ef4444; }
-
-    /* IMPORTANT: FIX SELECTION CLARITY */
-    .selected{
-      background:#1d4ed8 !important;
-      border:1px solid #60a5fa !important;
-      color:white !important;
+    .selected {
+      background:#1d4ed8;
+      border:1px solid #60a5fa;
+      color:white;
       font-weight:bold;
-    }
-
-    /* inspector highlight */
-    .context{
-      padding:6px;
-      background:#0b1220;
-      border:1px solid #1f2937;
-      border-radius:6px;
-      font-size:12px;
-      margin-bottom:8px;
-      color:#93c5fd;
     }
 
     button{
       font-size:11px;
-      padding:8px;
+      padding:6px 8px;
       background:#3b82f6;
       border:none;
       color:white;
       border-radius:6px;
       cursor:pointer;
       width:100%;
-      margin-top:8px;
-    }
-
-    button:disabled{
-      background:#334155;
-      cursor:not-allowed;
+      margin-top:10px;
     }
 
     .danger{
       background:#ef4444;
     }
+
+    button:disabled{
+      opacity:0.4;
+      cursor:not-allowed;
+    }
+
+    .assignBanner{
+      padding:6px;
+      font-size:12px;
+      background:#0b1220;
+      border:1px solid #1f2937;
+      border-radius:6px;
+      margin-bottom:8px;
+      color:#93c5fd;
+    }
+
   </style>
 </head>
 
@@ -206,7 +198,7 @@ async function load(){
   render();
 }
 
-/* ================= ROLES ================= */
+/* ================= HELPERS ================= */
 function getRoles(service){
 
   let roles = templateRoles.filter(r =>
@@ -220,15 +212,6 @@ function getRoles(service){
   return roles;
 }
 
-/* ================= ASSIGNED ================= */
-function getAssigned(serviceId, role){
-
-  const key = `${serviceId}_${role?.toLowerCase()}`;
-  const match = roleMap[key];
-  return match ? staffMap[match.staff_id] : "-";
-}
-
-/* ================= AVAILABLE STAFF ================= */
 function getAvailable(service){
 
   const pool = poolMap[service.service_template_id] || [];
@@ -254,31 +237,6 @@ window.selectStaff = function(id){
   renderInspector(selectedService);
 };
 
-/* ================= CARD ================= */
-function card(service){
-
-  const roles = getRoles(service);
-
-  return `
-    <div class="card">
-
-      <b>${service.service_slots?.label}</b>
-
-      <div style="font-size:11px;color:#94a3b8">
-        ${service.service_date}
-      </div>
-
-      ${roles.map(r => `
-        <div class="row">
-          <div class="role">${r.role}</div>
-          <div class="staff">${getAssigned(service.id, r.role)}</div>
-        </div>
-      `).join("")}
-
-    </div>
-  `;
-}
-
 /* ================= INSPECTOR ================= */
 function inspector(){
 
@@ -298,13 +256,13 @@ function inspector(){
       Select service
     </div>
 
-    <button class="danger" onclick="markUnavailable()" ${!selectedStaffId || !selectedService ? "disabled" : ""}>
+    <button id="unavailBtn" class="danger" onclick="markUnavailable()">
       Mark Unavailable
     </button>
   `;
 }
 
-/* ================= INSPECTOR RENDER ================= */
+/* ================= RENDER INSPECTOR ================= */
 function renderInspector(service){
 
   if(!service) return;
@@ -312,38 +270,51 @@ function renderInspector(service){
   const { available, unavailable } = getAvailable(service);
 
   document.getElementById("poolView").innerHTML = `
-    
-    <div class="context">
-      ${service.service_slots?.label} • ${service.service_date}
+    <div class="assignBanner">
+      ${selectedStaffId
+        ? `Selected: <b>${staffMap[selectedStaffId]}</b>`
+        : "No staff selected"}
     </div>
 
-    <div><b>Available Staff</b></div>
+    <b>${service.service_slots?.label}</b>
+    <div style="font-size:11px;color:#94a3b8">
+      ${service.service_date}
+    </div>
 
-    ${available.map(p => `
-      <div class="chip avail ${selectedStaffId === p.id ? "selected" : ""}"
-        onclick="selectStaff('${p.id}')">
-        ${p.name}
-      </div>
-    `).join("")}
+    <div style="margin-top:10px">
+      <b>Available Staff</b>
+      ${available.map(p => `
+        <div class="chip avail ${selectedStaffId === p.id ? "selected" : ""}"
+          onclick="selectStaff('${p.id}')">
+          ${p.name}
+        </div>
+      `).join("")}
+    </div>
 
-    <div style="margin-top:10px"><b>Unavailable</b></div>
-
-    ${[...unavailable].map(id => `
-      <div class="chip unavail">
-        ${staffMap[id] || "Unknown"}
-      </div>
-    `).join("")}
+    <div style="margin-top:10px">
+      <b>Unavailable</b>
+      ${[...unavailable].map(id => `
+        <div class="chip unavail">
+          ${staffMap[id] || "Unknown"}
+        </div>
+      `).join("")}
+    </div>
   `;
+
+  const btn = document.getElementById("unavailBtn");
+  if(btn){
+    btn.disabled = !(selectedStaffId && selectedService);
+  }
 }
 
-/* ================= DATE FILTER ================= */
+/* ================= SERVICE SELECT ================= */
 window.onDate = function(){
 
-  const date = document.getElementById("dateSel").value;
+  const date = dateSel.value;
 
   const filtered = services.filter(s => s.service_date === date);
 
-  document.getElementById("serviceSel").innerHTML = `
+  serviceSel.innerHTML = `
     <option value="">Select</option>
     ${filtered.map(s => `
       <option value="${s.id}">
@@ -353,10 +324,9 @@ window.onDate = function(){
   `;
 };
 
-/* ================= SERVICE SELECT ================= */
 window.onServiceSelect = function(){
 
-  const id = document.getElementById("serviceSel").value;
+  const id = serviceSel.value;
 
   const service = services.find(s => String(s.id) === String(id));
   if(!service) return;
@@ -378,6 +348,7 @@ window.markUnavailable = async function(){
   });
 
   selectedStaffId = null;
+
   await load();
   renderInspector(selectedService);
 };
@@ -399,29 +370,11 @@ function render(){
   });
 
   grid.innerHTML = `
-    <div class="col">
-      <div class="title">Sat</div>
-      ${cols.sat.map(card).join("")}
-    </div>
-
-    <div class="col">
-      <div class="title">8.30</div>
-      ${cols.s1.map(card).join("")}
-    </div>
-
-    <div class="col">
-      <div class="title">10.45</div>
-      ${cols.s2.map(card).join("")}
-    </div>
-
-    <div class="col">
-      <div class="title">Jurong</div>
-      ${cols.jurong.map(card).join("")}
-    </div>
-
-    <div class="col">
-      ${inspector()}
-    </div>
+    <div class="col"><div class="title">Sat</div>${cols.sat.map(s => `<div class="card">${s.service_slots?.label}</div>`).join("")}</div>
+    <div class="col"><div class="title">8.30</div>${cols.s1.map(s => `<div class="card">${s.service_slots?.label}</div>`).join("")}</div>
+    <div class="col"><div class="title">10.45</div>${cols.s2.map(s => `<div class="card">${s.service_slots?.label}</div>`).join("")}</div>
+    <div class="col"><div class="title">Jurong</div>${cols.jurong.map(s => `<div class="card">${s.service_slots?.label}</div>`).join("")}</div>
+    <div class="col">${inspector()}</div>
   `;
 }
 
