@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Service Command Center (RESTORED BASELINE)</title>
+  <title>Service Command Center (Stable + Inspector UX Upgrade)</title>
 
   <style>
     body{
@@ -84,6 +84,12 @@
       margin-top:10px;
     }
 
+    button:disabled{
+      background:#374151;
+      cursor:not-allowed;
+      opacity:0.6;
+    }
+
     .danger{
       background:#ef4444;
     }
@@ -98,13 +104,21 @@
 
     .avail { color:#22c55e; }
     .unavail { color:#ef4444; }
+
+    /* ===== selection highlight ===== */
+    .selected-service {
+      border: 1px solid #60a5fa;
+      background: #1e3a8a;
+      box-shadow: 0 0 0 1px #3b82f6;
+    }
+
   </style>
 </head>
 
 <body>
 
 <header>
-  Service Command Center (RESTORED)
+  Service Command Center
   <button onclick="load()">Refresh</button>
 </header>
 
@@ -124,6 +138,8 @@ let availability = [];
 let staffMap = {};
 let roleMap = {};
 let poolMap = {};
+
+let selectedServiceId = null;
 
 /* ================= LOAD ================= */
 async function load(){
@@ -149,19 +165,14 @@ async function load(){
     staffList.map(s => [String(s.id), s.name])
   );
 
-  /* latest assignment only */
   roleMap = {};
   serviceRoles.forEach(r => {
     const key = `${r.service_id}_${r.role?.toLowerCase()}`;
-
-    if(!roleMap[key] ||
-      new Date(r.created_at || 0) > new Date(roleMap[key].created_at || 0)
-    ){
+    if(!roleMap[key] || new Date(r.created_at) > new Date(roleMap[key].created_at)){
       roleMap[key] = r;
     }
   });
 
-  /* template pool */
   poolMap = {};
   staffTemplates.forEach(t => {
     if(!poolMap[t.template_id]) poolMap[t.template_id] = [];
@@ -174,14 +185,13 @@ async function load(){
   render();
 }
 
-/* ================= ROLE ENGINE ================= */
+/* ================= HELPERS ================= */
 function getRoles(service){
 
   let roles = templateRoles.filter(r =>
     String(r.template_id) === String(service.service_template_id)
   );
 
-  /* ONLY REMOVE HC roles if not communion */
   if(service.is_communion_service === false){
     roles = roles.filter(r => r.is_communion_role !== true);
   }
@@ -189,42 +199,13 @@ function getRoles(service){
   return roles;
 }
 
-/* ================= ASSIGNMENT ================= */
 function getAssigned(serviceId, role){
-
   const key = `${serviceId}_${role?.toLowerCase()}`;
   const match = roleMap[key];
-
   return match ? staffMap[match.staff_id] : "-";
 }
 
-/* ================= CARD ================= */
-function card(service){
-
-  const roles = getRoles(service);
-
-  return `
-    <div class="card">
-
-      <b>${service.service_slots?.label}</b>
-
-      <div style="font-size:11px;color:#94a3b8">
-        ${service.service_date}
-        ${service.start_time ? `• ${service.start_time}` : ""}
-      </div>
-
-      ${roles.map(r => `
-        <div class="row">
-          <div class="role">${r.role}</div>
-          <div class="staff">${getAssigned(service.id, r.role)}</div>
-        </div>
-      `).join("")}
-
-    </div>
-  `;
-}
-
-/* ================= INSPECTOR (RESTORED) ================= */
+/* ================= INSPECTOR ================= */
 function inspector(){
 
   const dates = [...new Set(services.map(s => s.service_date))];
@@ -242,6 +223,10 @@ function inspector(){
     <div id="poolView" class="card">
       Select service
     </div>
+
+    <button id="unavailBtn" class="danger" onclick="markUnavailable()" disabled>
+      Mark Unavailable
+    </button>
   `;
 }
 
@@ -266,6 +251,8 @@ window.onServiceSelect = function(){
 
   const id = document.getElementById("serviceSel").value;
 
+  selectedServiceId = id;
+
   const service = services.find(s => String(s.id) === String(id));
   if(!service) return;
 
@@ -286,27 +273,79 @@ window.onServiceSelect = function(){
   const available = pool.filter(p => !unavailable.has(String(p.id)));
 
   document.getElementById("poolView").innerHTML = `
-    <b>${service.service_slots?.label}</b>
+    <div class="${selectedServiceId === id ? 'selected-service' : ''}">
+    
+      <b>${service.service_slots?.label}</b>
 
-    <div style="font-size:11px;color:#94a3b8">
-      ${service.service_date}
-    </div>
+      <div style="font-size:11px;color:#94a3b8">
+        ${service.service_date}
+      </div>
 
-    <div style="margin-top:10px">
-      <b>Available Staff</b>
-      ${available.map(p => `<div class="chip avail">${p.name}</div>`).join("")}
-    </div>
+      <div style="margin-top:10px">
+        <b>Available Staff</b>
+        ${available.map(p => `
+          <div class="chip avail">
+            ${p.name}
+          </div>
+        `).join("")}
+      </div>
 
-    <div style="margin-top:10px">
-      <b>Unavailable</b>
-      ${[...unavailable].map(id => `
-        <div class="chip unavail">
-          ${staffMap[id] || "Unknown"}
-        </div>
-      `).join("")}
+      <div style="margin-top:10px">
+        <b>Unavailable</b>
+        ${[...unavailable].map(id => `
+          <div class="chip unavail">
+            ${staffMap[id] || "Unknown"}
+          </div>
+        `).join("")}
+      </div>
+
     </div>
   `;
+
+  document.getElementById("unavailBtn").disabled = !selectedServiceId;
 };
+
+/* ================= MARK UNAVAILABLE ================= */
+window.markUnavailable = async function(){
+
+  if(!selectedServiceId) return;
+
+  const service = services.find(s => String(s.id) === String(selectedServiceId));
+  if(!service) return;
+
+  await db.from("staff_availability").insert({
+    service_date: service.service_date,
+    service_slot_id: service.service_slot_id,
+    status: "unavailable"
+  });
+
+  await load();
+};
+
+/* ================= CARD ================= */
+function card(service){
+
+  const roles = getRoles(service);
+
+  return `
+    <div class="card">
+
+      <b>${service.service_slots?.label}</b>
+
+      <div style="font-size:11px;color:#94a3b8">
+        ${service.service_date}
+      </div>
+
+      ${roles.map(r => `
+        <div class="row">
+          <div class="role">${r.role}</div>
+          <div class="staff">${getAssigned(service.id, r.role)}</div>
+        </div>
+      `).join("")}
+
+    </div>
+  `;
+}
 
 /* ================= RENDER ================= */
 function render(){
@@ -315,8 +354,8 @@ function render(){
 
   services.forEach(s => {
 
-    const t = (s.service_slots?.time || "").toLowerCase();
-    const l = (s.service_slots?.location || "").toLowerCase();
+    const t = (s.service_slots?.time||"").toLowerCase();
+    const l = (s.service_slots?.location||"").toLowerCase();
 
     if(l.includes("jurong")) cols.jurong.push(s);
     else if(t.includes("14")) cols.sat.push(s);
