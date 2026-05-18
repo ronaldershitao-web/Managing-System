@@ -248,30 +248,102 @@ function card(service){
 /* ================= COLUMN 5 (FIXED: SERVICE CONTEXT VIEW) ================= */
 function poolColumn(){
 
-  const serviceOptions = services.map(s => ({
-    id: s.id,
-    label: `${s.service_slots?.label || "Service"} (${s.service_date})`
-  }));
+  const dates = [...new Set(
+    services.map(s => s.service_date)
+  )].sort();
 
   return `
     <div class="title">Service Pool Inspector</div>
 
-    <select onchange="showServicePool(this.value)">
-      <option value="">Select Service</option>
-
-      ${serviceOptions.map(s => `
-        <option value="${s.id}">
-          ${s.label}
-        </option>
+    <select id="dateFilter" onchange="onDateSelect()">
+      <option value="">Select Date</option>
+      ${dates.map(d => `
+        <option value="${d}">${d}</option>
       `).join("")}
     </select>
 
+    <select id="serviceFilter" onchange="onServiceSelect()">
+      <option value="">Select Service</option>
+    </select>
+
     <div id="poolView" class="card poolBox">
-      Select a service to view staff pool
+      Select a date first
     </div>
   `;
 }
 
+  window.onDateSelect = function(){
+
+  const date = document.getElementById("dateFilter").value;
+
+  const filtered = services.filter(s =>
+    s.service_date === date
+  );
+
+  document.getElementById("serviceFilter").innerHTML = `
+    <option value="">Select Service</option>
+    ${filtered.map(s => `
+      <option value="${s.id}">
+        ${s.service_slots?.label || "Service"} (${s.start_time || ""})
+      </option>
+    `).join("")}
+  `;
+
+  document.getElementById("poolView").innerHTML =
+    "Select a service to view pool";
+};
+
+  window.onServiceSelect = function(){
+
+  const id = document.getElementById("serviceFilter").value;
+
+  const service = services.find(s =>
+    String(s.id) === String(id)
+  );
+
+  if(!service){
+    document.getElementById("poolView").innerHTML = "No service selected";
+    return;
+  }
+
+  const roles = templateRoles.filter(r =>
+    String(r.template_id) === String(service.service_template_id)
+  );
+
+  const pool = getServicePool(service);
+
+  document.getElementById("poolView").innerHTML = `
+    <div style="margin-bottom:8px">
+      <b>${service.service_slots?.label}</b><br>
+      <span style="font-size:11px;color:#94a3b8">
+        ${service.service_date} • ${service.start_time || ""}
+      </span>
+    </div>
+
+    <div style="margin-top:10px">
+      <b>Roles Required</b>
+      ${roles.map(r => `
+        <div class="row">
+          <div>${r.role}</div>
+        </div>
+      `).join("")}
+    </div>
+
+    <div style="margin-top:10px">
+      <b>Staff Pool (Template)</b>
+
+      ${pool.length === 0
+        ? `<div style="color:#94a3b8">No staff assigned</div>`
+        : pool.map(p => `
+            <div class="row">
+              <div>${p.name}</div>
+            </div>
+          `).join("")
+      }
+    </div>
+  `;
+};
+  
 /* ================= SERVICE POOL VIEW ================= */
 window.showServicePool = function(serviceId){
 
