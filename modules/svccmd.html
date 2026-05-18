@@ -96,6 +96,7 @@ let staffList = [];
 let templateRoles = [];
 let serviceRoles = [];
 let staffTemplates = [];
+  let availability = [];
 
 let staffMap = {};
 let roleMap = {};
@@ -104,15 +105,17 @@ let poolMap = {};
 /* ================= LOAD ================= */
 async function load(){
 
-  const [s, st, tr, sr, tpl] = await Promise.all([
-    db.from("services").select("* , service_slots(label,time,location)")
-      .order("service_date",{ascending:true}),
-    db.from("staff").select("*"),
-    db.from("service_template_roles").select("*"),
-    db.from("service_roles").select("*"),
-    db.from("staff_service_templates").select("*")
-  ]);
+ const [s, st, tr, sr, tpl, av] = await Promise.all([
+  db.from("services").select("* , service_slots(label,time,location)")
+    .order("service_date",{ascending:true}),
+  db.from("staff").select("*"),
+  db.from("service_template_roles").select("*"),
+  db.from("service_roles").select("*"),
+  db.from("staff_service_templates").select("*"),
+  db.from("staff_availability").select("*")   // ✅ ADD THIS
+]);
 
+availability = av.data || [];
   services = s.data || [];
   staffList = st.data || [];
   templateRoles = tr.data || [];
@@ -177,6 +180,29 @@ function getAssigned(serviceId, role){
   return match ? staffMap[match.staff_id] : "-";
 }
 
+function getAvailableStaff(service){
+
+  const templateId = String(service.service_template_id);
+
+  const pool = poolMap[templateId] || [];
+
+  const unavailable = new Set(
+    availability
+      .filter(a =>
+        String(a.service_date) === String(service.service_date) &&
+        String(a.service_slot_id) === String(service.service_slot_id) &&
+        a.status === "unavailable"
+      )
+      .map(a => String(a.staff_id))
+  );
+
+  const available = pool.filter(p =>
+    !unavailable.has(String(p.id))
+  );
+
+  return { pool, unavailable, available };
+}
+  
 /* ================= CARD ================= */
 function card(service){
 
@@ -242,27 +268,47 @@ window.onService = function(){
 
   const id = serviceSel.value;
 
-  const service = services.find(s => s.id === id);
+  const service = services.find(s => String(s.id) === String(id));
   if(!service) return;
 
-  const pool = poolMap[service.service_template_id] || [];
   const roles = getRoles(service);
+
+  const { pool, unavailable, available } = getAvailableStaff(service);
 
   poolView.innerHTML = `
     <b>${service.service_slots?.label}</b>
+    <div style="font-size:11px;color:#94a3b8">
+      ${service.service_date} • ${service.start_time || ""}
+    </div>
 
     <div style="margin-top:10px">
-      <b>Roles</b>
+      <b>Roles Required</b>
       ${roles.map(r => `<div>${r.role}</div>`).join("")}
     </div>
 
     <div style="margin-top:10px">
-      <b>Staff Pool</b>
-      ${pool.map(p => `<div>${p.name}</div>`).join("")}
+      <b>Available Staff</b>
+      ${
+        available.length === 0
+          ? `<div style="color:#ef4444">No available staff</div>`
+          : available.map(s => `
+              <div style="color:#22c55e">${s.name}</div>
+            `).join("")
+      }
+    </div>
+
+    <div style="margin-top:10px">
+      <b>Unavailable Staff</b>
+      ${
+        unavailable.size === 0
+          ? `<div style="color:#94a3b8">None</div>`
+          : [...unavailable].map(id => `
+              <div style="color:#ef4444">${staffMap[id] || "Unknown"}</div>
+            `).join("")
+      }
     </div>
   `;
 };
-
 /* ================= RENDER ================= */
 function render(){
 
