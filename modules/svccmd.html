@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Service Command Center (Fixed Unavailable Button)</title>
+  <title>Service Command Center (Inspector + HC Fix)</title>
 
   <style>
     body{
@@ -104,14 +104,7 @@
       margin-top:10px;
     }
 
-    .danger{
-      background:#ef4444;
-    }
-
-    button:disabled{
-      opacity:0.4;
-      cursor:not-allowed;
-    }
+    .danger{ background:#ef4444; }
 
     .assignBanner{
       padding:6px;
@@ -122,7 +115,6 @@
       margin-bottom:8px;
       color:#93c5fd;
     }
-
   </style>
 </head>
 
@@ -198,8 +190,8 @@ async function load(){
   render();
 }
 
-/* ================= HELPERS ================= */
-function getRoles(service){
+/* ================= ROLE RESOLVER (FIXED HC GROUPING) ================= */
+function resolveServiceRoles(service){
 
   let roles = templateRoles.filter(r =>
     String(r.template_id) === String(service.service_template_id)
@@ -209,35 +201,77 @@ function getRoles(service){
     roles = roles.filter(r => r.is_communion_role !== true);
   }
 
-  return roles;
+  const hc = roles.filter(r => r.is_communion_role === true);
+  const nonHC = roles.filter(r => !r.is_communion_role);
+
+  const hcGrouped = {};
+
+  hc.forEach(r => {
+    const group = r.group_name || "Ungrouped";
+    if(!hcGrouped[group]) hcGrouped[group] = [];
+    hcGrouped[group].push(r);
+  });
+
+  return { hcGrouped, nonHC };
 }
 
-function getAvailable(service){
+/* ================= ASSIGNED ================= */
+function getAssigned(serviceId, role){
 
-  const pool = poolMap[service.service_template_id] || [];
+  const key = `${serviceId}_${role?.toLowerCase()}`;
+  const match = roleMap[key];
 
-  const unavailable = new Set(
-    availability
-      .filter(a =>
-        a.service_date === service.service_date &&
-        a.service_slot_id === service.service_slot_id &&
-        a.status === "unavailable"
-      )
-      .map(a => String(a.staff_id))
-  );
-
-  const available = pool.filter(p => !unavailable.has(String(p.id)));
-
-  return { pool, unavailable, available };
+  return match ? staffMap[match.staff_id] : "-";
 }
 
-/* ================= SELECTION ================= */
-window.selectStaff = function(id){
-  selectedStaffId = id;
-  renderInspector(selectedService);
-};
+/* ================= CARD ================= */
+function card(service){
 
-/* ================= INSPECTOR ================= */
+  const { hcGrouped, nonHC } = resolveServiceRoles(service);
+
+  return `
+    <div class="card">
+
+      <b>${service.service_slots?.label}</b>
+      <div style="font-size:11px;color:#94a3b8">
+        ${service.service_date}
+      </div>
+
+      <!-- NON HC -->
+      ${nonHC.map(r => `
+        <div class="row">
+          <div class="role">${r.role}</div>
+          <div class="staff">${getAssigned(service.id, r.role)}</div>
+        </div>
+      `).join("")}
+
+      <!-- HC -->
+      ${service.is_communion_service ? `
+        <div style="margin-top:10px;color:#fbbf24;font-weight:bold;">
+          Holy Communion
+        </div>
+
+        ${Object.keys(hcGrouped).map(group => `
+          <div style="margin-top:8px;padding:6px;border:1px solid #1f2937;border-radius:6px;">
+            <div style="color:#60a5fa;font-size:12px;font-weight:bold;">
+              ${group}
+            </div>
+
+            ${hcGrouped[group].map(r => `
+              <div class="row">
+                <div class="role">${r.role}</div>
+                <div class="staff">${getAssigned(service.id, r.role)}</div>
+              </div>
+            `).join("")}
+          </div>
+        `).join("")}
+      ` : ""}
+
+    </div>
+  `;
+}
+
+/* ================= INSPECTOR (RESTORED FULL) ================= */
 function inspector(){
 
   const dates = [...new Set(services.map(s => s.service_date))];
@@ -256,18 +290,30 @@ function inspector(){
       Select service
     </div>
 
-    <button id="unavailBtn" class="danger" onclick="markUnavailable()">
+    <button class="danger" onclick="markUnavailable()" ${!selectedStaffId ? "disabled" : ""}>
       Mark Unavailable
     </button>
   `;
 }
 
-/* ================= RENDER INSPECTOR ================= */
+/* ================= INSPECTOR RENDER ================= */
 function renderInspector(service){
 
   if(!service) return;
 
-  const { available, unavailable } = getAvailable(service);
+  const pool = poolMap[service.service_template_id] || [];
+
+  const unavailable = new Set(
+    availability
+      .filter(a =>
+        a.service_date === service.service_date &&
+        a.service_slot_id === service.service_slot_id &&
+        a.status === "unavailable"
+      )
+      .map(a => String(a.staff_id))
+  );
+
+  const available = pool.filter(p => !unavailable.has(String(p.id)));
 
   document.getElementById("poolView").innerHTML = `
     <div class="assignBanner">
@@ -300,18 +346,16 @@ function renderInspector(service){
       `).join("")}
     </div>
   `;
-
-  const btn = document.getElementById("unavailBtn");
-  if(btn){
-    btn.disabled = !(selectedStaffId && selectedService);
-  }
 }
 
-/* ================= SERVICE SELECT ================= */
+/* ================= EVENTS ================= */
+window.selectStaff = function(id){
+  selectedStaffId = id;
+  renderInspector(selectedService);
+};
+
 window.onDate = function(){
-
   const date = dateSel.value;
-
   const filtered = services.filter(s => s.service_date === date);
 
   serviceSel.innerHTML = `
@@ -335,7 +379,6 @@ window.onServiceSelect = function(){
   renderInspector(service);
 };
 
-/* ================= MARK UNAVAILABLE ================= */
 window.markUnavailable = async function(){
 
   if(!selectedService || !selectedStaffId) return;
@@ -348,12 +391,11 @@ window.markUnavailable = async function(){
   });
 
   selectedStaffId = null;
-
   await load();
   renderInspector(selectedService);
 };
 
-/* ================= RENDER ================= */
+/* ================= GRID ================= */
 function render(){
 
   const cols = { sat:[], s1:[], s2:[], jurong:[] };
@@ -370,11 +412,29 @@ function render(){
   });
 
   grid.innerHTML = `
-    <div class="col"><div class="title">Sat</div>${cols.sat.map(s => `<div class="card">${s.service_slots?.label}</div>`).join("")}</div>
-    <div class="col"><div class="title">8.30</div>${cols.s1.map(s => `<div class="card">${s.service_slots?.label}</div>`).join("")}</div>
-    <div class="col"><div class="title">10.45</div>${cols.s2.map(s => `<div class="card">${s.service_slots?.label}</div>`).join("")}</div>
-    <div class="col"><div class="title">Jurong</div>${cols.jurong.map(s => `<div class="card">${s.service_slots?.label}</div>`).join("")}</div>
-    <div class="col">${inspector()}</div>
+    <div class="col">
+      <div class="title">Sat</div>
+      ${cols.sat.map(card).join("")}
+    </div>
+
+    <div class="col">
+      <div class="title">8.30</div>
+      ${cols.s1.map(card).join("")}
+    </div>
+
+    <div class="col">
+      <div class="title">10.45</div>
+      ${cols.s2.map(card).join("")}
+    </div>
+
+    <div class="col">
+      <div class="title">Jurong</div>
+      ${cols.jurong.map(card).join("")}
+    </div>
+
+    <div class="col">
+      ${inspector()}
+    </div>
   `;
 }
 
