@@ -48,7 +48,7 @@
       margin-bottom:10px;
     }
 
-    .service-date{
+    .date{
       font-size:11px;
       color:#94a3b8;
     }
@@ -56,29 +56,28 @@
     .row{
       display:flex;
       justify-content:space-between;
-      margin:6px 0;
       font-size:12px;
+      margin:6px 0;
       gap:8px;
     }
 
     .role{flex:1}
 
     .staff{
-      font-weight:bold;
-      color:#22c55e;
       min-width:110px;
       text-align:right;
+      font-weight:bold;
+      color:#22c55e;
     }
 
     .unassigned{
       color:#ef4444;
-      font-weight:bold;
     }
 
-    .pool-box{
+    .pool{
       margin-top:8px;
-      padding-top:6px;
       border-top:1px solid #1f2937;
+      padding-top:6px;
     }
 
     .pool-title{
@@ -103,23 +102,23 @@ import { db } from "../assets/app.js";
 
 /* ================= STATE ================= */
 let services = [];
+let staff = [];
 let templateRoles = [];
 let serviceRoles = [];
-let staffList = [];
 let templateStaff = [];
 
 let staffMap = {};
 let roleMap = {};
-let templateStaffMap = {};
+let poolMap = {};
 
 /* ================= LOAD ================= */
 async function load(){
 
   const [
     sRes,
+    stRes,
     trRes,
     srRes,
-    stRes,
     tsRes
   ] = await Promise.all([
 
@@ -127,80 +126,66 @@ async function load(){
       .select("*, service_slots(label,time,location)")
       .order("service_date",{ascending:true}),
 
-    db.from("service_template_roles").select("*"),
-
-    db.from("service_roles").select(`
-      service_id,
-      role,
-      staff_id,
-      staff:staff_id (
-        id,
-        name
-      )
-    `),
-
     db.from("staff").select("*"),
 
-    /* ✅ NEW: TEMPLATE STAFF POOL */
-    db.from("service_template_staff").select(`
-      template_id,
-      staff_id,
-      staff:staff_id (
-        id,
-        name
-      )
-    `)
+    db.from("service_template_roles").select("*"),
+
+    db.from("service_roles").select("*"),
+
+    db.from("service_template_staff").select("*")
   ]);
 
   services = sRes.data || [];
+  staff = stRes.data || [];
   templateRoles = trRes.data || [];
   serviceRoles = srRes.data || [];
-  staffList = stRes.data || [];
   templateStaff = tsRes.data || [];
 
-  /* STAFF MAP */
+  /* ================= STAFF MAP ================= */
   staffMap = Object.fromEntries(
-    staffList.map(s => [String(s.id), s.name])
+    staff.map(s => [String(s.id), s.name])
   );
 
-  /* ROLE MAP (latest assignment) */
+  /* ================= ROLE MAP ================= */
   roleMap = {};
+
   serviceRoles.forEach(r => {
+
     const key =
       `${r.service_id}_${String(r.role || "").toLowerCase()}`;
 
     roleMap[key] = r;
   });
 
-  /* ✅ TEMPLATE STAFF POOL MAP */
-  templateStaffMap = {};
+  /* ================= TEMPLATE STAFF POOL ================= */
+  poolMap = {};
 
   templateStaff.forEach(t => {
 
-    if(!templateStaffMap[t.template_id]){
-      templateStaffMap[t.template_id] = [];
-    }
+    const tid = String(t.template_id);
 
-    templateStaffMap[t.template_id].push({
-      id: t.staff_id,
-      name: t.staff?.name || staffMap[t.staff_id] || "Unknown"
+    if(!poolMap[tid]) poolMap[tid] = [];
+
+    poolMap[tid].push({
+      staff_id: t.staff_id,
+      name: staffMap[t.staff_id] || "UNKNOWN"
     });
   });
 
   render();
 }
 
-/* ================= ROLE BUILDER ================= */
+/* ================= BUILD ROLES ================= */
 function buildRoles(service){
 
-  const template = templateRoles.filter(t =>
-    String(t.template_id) === String(service.service_template_id)
+  const roles = templateRoles.filter(r =>
+    String(r.template_id) === String(service.service_template_id)
   );
 
   const filtered = service.is_communion_service
-    ? template
-    : template.filter(t =>
-        !t.role.toLowerCase().includes("communion")
+    ? roles
+    : roles.filter(r =>
+        !r.role.toLowerCase().includes("communion")
       );
 
   return filtered.map(r => {
@@ -212,19 +197,18 @@ function buildRoles(service){
 
     return {
       role: r.role,
-      staff: assigned?.staff?.name || null
+      staff: assigned ? staffMap[assigned.staff_id] : null
     };
   });
 }
 
-/* ================= STAFF POOL (FIXED) ================= */
-function buildStaffPool(service){
+/* ================= STAFF POOL ================= */
+function buildPool(service){
 
-  const pool =
-    templateStaffMap[service.service_template_id] || [];
+  const pool = poolMap[String(service.service_template_id)] || [];
 
   if(pool.length === 0){
-    return `<div style="color:#ef4444;font-size:12px">No Template Pool</div>`;
+    return `<div style="color:#ef4444;font-size:12px">No Pool Assigned</div>`;
   }
 
   return pool.map(p => `
@@ -247,7 +231,7 @@ function card(service){
         ${service.service_slots?.label}
       </div>
 
-      <div class="service-date">
+      <div class="date">
         ${service.service_date}
       </div>
 
@@ -260,9 +244,9 @@ function card(service){
         </div>
       `).join("")}
 
-      <div class="pool-box">
+      <div class="pool">
         <div class="pool-title">Staff Pool (Template Level)</div>
-        ${buildStaffPool(service)}
+        ${buildPool(service)}
       </div>
 
     </div>
@@ -309,7 +293,7 @@ function render(){
     <div class="col">
       <div class="title">System View</div>
       <div style="font-size:11px;color:#94a3b8">
-        Template-level staff pool integrated
+        Stable architecture (no relational dependency)
       </div>
     </div>
   `;
