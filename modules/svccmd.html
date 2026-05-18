@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Service Command Center (Context-Aware)</title>
+  <title>Service Command Center (Separated Inspector)</title>
 
   <style>
     body{
@@ -14,9 +14,9 @@
     header{
       padding:12px;
       background:#111827;
-      font-weight:bold;
       display:flex;
       justify-content:space-between;
+      font-weight:bold;
       border-bottom:1px solid #1f2937;
     }
 
@@ -55,15 +55,7 @@
       justify-content:space-between;
       font-size:12px;
       margin:6px 0;
-      gap:10px;
     }
-
-    .role{ flex:1; }
-    .staff{ font-weight:bold; }
-
-    .assigned{ color:#60a5fa; }
-    .available{ color:#22c55e; }
-    .unavailable{ color:#ef4444; }
 
     select{
       width:100%;
@@ -75,29 +67,22 @@
       border:1px solid #334155;
     }
 
-    button{
-      font-size:10px;
-      padding:3px 6px;
-      background:#3b82f6;
-      border:none;
-      border-radius:5px;
-      color:white;
-      cursor:pointer;
-    }
+    .assigned{ color:#60a5fa; }
+    .available{ color:#22c55e; }
+    .unavailable{ color:#ef4444; }
   </style>
 </head>
 
 <body>
 
 <header>
-  Service Command Center (Context Aware)
+  Service Command Center
   <button onclick="load()">Refresh</button>
 </header>
 
 <div class="grid" id="grid"></div>
 
 <script type="module">
-
 import { db } from "../assets/app.js";
 
 /* ================= STATE ================= */
@@ -142,8 +127,7 @@ async function load(){
 
   roleMap = {};
   serviceRoles.forEach(r=>{
-    const key = `${r.service_id}_${String(r.role||"").toLowerCase()}`;
-    roleMap[key] = r;
+    roleMap[`${r.service_id}_${r.role.toLowerCase()}`] = r;
   });
 
   availabilityMap = {};
@@ -154,116 +138,151 @@ async function load(){
   render();
 }
 
-/* ================= CORE LOGIC ================= */
+/* ================= SERVICE CARD (NO STAFF INSIDE) ================= */
 
-function getPool(service){
-  return staffTemplates
-    .filter(t => String(t.template_id) === String(service.service_template_id))
-    .map(t => t.staff_id);
-}
-
-function getAssigned(serviceId, role){
-  const key = `${serviceId}_${role.toLowerCase()}`;
-  const match = roleMap[key];
-  return match ? staffMap[match.staff_id] : "-";
-}
-
-function getStatus(service, staffId, role){
-
-  const key = `${service.service_date}_${staffId}`;
-  const avail = availabilityMap[key];
-
-  const assignedKey = `${service.id}_${role.toLowerCase()}`;
-  const assigned = roleMap[assignedKey];
-
-  if(assigned?.staff_id === staffId) return "assigned";
-  if(avail === "unavailable") return "unavailable";
-  return "available";
-}
-
-/* ================= CARD ================= */
-
-function card(service){
+function serviceCard(service){
 
   const roles = templateRoles.filter(r =>
     String(r.template_id) === String(service.service_template_id)
   );
 
-  const pool = getPool(service);
-
   return `
     <div class="card">
 
       <b>${service.service_slots?.label}</b>
+
       <div style="font-size:11px;color:#94a3b8">
         ${service.service_date}
       </div>
 
       <div style="margin-top:8px">
-        <b>Roles</b>
+        <b>Roles Required</b>
 
         ${roles.map(r=>`
           <div class="row">
-            <div class="role">${r.role}</div>
-            <div class="staff">
-              ${pool.map(pid=>{
-                const status = getStatus(service, pid, r.role);
-                return `<div class="${status}">
-                  ${staffMap[pid] || "Unknown"} (${status})
-                </div>`;
-              }).join("")}
-            </div>
+            <div>${r.role}</div>
           </div>
         `).join("")}
 
       </div>
 
+      <button onclick="selectService('${service.id}')">
+        Inspect
+      </button>
+
     </div>
   `;
+}
+
+/* ================= INSPECTOR ================= */
+
+window.selectedService = null;
+
+window.selectService = function(id){
+  window.selectedService = services.find(s=>String(s.id)===String(id));
+  render();
+};
+
+function inspector(){
+
+  if(!window.selectedService){
+    return `<div class="title">Inspector</div>Select a service`;
+  }
+
+  const service = window.selectedService;
+
+  const pool = staffTemplates
+    .filter(t => String(t.template_id) === String(service.service_template_id))
+    .map(t => t.staff_id);
+
+  const roles = templateRoles.filter(r =>
+    String(r.template_id) === String(service.service_template_id)
+  );
+
+  let html = `
+    <div class="title">Inspector</div>
+
+    <div class="card">
+      <b>${service.service_slots?.label}</b><br>
+      <span style="font-size:11px;color:#94a3b8">
+        ${service.service_date}
+      </span>
+    </div>
+  `;
+
+  roles.forEach(role=>{
+
+    html += `
+      <div class="card">
+        <b>${role.role}</b>
+    `;
+
+    pool.forEach(pid=>{
+
+      const key = `${service.service_date}_${pid}`;
+      const status = availabilityMap[key];
+
+      const assigned = roleMap[`${service.id}_${role.role.toLowerCase()}`];
+
+      let state = "available";
+
+      if(assigned?.staff_id === pid) state = "assigned";
+      else if(status === "unavailable") state = "unavailable";
+
+      html += `
+        <div class="row">
+          <div>${staffMap[pid] || "Unknown"}</div>
+          <div class="${state}">${state}</div>
+        </div>
+      `;
+    });
+
+    html += `</div>`;
+  });
+
+  return html;
 }
 
 /* ================= RENDER ================= */
 
 function render(){
 
-  const cols = {sat:[], s830:[], s1045:[], jurong:[]};
+  const cols = {a:[],b:[],c:[],d:[]};
 
   services.forEach(s=>{
+
     const t = (s.service_slots?.time||"").toLowerCase();
     const loc = (s.service_slots?.location||"").toLowerCase();
 
-    if(loc.includes("jurong")) cols.jurong.push(s);
-    else if(t.includes("14")||t.includes("2:30")) cols.sat.push(s);
-    else if(t.includes("08")) cols.s830.push(s);
-    else if(t.includes("10:45")) cols.s1045.push(s);
+    if(loc.includes("jurong")) cols.d.push(s);
+    else if(t.includes("14")) cols.a.push(s);
+    else if(t.includes("08")) cols.b.push(s);
+    else cols.c.push(s);
   });
 
   document.getElementById("grid").innerHTML = `
     <div class="col">
       <div class="title">Saturday</div>
-      ${cols.sat.map(card).join("")}
+      ${cols.a.map(serviceCard).join("")}
     </div>
 
     <div class="col">
       <div class="title">8.30am</div>
-      ${cols.s830.map(card).join("")}
+      ${cols.b.map(serviceCard).join("")}
     </div>
 
     <div class="col">
       <div class="title">10.45am</div>
-      ${cols.s1045.map(card).join("")}
+      ${cols.c.map(serviceCard).join("")}
     </div>
 
     <div class="col">
       <div class="title">Jurong</div>
-      ${cols.jurong.map(card).join("")}
+      ${cols.d.map(serviceCard).join("")}
     </div>
 
     <div class="col">
-      <div class="title">Inspector (Context View)</div>
-      <div style="font-size:11px;color:#94a3b8">
-        Use future upgrade: date/service selector
-      </div>
+      ${inspector()}
     </div>
   `;
 }
