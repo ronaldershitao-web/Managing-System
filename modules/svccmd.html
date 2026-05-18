@@ -164,9 +164,7 @@ async function load(){
     staffList.map(s => [String(s.id), s.name])
   );
 
-function norm(v){
-  return (v || "").trim().toLowerCase();
-}
+
 
   poolMap = {};
   staffTemplates.forEach(t => {
@@ -204,7 +202,10 @@ function resolveServiceRoles(service){
 
   return { hcGrouped, nonHC };
 }
-
+  
+function norm(v){
+  return (v || "").trim().toLowerCase();
+}
 /* ================= ASSIGNED ================= */
 function getAssigned(serviceId, role){
 
