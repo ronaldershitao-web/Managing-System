@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Service Command Center (Clean + Modal Assignment)</title>
+  <title>Service Command Center (Clean Architecture Final)</title>
 
   <style>
     body{
@@ -56,11 +56,7 @@
       justify-content:space-between;
       font-size:12px;
       margin:6px 0;
-      align-items:center;
     }
-
-    .role{ flex:1; }
-    .staff{ color:#22c55e; font-weight:bold; }
 
     button{
       font-size:11px;
@@ -74,9 +70,6 @@
       margin-top:8px;
     }
 
-    .danger{ background:#ef4444; }
-
-    /* ================= MODAL ================= */
     .modal{
       position:fixed;
       inset:0;
@@ -87,13 +80,23 @@
     }
 
     .modalBox{
-      width:420px;
+      width:450px;
       max-height:80vh;
+      overflow:auto;
       background:#111827;
-      border:1px solid #334155;
       border-radius:10px;
       padding:12px;
-      overflow:auto;
+      border:1px solid #334155;
+    }
+
+    select{
+      width:100%;
+      padding:6px;
+      margin:6px 0;
+      background:#0f172a;
+      color:white;
+      border:1px solid #334155;
+      border-radius:6px;
     }
 
     .chip{
@@ -105,13 +108,10 @@
       font-size:12px;
     }
 
-    .chip:hover{
-      background:#1e293b;
-    }
+    .chip:hover{ background:#1e293b; }
 
-    .selectedRole{
-      background:#1d4ed8;
-    }
+    .avail{ color:#22c55e; }
+    .unavail{ color:#ef4444; }
   </style>
 </head>
 
@@ -136,20 +136,22 @@
 import { db } from "../assets/app.js";
 
 /* ================= STATE ================= */
-let services=[], staffList=[], templateRoles=[], serviceRoles=[], staffTemplates=[];
+let services=[], staffList=[], templateRoles=[], serviceRoles=[], staffTemplates=[], availability=[];
 let staffMap={}, roleMap={}, poolMap={};
 
 let activeService=null;
+let selectedRole=null;
 
 /* ================= LOAD ================= */
 async function load(){
 
-  const [s, st, tr, sr, tpl] = await Promise.all([
+  const [s,st,tr,sr,tpl,av]=await Promise.all([
     db.from("services").select("* , service_slots(label,time,location)").order("service_date",{ascending:true}),
     db.from("staff").select("*"),
     db.from("service_template_roles").select("*"),
     db.from("service_roles").select("*"),
-    db.from("staff_service_templates").select("*")
+    db.from("staff_service_templates").select("*"),
+    db.from("staff_availability").select("*")
   ]);
 
   services=s.data||[];
@@ -157,13 +159,14 @@ async function load(){
   templateRoles=tr.data||[];
   serviceRoles=sr.data||[];
   staffTemplates=tpl.data||[];
+  availability=av.data||[];
 
   staffMap=Object.fromEntries(staffList.map(s=>[String(s.id),s.name]));
 
   roleMap={};
   serviceRoles.forEach(r=>{
     const key=`${r.service_id}_${r.role?.toLowerCase()}`;
-    if(!roleMap[key] || new Date(r.created_at)>new Date(roleMap[key].created_at)){
+    if(!roleMap[key]||new Date(r.created_at)>new Date(roleMap[key].created_at)){
       roleMap[key]=r;
     }
   });
@@ -199,11 +202,39 @@ function getAssigned(serviceId,role){
   return roleMap[key]?staffMap[roleMap[key].staff_id]:"-";
 }
 
-/* ================= OPEN MODAL ================= */
+/* ================= CARD ================= */
+function card(service){
+
+  const roles=getRoles(service);
+
+  return `
+    <div class="card">
+      <b>${service.service_slots?.label}</b>
+      <div style="font-size:11px;color:#94a3b8">
+        ${service.service_date}
+      </div>
+
+      ${roles.map(r=>`
+        <div class="row">
+          <div>${r.role}</div>
+          <div>${getAssigned(service.id,r.role)}</div>
+        </div>
+      `).join("")}
+
+      <button onclick="openAssign('${service.id}')">
+        Assign Staff
+      </button>
+    </div>
+  `;
+}
+
+/* ================= MODAL ================= */
 window.openAssign=function(serviceId){
 
   activeService=services.find(s=>String(s.id)===String(serviceId));
   if(!activeService)return;
+
+  selectedRole=null;
 
   const roles=getRoles(activeService);
   const pool=poolMap[activeService.service_template_id]||[];
@@ -213,78 +244,47 @@ window.openAssign=function(serviceId){
   document.getElementById("modalContent").innerHTML=`
     <h3>${activeService.service_slots?.label}</h3>
 
-    <div style="font-size:12px;color:#94a3b8;margin-bottom:10px">
-      ${activeService.service_date}
-    </div>
+    <select onchange="selectRole(this.value)">
+      <option value="">Select Role</option>
+      ${roles.map(r=>`
+        <option value="${r.role}">${r.role}</option>
+      `).join("")}
+    </select>
 
-    <b>Assign Roles</b>
+    <select id="staffSelect">
+      <option value="">Select Staff</option>
+      ${pool.map(p=>`
+        <option value="${p.id}">${p.name}</option>
+      `).join("")}
+    </select>
 
-    ${roles.map(r=>`
-      <div class="chip" onclick="assign('${activeService.id}','${r.role}')">
-        Assign ${r.role}
-      </div>
-    `).join("")}
-
-    <hr>
-
-    <b>Staff Pool</b>
-    ${pool.map(p=>`
-      <div class="chip">
-        ${p.name}
-      </div>
-    `).join("")}
+    <button onclick="assign()">Assign</button>
   `;
+};
+
+window.selectRole=function(r){
+  selectedRole=r;
+};
+
+window.assign=async function(){
+
+  const staffId=document.getElementById("staffSelect").value;
+
+  if(!selectedRole||!staffId)return;
+
+  await db.from("service_roles").insert({
+    service_id:activeService.id,
+    role:selectedRole,
+    staff_id:staffId
+  });
+
+  await load();
+  openAssign(activeService.id);
 };
 
 window.closeModal=function(){
   document.getElementById("modal").style.display="none";
 };
-
-/* ================= ASSIGN ================= */
-window.assign=async function(serviceId,role){
-
-  const staffId=prompt("Enter staff ID (demo selection)");
-
-  if(!staffId)return;
-
-  await db.from("service_roles").insert({
-    service_id:serviceId,
-    role:role,
-    staff_id:staffId
-  });
-
-  await load();
-  openAssign(serviceId);
-};
-
-/* ================= CARD ================= */
-function card(service){
-
-  const roles=getRoles(service);
-
-  return `
-    <div class="card">
-
-      <b>${service.service_slots?.label}</b>
-
-      <div style="font-size:11px;color:#94a3b8">
-        ${service.service_date}
-      </div>
-
-      ${roles.map(r=>`
-        <div class="row">
-          <div class="role">${r.role}</div>
-          <div class="staff">${getAssigned(service.id,r.role)}</div>
-        </div>
-      `).join("")}
-
-      <button onclick="openAssign('${service.id}')">
-        Assign Staff
-      </button>
-
-    </div>
-  `;
-}
 
 /* ================= RENDER ================= */
 function render(){
@@ -307,7 +307,7 @@ function render(){
     <div class="col"><div class="title">8.30</div>${cols.s1.map(card).join("")}</div>
     <div class="col"><div class="title">10.45</div>${cols.s2.map(card).join("")}</div>
     <div class="col"><div class="title">Jurong</div>${cols.jurong.map(card).join("")}</div>
-    <div class="col"><div class="title">Inspector stays separate (not removed)</div></div>
+    <div class="col"><div class="title">Inspector stays separate</div></div>
   `;
 }
 
