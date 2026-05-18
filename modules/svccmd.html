@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Service Command Center (Stable Architecture)</title>
+  <title>Service Command Center (Clean + Modal Assignment)</title>
 
   <style>
     body{
@@ -18,6 +18,7 @@
       border-bottom:1px solid #1f2937;
       display:flex;
       justify-content:space-between;
+      align-items:center;
     }
 
     .grid{
@@ -53,10 +54,9 @@
     .row{
       display:flex;
       justify-content:space-between;
-      align-items:center;
       font-size:12px;
       margin:6px 0;
-      gap:10px;
+      align-items:center;
     }
 
     .role{ flex:1; }
@@ -64,26 +64,19 @@
 
     button{
       font-size:11px;
-      padding:5px 8px;
+      padding:6px 8px;
       background:#3b82f6;
       border:none;
       color:white;
       border-radius:6px;
       cursor:pointer;
+      width:100%;
+      margin-top:8px;
     }
 
-    .chip{
-      padding:6px;
-      border:1px solid #334155;
-      border-radius:6px;
-      margin:4px 0;
-      cursor:pointer;
-      font-size:12px;
-    }
+    .danger{ background:#ef4444; }
 
-    .selected{ background:#1d4ed8; border-color:#60a5fa; }
-
-    /* MODAL */
+    /* ================= MODAL ================= */
     .modal{
       position:fixed;
       inset:0;
@@ -94,40 +87,31 @@
     }
 
     .modalBox{
-      width:360px;
-      max-height:70vh;
+      width:420px;
+      max-height:80vh;
       background:#111827;
       border:1px solid #334155;
       border-radius:10px;
       padding:12px;
-      display:flex;
-      flex-direction:column;
-    }
-
-    .staffList{
       overflow:auto;
-      flex:1;
-      border:1px solid #1f2937;
-      border-radius:8px;
-      padding:6px;
     }
 
-    .danger{
-      background:#ef4444;
-      margin-top:8px;
-      width:100%;
-    }
-
-    select{
-      width:100%;
+    .chip{
       padding:6px;
-      margin-bottom:6px;
-      background:#0f172a;
-      color:white;
+      margin:4px 0;
       border:1px solid #334155;
       border-radius:6px;
+      cursor:pointer;
+      font-size:12px;
     }
 
+    .chip:hover{
+      background:#1e293b;
+    }
+
+    .selectedRole{
+      background:#1d4ed8;
+    }
   </style>
 </head>
 
@@ -140,44 +124,32 @@
 
 <div class="grid" id="grid"></div>
 
-<!-- MODAL -->
-<div class="modal" id="modal">
+<!-- ================= MODAL ================= -->
+<div id="modal" class="modal">
   <div class="modalBox">
-
-    <div id="modalTitle" style="font-weight:bold"></div>
-
-    <div id="modalInfo" style="font-size:11px;color:#93c5fd"></div>
-
-    <div id="staffList" class="staffList"></div>
-
-    <button onclick="saveAssignment()">Save Assignment</button>
-    <button class="danger" onclick="closeModal()">Close</button>
-
+    <div id="modalContent"></div>
+    <button onclick="closeModal()">Close</button>
   </div>
 </div>
 
 <script type="module">
-
 import { db } from "../assets/app.js";
 
 /* ================= STATE ================= */
-let services=[], staffList=[], templateRoles=[], serviceRoles=[], staffTemplates=[], availability=[];
-
+let services=[], staffList=[], templateRoles=[], serviceRoles=[], staffTemplates=[];
 let staffMap={}, roleMap={}, poolMap={};
 
-let modal = { serviceId:null, role:null, staffId:null };
+let activeService=null;
 
 /* ================= LOAD ================= */
 async function load(){
 
-  const [s,st,tr,sr,tpl,av] = await Promise.all([
-    db.from("services").select("* , service_slots(label,time,location)")
-      .order("service_date",{ascending:true}),
+  const [s, st, tr, sr, tpl] = await Promise.all([
+    db.from("services").select("* , service_slots(label,time,location)").order("service_date",{ascending:true}),
     db.from("staff").select("*"),
     db.from("service_template_roles").select("*"),
     db.from("service_roles").select("*"),
-    db.from("staff_service_templates").select("*"),
-    db.from("staff_availability").select("*")
+    db.from("staff_service_templates").select("*")
   ]);
 
   services=s.data||[];
@@ -185,15 +157,14 @@ async function load(){
   templateRoles=tr.data||[];
   serviceRoles=sr.data||[];
   staffTemplates=tpl.data||[];
-  availability=av.data||[];
 
   staffMap=Object.fromEntries(staffList.map(s=>[String(s.id),s.name]));
 
   roleMap={};
   serviceRoles.forEach(r=>{
-    const k=`${r.service_id}_${r.role?.toLowerCase()}`;
-    if(!roleMap[k] || new Date(r.created_at)>new Date(roleMap[k].created_at)){
-      roleMap[k]=r;
+    const key=`${r.service_id}_${r.role?.toLowerCase()}`;
+    if(!roleMap[key] || new Date(r.created_at)>new Date(roleMap[key].created_at)){
+      roleMap[key]=r;
     }
   });
 
@@ -209,170 +180,123 @@ async function load(){
   render();
 }
 
-/* ================= ROLE ================= */
+/* ================= ROLES ================= */
+function getRoles(service){
+  let roles=templateRoles.filter(r=>
+    String(r.template_id)===String(service.service_template_id)
+  );
+
+  if(service.is_communion_service===false){
+    roles=roles.filter(r=>r.is_communion_role!==true);
+  }
+
+  return roles;
+}
+
+/* ================= ASSIGNED ================= */
 function getAssigned(serviceId,role){
-  const k=`${serviceId}_${role?.toLowerCase()}`;
-  return roleMap[k]?staffMap[roleMap[k].staff_id]:"-";
+  const key=`${serviceId}_${role?.toLowerCase()}`;
+  return roleMap[key]?staffMap[roleMap[key].staff_id]:"-";
 }
 
-/* ================= CARD ================= */
-function card(svc){
+/* ================= OPEN MODAL ================= */
+window.openAssign=function(serviceId){
 
-  const roles=templateRoles.filter(r=>
-    String(r.template_id)===String(svc.service_template_id)
-  );
+  activeService=services.find(s=>String(s.id)===String(serviceId));
+  if(!activeService)return;
 
-  return `
-    <div class="card">
-      <b>${svc.service_slots?.label}</b>
-      <div style="font-size:11px;color:#94a3b8">
-        ${svc.service_date}
+  const roles=getRoles(activeService);
+  const pool=poolMap[activeService.service_template_id]||[];
+
+  document.getElementById("modal").style.display="flex";
+
+  document.getElementById("modalContent").innerHTML=`
+    <h3>${activeService.service_slots?.label}</h3>
+
+    <div style="font-size:12px;color:#94a3b8;margin-bottom:10px">
+      ${activeService.service_date}
+    </div>
+
+    <b>Assign Roles</b>
+
+    ${roles.map(r=>`
+      <div class="chip" onclick="assign('${activeService.id}','${r.role}')">
+        Assign ${r.role}
       </div>
-
-      ${roles.map(r=>`
-        <div class="row">
-          <div class="role">${r.role}</div>
-          <div class="staff">${getAssigned(svc.id,r.role)}</div>
-          <button onclick="openModal('${svc.id}','${r.role}')">Assign</button>
-        </div>
-      `).join("")}
-    </div>
-  `;
-}
-
-/* ================= INSPECTOR (RESTORED FULL CONTEXT) ================= */
-function inspector(){
-
-  const dates=[...new Set(services.map(s=>s.service_date))];
-
-  return `
-    <div class="title">Inspector (Availability)</div>
-
-    <select id="dateSel" onchange="onDate()">
-      <option value="">Select Date</option>
-      ${dates.map(d=>`<option value="${d}">${d}</option>`).join("")}
-    </select>
-
-    <select id="serviceSel" onchange="onService()"></select>
-
-    <div id="inspectView" class="card">Select service</div>
-  `;
-}
-
-window.onDate=function(){
-
-  const d=dateSel.value;
-
-  const list=services.filter(s=>s.service_date===d);
-
-  serviceSel.innerHTML=`
-    <option value="">Select</option>
-    ${list.map(s=>`
-      <option value="${s.id}">
-        ${s.service_slots?.label}
-      </option>
     `).join("")}
-  `;
-};
 
-window.onService=function(){
+    <hr>
 
-  const id=serviceSel.value;
-  const svc=services.find(s=>String(s.id)===String(id));
-  if(!svc) return;
-
-  const pool=poolMap[svc.service_template_id]||[];
-
-  const unavailable=new Set(
-    availability
-      .filter(a=>
-        a.service_date===svc.service_date &&
-        a.service_slot_id===svc.service_slot_id &&
-        a.status==="unavailable"
-      )
-      .map(a=>String(a.staff_id))
-  );
-
-  const available=pool.filter(p=>!unavailable.has(String(p.id)));
-
-  document.getElementById("inspectView").innerHTML=`
-    <b>${svc.service_slots?.label}</b>
-
-    <div style="margin-top:10px">
-      <b>Available</b>
-      ${available.map(a=>`<div>${a.name}</div>`).join("")}
-    </div>
-
-    <div style="margin-top:10px">
-      <b>Unavailable</b>
-      ${[...unavailable].map(id=>`<div>${staffMap[id]}</div>`).join("")}
-    </div>
-  `;
-};
-
-/* ================= MODAL ================= */
-window.openModal=function(sid,role){
-
-  modal.serviceId=sid;
-  modal.role=role;
-  modal.staffId=null;
-
-  const svc=services.find(s=>s.id===sid);
-  const pool=poolMap[svc.service_template_id]||[];
-
-  document.getElementById("modalTitle").innerText=`Assign ${role}`;
-  document.getElementById("modalInfo").innerText=
-    `${svc.service_slots?.label} • ${svc.service_date}`;
-
-  document.getElementById("staffList").innerHTML=
-    pool.map(p=>`
-      <div class="chip ${modal.staffId===p.id?"selected":""}"
-        onclick="selectStaff('${p.id}')">
+    <b>Staff Pool</b>
+    ${pool.map(p=>`
+      <div class="chip">
         ${p.name}
       </div>
-    `).join("");
-
-  modal.style="flex";
-  document.getElementById("modal").style.display="flex";
-};
-
-window.selectStaff=function(id){
-  modal.staffId=id;
-  openModal(modal.serviceId,modal.role);
+    `).join("")}
+  `;
 };
 
 window.closeModal=function(){
   document.getElementById("modal").style.display="none";
 };
 
-/* ================= SAVE ================= */
-window.saveAssignment=async function(){
+/* ================= ASSIGN ================= */
+window.assign=async function(serviceId,role){
 
-  if(!modal.serviceId||!modal.role||!modal.staffId) return;
+  const staffId=prompt("Enter staff ID (demo selection)");
 
-  const svc=services.find(s=>s.id===modal.serviceId);
+  if(!staffId)return;
 
-  await db.from("service_roles").upsert({
-    service_id:modal.serviceId,
-    role:modal.role,
-    staff_id:modal.staffId,
-    service_date:svc.service_date
+  await db.from("service_roles").insert({
+    service_id:serviceId,
+    role:role,
+    staff_id:staffId
   });
 
   await load();
-  closeModal();
+  openAssign(serviceId);
 };
+
+/* ================= CARD ================= */
+function card(service){
+
+  const roles=getRoles(service);
+
+  return `
+    <div class="card">
+
+      <b>${service.service_slots?.label}</b>
+
+      <div style="font-size:11px;color:#94a3b8">
+        ${service.service_date}
+      </div>
+
+      ${roles.map(r=>`
+        <div class="row">
+          <div class="role">${r.role}</div>
+          <div class="staff">${getAssigned(service.id,r.role)}</div>
+        </div>
+      `).join("")}
+
+      <button onclick="openAssign('${service.id}')">
+        Assign Staff
+      </button>
+
+    </div>
+  `;
+}
 
 /* ================= RENDER ================= */
 function render(){
 
-  const cols={sat:[],s1:[],s2:[],jur:[]};
+  const cols={sat:[],s1:[],s2:[],jurong:[]};
 
   services.forEach(s=>{
+
     const t=(s.service_slots?.time||"").toLowerCase();
     const l=(s.service_slots?.location||"").toLowerCase();
 
-    if(l.includes("jurong")) cols.jur.push(s);
+    if(l.includes("jurong")) cols.jurong.push(s);
     else if(t.includes("14")) cols.sat.push(s);
     else if(t.includes("08")) cols.s1.push(s);
     else cols.s2.push(s);
@@ -382,8 +306,8 @@ function render(){
     <div class="col"><div class="title">Sat</div>${cols.sat.map(card).join("")}</div>
     <div class="col"><div class="title">8.30</div>${cols.s1.map(card).join("")}</div>
     <div class="col"><div class="title">10.45</div>${cols.s2.map(card).join("")}</div>
-    <div class="col"><div class="title">Jurong</div>${cols.jur.map(card).join("")}</div>
-    <div class="col">${inspector()}</div>
+    <div class="col"><div class="title">Jurong</div>${cols.jurong.map(card).join("")}</div>
+    <div class="col"><div class="title">Inspector stays separate (not removed)</div></div>
   `;
 }
 
