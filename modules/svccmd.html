@@ -206,17 +206,20 @@ function resolveServiceRoles(service){
 function norm(v){
   return (v || "").trim().toLowerCase();
 }
-/* ================= ASSIGNED ================= */
 function getAssigned(serviceId, role){
 
   const match = serviceRoles.find(r =>
-    String(r.service_id) === String(serviceId) &&
+    String(r.service_id).trim() === String(serviceId).trim() &&
     norm(r.role) === norm(role)
   );
 
-  return match
-    ? (staffMap[match.staff_id] || "-")
-    : "-";
+  if(!match || !match.staff_id) return "-";
+
+  const staff = staffList.find(s =>
+    String(s.id).trim() === String(match.staff_id).trim()
+  );
+
+  return staff ? staff.name : "-";
 }
 
 /* ================= CARD ================= */
