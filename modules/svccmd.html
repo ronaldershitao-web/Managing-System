@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Command Post (Restored Stable Version)</title>
+  <title>Service Command Center</title>
 
   <style>
     body{
@@ -17,440 +17,268 @@
       display:flex;
       justify-content:space-between;
       align-items:center;
-      border-bottom:1px solid #1f2937;
       font-weight:bold;
+      border-bottom:1px solid #1f2937;
     }
 
-    .grid{
+    .kpi{
       display:grid;
-      grid-template-columns:repeat(5,1fr);
+      grid-template-columns:repeat(4,1fr);
       gap:10px;
       padding:10px;
     }
 
-    .col{
+    .kpi-card{
       background:#111827;
-      border:1px solid #1f2937;
-      border-radius:10px;
-      padding:10px;
-      min-height:85vh;
-      overflow:auto;
-    }
-
-    .title{
-      font-weight:bold;
-      color:#fbbf24;
-      margin-bottom:10px;
-    }
-
-    .card{
-      background:#0f172a;
       border:1px solid #334155;
       border-radius:10px;
       padding:10px;
-      margin-bottom:10px;
-    }
-
-    .row{
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
       font-size:12px;
-      margin:6px 0;
-      gap:8px;
     }
 
-    .role{ flex:1; }
-
-    .staff{
-      min-width:100px;
-      text-align:right;
-      font-weight:bold;
-      color:#22c55e;
-    }
-
-    button{
-      font-size:10px;
-      padding:3px 6px;
-      background:#3b82f6;
-      border:none;
-      color:white;
-      border-radius:5px;
-      cursor:pointer;
-    }
-
-    select{
-      width:100%;
-      padding:6px;
-      margin-top:8px;
-      border-radius:6px;
+    .main{
+      display:grid;
+      grid-template-columns:2fr 1fr;
+      gap:10px;
+      padding:10px;
     }
 
     .panel{
-      background:#0f172a;
+      background:#111827;
       border:1px solid #334155;
       border-radius:10px;
       padding:10px;
+      height:85vh;
+      overflow:auto;
     }
 
-    .danger{
-      background:#ef4444;
-      width:100%;
-      margin-top:10px;
-      padding:6px;
-      border:none;
-      color:white;
-      border-radius:6px;
-    }
-
-    .modal{
-      display:none;
-      position:fixed;
-      inset:0;
-      background:rgba(0,0,0,0.6);
-      justify-content:center;
-      align-items:center;
-    }
-
-    .modal-content{
-      background:#111827;
-      padding:20px;
+    .service-card{
+      border:1px solid #334155;
       border-radius:10px;
-      width:360px;
+      padding:10px;
+      margin-bottom:10px;
     }
+
+    .red{ border-left:4px solid #ef4444; }
+    .yellow{ border-left:4px solid #fbbf24; }
+    .green{ border-left:4px solid #22c55e; }
+
+    .role-row{
+      display:flex;
+      justify-content:space-between;
+      font-size:12px;
+      margin:5px 0;
+    }
+
+    .missing{
+      color:#ef4444;
+      font-weight:bold;
+    }
+
+    .staff-panel{
+      font-size:12px;
+    }
+
+    .tag{
+      padding:3px 6px;
+      border-radius:6px;
+      font-size:11px;
+    }
+
+    .avail{ background:#16a34a; }
+    .unavail{ background:#ef4444; }
   </style>
 </head>
 
 <body>
 
 <header>
-  Command Post
+  📟 Service Command Center
   <button onclick="load()">Refresh</button>
 </header>
 
-<div class="grid" id="grid"></div>
+<!-- KPI -->
+<div class="kpi">
+  <div class="kpi-card" id="kpiServices">Services: 0</div>
+  <div class="kpi-card" id="kpiCritical">Critical: 0</div>
+  <div class="kpi-card" id="kpiMissing">Missing Roles: 0</div>
+  <div class="kpi-card" id="kpiAvail">Available Staff: 0</div>
+</div>
 
-<!-- ASSIGN MODAL -->
-<div class="modal" id="assignModal">
-  <div class="modal-content">
-    <h3 id="modalTitle"></h3>
-    <select id="staffSelect"></select>
-    <button onclick="saveAssign()">Assign</button>
-  </div>
+<!-- MAIN -->
+<div class="main">
+
+  <!-- SERVICE OPS -->
+  <div class="panel" id="servicePanel"></div>
+
+  <!-- STAFF PANEL -->
+  <div class="panel staff-panel" id="staffPanel"></div>
+
 </div>
 
 <script type="module">
-
 import { db } from "../assets/app.js";
 
-/* ================= STATE ================= */
 let services = [];
-let staffList = [];
-let templateRoles = [];
-let serviceRoles = [];
+let roles = [];
+let staff = [];
 let availability = [];
 
 let staffMap = {};
-let roleMap = {};
 
-let currentService = null;
-let currentRole = null;
-
-/* ================= LOAD ================= */
 async function load(){
 
-  const [
-    s,
-    st,
-    tr,
-    sr,
-    av
-  ] = await Promise.all([
+  const res = await Promise.all([
     db.from("services").select("*, service_slots(label,time,location)"),
+    db.from("service_roles").select("role, service_id, staff_id"),
     db.from("staff").select("*"),
-    db.from("service_template_roles").select("*"),
-    db.from("service_roles").select("*"),
     db.from("staff_availability").select("*")
   ]);
 
-  services = s.data || [];
-  staffList = st.data || [];
-  templateRoles = tr.data || [];
-  serviceRoles = sr.data || [];
-  availability = av.data || [];
+  services = res[0].data || [];
+  roles = res[1].data || [];
+  staff = res[2].data || [];
+  availability = res[3].data || [];
 
-  /* STAFF MAP */
   staffMap = Object.fromEntries(
-    staffList.map(s => [String(s.id), s.name])
+    staff.map(s => [String(s.id), s.name])
   );
-
-  /* LATEST ROLE MAP */
-  roleMap = {};
-
-  serviceRoles.forEach(r => {
-
-    const key =
-      `${r.service_id}_${String(r.role || "").trim().toLowerCase()}`;
-
-    const existing = roleMap[key];
-
-    if(!existing ||
-      new Date(r.created_at || 0) > new Date(existing.created_at || 0)
-    ){
-      roleMap[key] = r;
-    }
-  });
 
   render();
 }
 
-/* ================= DATE FILTER ================= */
-function in8Days(d){
+/* =======================
+   BUILD ROLE MAP
+======================= */
+function buildRoleMap(){
 
-  const dt = new Date(d);
-  const now = new Date();
+  const map = {};
 
-  const min = new Date(now);
-  min.setDate(now.getDate()-8);
+  roles.forEach(r => {
 
-  const max = new Date(now);
-  max.setDate(now.getDate()+8);
+    const key =
+      `${r.service_id}_${(r.role||"").toLowerCase()}`;
 
-  return dt >= min && dt <= max;
-}
-
-function in60Days(d){
-
-  const dt = new Date(d);
-  const now = new Date();
-
-  const max = new Date(now);
-  max.setDate(now.getDate()+60);
-
-  return dt >= now && dt <= max;
-}
-
-/* ================= STAFF NAME (FIXED) ================= */
-function getAssignedName(serviceId, role){
-
-  const key =
-    `${serviceId}_${String(role || "").trim().toLowerCase()}`;
-
-  const match = roleMap[key];
-
-  if(!match) return "-";
-
-  return staffMap[match.staff_id] || "-";
-}
-
-/* ================= RENDER ================= */
-function render(){
-
-  const sat=[], s830=[], s1045=[], jurong=[];
-
-  services
-    .filter(s => in8Days(s.service_date))
-    .forEach(s => {
-
-      const t = (s.service_slots?.time || "").toLowerCase();
-      const loc = (s.service_slots?.location || "").toLowerCase();
-
-      if(loc.includes("jurong")) jurong.push(s);
-      else if(t.includes("14") || t.includes("2:30")) sat.push(s);
-      else if(t.includes("08")) s830.push(s);
-      else if(t.includes("10:45")) s1045.push(s);
-    });
-
-  document.getElementById("grid").innerHTML = `
-
-    <div class="col">
-      <div class="title">Saturday 2.30pm</div>
-      ${sat.map(card).join("")}
-    </div>
-
-    <div class="col">
-      <div class="title">Sunday 8.30am</div>
-      ${s830.map(card).join("")}
-    </div>
-
-    <div class="col">
-      <div class="title">Sunday 10.45am</div>
-      ${s1045.map(card).join("")}
-    </div>
-
-    <div class="col">
-      <div class="title">Sunday Jurong</div>
-      ${jurong.map(card).join("")}
-    </div>
-
-    <div class="col">
-      ${availabilityPanel()}
-    </div>
-  `;
-}
-
-/* ================= CARD ================= */
-function card(s){
-
-  const roles = templateRoles.filter(r =>
-    String(r.template_id) === String(s.service_template_id)
-  );
-
-  const filtered = s.is_communion_service
-    ? roles
-    : roles.filter(r =>
-        !(r.role || "").toLowerCase().includes("communion")
-      );
-
-  return `
-    <div class="card">
-
-      <b>${s.service_slots?.label}</b>
-      <div style="font-size:11px;color:#94a3b8">
-        ${s.service_date}
-      </div>
-
-      ${filtered.map(r => `
-        <div class="row">
-
-          <div class="role">${r.role}</div>
-
-          <div class="staff">
-            ${getAssignedName(s.id, r.role)}
-          </div>
-
-          <button onclick="openAssign('${s.id}','${r.role}')">
-            Assign
-          </button>
-
-        </div>
-      `).join("")}
-
-    </div>
-  `;
-}
-
-/* ================= AVAILABILITY PANEL ================= */
-function availabilityPanel(){
-
-  const dates = [...new Set(
-    services
-      .filter(s => in60Days(s.service_date))
-      .map(s => s.service_date)
-  )].sort();
-
-  return `
-    <div class="panel">
-
-      <div class="title">Availability (60 Days)</div>
-
-      <select id="dateSel" onchange="onDateChange()">
-        ${dates.map(d => `<option value="${d}">${d}</option>`).join("")}
-      </select>
-
-      <select id="serviceSel" onchange="onServiceChange()"></select>
-
-      <select id="staffSel"></select>
-
-      <button class="danger" onclick="markUnavailable()">
-        Mark Unavailable
-      </button>
-
-    </div>
-  `;
-}
-
-/* ================= AVAILABILITY FLOW ================= */
-window.onDateChange = function(){
-
-  const date = document.getElementById("dateSel").value;
-
-  const filtered = services.filter(s =>
-    s.service_date === date
-  );
-
-  document.getElementById("serviceSel").innerHTML =
-    filtered.map(s => `
-      <option value="${s.id}">
-        ${s.service_slots?.label}
-      </option>
-    `).join("");
-
-  onServiceChange();
-};
-
-window.onServiceChange = function(){
-
-  const id = document.getElementById("serviceSel").value;
-
-  const service = services.find(s =>
-    String(s.id) === String(id)
-  );
-
-  if(!service) return;
-
-  const allowed = new Set(
-    templateRoles
-      .filter(t =>
-        String(t.template_id) === String(service.service_template_id)
-      )
-      .map(t => String(t.staff_id))
-  );
-
-  const unavailable = new Set(
-    availability
-      .filter(a =>
-        a.service_date === service.service_date &&
-        a.service_slot_id === service.service_slot_id &&
-        a.status === "unavailable"
-      )
-      .map(a => String(a.staff_id))
-  );
-
-  const eligible = staffList.filter(s =>
-    allowed.has(String(s.id)) &&
-    !unavailable.has(String(s.id))
-  );
-
-  document.getElementById("staffSel").innerHTML =
-    eligible.map(s => `
-      <option value="${s.id}">
-        ${s.name}
-      </option>
-    `).join("");
-};
-
-/* ================= ASSIGN ================= */
-window.openAssign = function(serviceId, role){
-
-  currentService = serviceId;
-  currentRole = role;
-
-  document.getElementById("staffSelect").innerHTML =
-    staffList.map(s =>
-      `<option value="${s.id}">${s.name}</option>`
-    ).join("");
-
-  document.getElementById("assignModal").style.display = "flex";
-};
-
-window.saveAssign = async function(){
-
-  const staffId = document.getElementById("staffSelect").value;
-
-  await db.from("service_roles").upsert({
-    service_id: currentService,
-    role: currentRole,
-    staff_id: staffId
-  },{
-    onConflict:"service_id,role"
+    map[key] = r;
   });
 
-  await load();
-  document.getElementById("assignModal").style.display = "none";
-};
+  return map;
+}
 
-/* ================= INIT ================= */
+/* =======================
+   SERVICE HEALTH SCORE
+======================= */
+function getHealth(missingCount){
+
+  if(missingCount >= 2) return "red";
+  if(missingCount === 1) return "yellow";
+  return "green";
+}
+
+/* =======================
+   RENDER
+======================= */
+function render(){
+
+  const roleMap = buildRoleMap();
+
+  let totalMissing = 0;
+  let totalCritical = 0;
+
+  const serviceHtml = services.map(s => {
+
+    const serviceRoles = roles.filter(r => r.service_id === s.id);
+
+    const expectedRoles = 6; // adjust if needed
+
+    const missing = Math.max(0, expectedRoles - serviceRoles.length);
+
+    totalMissing += missing;
+
+    if(missing >= 2) totalCritical++;
+
+    const health = getHealth(missing);
+
+    const roleHtml = serviceRoles.map(r => {
+
+      const staffName =
+        staffMap[r.staff_id] || "Unknown";
+
+      return `
+        <div class="role-row">
+          <div>${r.role}</div>
+          <div>${staffName}</div>
+        </div>
+      `;
+    }).join("");
+
+    return `
+      <div class="service-card ${health}">
+        <b>${s.service_slots?.label}</b><br>
+        <small>${s.service_date}</small>
+
+        <div style="margin-top:8px">
+          ${roleHtml}
+        </div>
+
+        ${missing > 0 ? `
+          <div class="missing">
+            ⚠ Missing Roles: ${missing}
+          </div>
+        ` : `<div style="color:#22c55e">✔ Fully Staffed</div>`}
+      </div>
+    `;
+  }).join("");
+
+  document.getElementById("servicePanel").innerHTML = serviceHtml;
+
+  /* =======================
+     STAFF PANEL
+  ======================= */
+
+  const availabilityMap = {};
+
+  availability.forEach(a => {
+    availabilityMap[a.staff_id] = a.status;
+  });
+
+  const staffHtml = staff.map(s => {
+
+    const status =
+      availabilityMap[s.id] || "available";
+
+    return `
+      <div class="service-card">
+        <div style="display:flex;justify-content:space-between">
+          <b>${s.name}</b>
+
+          <span class="tag ${status === "available" ? "avail" : "unavail"}">
+            ${status}
+          </span>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  document.getElementById("staffPanel").innerHTML = staffHtml;
+
+  /* =======================
+     KPI
+  ======================= */
+
+  document.getElementById("kpiServices").innerText =
+    `Services: ${services.length}`;
+
+  document.getElementById("kpiCritical").innerText =
+    `Critical: ${totalCritical}`;
+
+  document.getElementById("kpiMissing").innerText =
+    `Missing Roles: ${totalMissing}`;
+
+  document.getElementById("kpiAvail").innerText =
+    `Staff: ${staff.length}`;
+}
+
 window.load = load;
 load();
 
