@@ -157,6 +157,8 @@ async function load(){
   staffList = st.data || [];
   templateRoles = tr.data || [];
   serviceRoles = sr.data || [];
+  console.log("SERVICE ROLES DATA:", serviceRoles);
+console.log("STAFF DATA:", staffList);
   staffTemplates = tpl.data || [];
   availability = av.data || [];
 
@@ -208,21 +210,28 @@ function norm(v){
 }
 function getAssigned(serviceId, role){
 
+  console.log("CHECKING:", serviceId, role);
+
   const roles = serviceRoles.filter(r =>
-    String(r.service_id) === String(serviceId) &&
+    String(r.service_id).trim() === String(serviceId).trim() &&
     norm(r.role) === norm(role)
   );
 
-  // prioritize rows that actually have staff assigned
+  console.log("MATCHING ROLES:", roles);
+
   const match = roles.find(r => r.staff_id);
+
+  console.log("SELECTED MATCH:", match);
 
   if(!match){
     return "-";
   }
 
   const staff = staffList.find(s =>
-    String(s.id) === String(match.staff_id)
+    String(s.id).trim() === String(match.staff_id).trim()
   );
+
+  console.log("FOUND STAFF:", staff);
 
   return staff?.name || "-";
 }
