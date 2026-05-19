@@ -131,7 +131,7 @@ let templateRoles = [];
 let serviceRoles = [];
 let staffTemplates = [];
 let availability = [];
-let roleAssignMap = {};
+let assignmentByServiceRole = {};
 let staffMap = {};
 let roleMap = {};
 let poolMap = {};
@@ -157,12 +157,11 @@ async function load(){
   staffList = st.data || [];
   templateRoles = tr.data || [];
   serviceRoles = sr.data || [];
- roleAssignMap = Object.fromEntries(
-  serviceRoles.map(r => [
-    `${r.service_id}__${normalize(r.role)}`,
-    r.staff_id
-  ])
-);
+
+
+serviceRoles.forEach(r => {
+  assignmentByServiceRole[r.id] = r;
+});
   staffTemplates = tpl.data || [];
   availability = av.data || [];
 
@@ -217,13 +216,14 @@ function normalize(v){
 }
 function getAssigned(serviceId, role){
 
-  const key = `${serviceId}__${normalize(role)}`;
+  const match = serviceRoles.find(r =>
+    r.service_id === serviceId &&
+    r.role === role
+  );
 
-  const staffId = roleAssignMap[key];
+  if(!match) return "-";
 
-  if(!staffId) return "-";
-
-  return staffMap[String(staffId)] || "-";
+  return staffMap[String(match.staff_id)] || "-";
 }
 
 /* ================= CARD ================= */
