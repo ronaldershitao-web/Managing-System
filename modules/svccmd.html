@@ -157,9 +157,9 @@ async function load(){
   staffList = st.data || [];
   templateRoles = tr.data || [];
   serviceRoles = sr.data || [];
-  roleAssignMap = Object.fromEntries(
+ roleAssignMap = Object.fromEntries(
   serviceRoles.map(r => [
-    `${r.service_id}_${r.role.toLowerCase().trim()}`,
+    `${r.service_id}__${normalize(r.role)}`,
     r.staff_id
   ])
 );
@@ -209,12 +209,15 @@ function resolveServiceRoles(service){
   return { hcGrouped, nonHC };
 }
   
-function norm(v){
-  return (v || "").trim().toLowerCase();
+function normalize(v){
+  return (v || "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ");
 }
 function getAssigned(serviceId, role){
 
-  const key = `${serviceId}_${role.toLowerCase().trim()}`;
+  const key = `${serviceId}__${normalize(role)}`;
 
   const staffId = roleAssignMap[key];
 
