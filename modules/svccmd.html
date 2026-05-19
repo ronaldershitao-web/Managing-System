@@ -208,24 +208,23 @@ function norm(v){
 }
 function getAssigned(serviceId, role){
 
-  const match = serviceRoles.find(r =>
-    String(r.service_id).trim() === String(serviceId).trim() &&
+  const roles = serviceRoles.filter(r =>
+    String(r.service_id) === String(serviceId) &&
     norm(r.role) === norm(role)
   );
 
-  console.log("ROLE MATCH:", match);
+  // prioritize rows that actually have staff assigned
+  const match = roles.find(r => r.staff_id);
 
-  if(!match || !match.staff_id){
+  if(!match){
     return "-";
   }
 
   const staff = staffList.find(s =>
-    String(s.id).trim() === String(match.staff_id).trim()
+    String(s.id) === String(match.staff_id)
   );
 
-  console.log("STAFF MATCH:", staff);
-
-  return staff ? staff.name : "-";
+  return staff?.name || "-";
 }
 
 /* ================= CARD ================= */
