@@ -157,8 +157,12 @@ async function load(){
   staffList = st.data || [];
   templateRoles = tr.data || [];
   serviceRoles = sr.data || [];
-  console.log("SERVICE ROLES DATA:", serviceRoles);
-console.log("STAFF DATA:", staffList);
+  roleAssignMap = Object.fromEntries(
+  serviceRoles.map(r => [
+    `${r.service_id}_${r.role.toLowerCase().trim()}`,
+    r.staff_id
+  ])
+);
   staffTemplates = tpl.data || [];
   availability = av.data || [];
 
@@ -210,16 +214,13 @@ function norm(v){
 }
 function getAssigned(serviceId, role){
 
-  const match = serviceRoles.find(r =>
-    String(r.service_id).trim() === String(serviceId).trim() &&
-    String(r.role).trim().toLowerCase() === String(role).trim().toLowerCase()
-  );
+  const key = `${serviceId}_${role.toLowerCase().trim()}`;
 
-  console.log("ROLE CHECK:", serviceId, role, match);
+  const staffId = roleAssignMap[key];
 
-  if(!match || !match.staff_id) return "-";
+  if(!staffId) return "-";
 
-  return staffMap[String(match.staff_id)] || "-";
+  return staffMap[String(staffId)] || "-";
 }
 
 /* ================= CARD ================= */
