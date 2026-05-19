@@ -210,30 +210,18 @@ function norm(v){
 }
 function getAssigned(serviceId, role){
 
-  console.log("CHECKING:", serviceId, role);
-
-  const roles = serviceRoles.filter(r =>
-    String(r.service_id).trim() === String(serviceId).trim() &&
-    norm(r.role) === norm(role)
+  const match = serviceRoles.find(r =>
+    String(r.service_id) === String(serviceId) &&
+    r.role === role   // 🔥 strict match first
   );
 
-  console.log("MATCHING ROLES:", roles);
+  console.log("ROLE CHECK:", serviceId, role, match);
 
-  const match = roles.find(r => r.staff_id);
+  if(!match || !match.staff_id) return "-";
 
-  console.log("SELECTED MATCH:", match);
+  const staff = staffMap[String(match.staff_id)];
 
-  if(!match){
-    return "-";
-  }
-
-  const staff = staffList.find(s =>
-    String(s.id).trim() === String(match.staff_id).trim()
-  );
-
-  console.log("FOUND STAFF:", staff);
-
-  return staff?.name || "-";
+  return staff || "-";
 }
 
 /* ================= CARD ================= */
