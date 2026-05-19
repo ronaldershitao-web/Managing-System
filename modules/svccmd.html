@@ -211,17 +211,15 @@ function norm(v){
 function getAssigned(serviceId, role){
 
   const match = serviceRoles.find(r =>
-    String(r.service_id) === String(serviceId) &&
-    r.role === role   // 🔥 strict match first
+    String(r.service_id).trim() === String(serviceId).trim() &&
+    String(r.role).trim().toLowerCase() === String(role).trim().toLowerCase()
   );
 
   console.log("ROLE CHECK:", serviceId, role, match);
 
   if(!match || !match.staff_id) return "-";
 
-  const staff = staffMap[String(match.staff_id)];
-
-  return staff || "-";
+  return staffMap[String(match.staff_id)] || "-";
 }
 
 /* ================= CARD ================= */
